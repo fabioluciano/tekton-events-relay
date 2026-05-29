@@ -4,5 +4,5 @@ bin/
 .idea/
 .vscode/
 deploy/secret.yaml
-receiver
+/receiver
 .envrc

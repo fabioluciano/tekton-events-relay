@@ -1,0 +1,430 @@
+# Tekton Events Relay - Complete Configuration Reference
+# This file demonstrates all available configuration options
+#
+# To use this file:
+# 1. Copy to /etc/tekton-events-relay/config.toml
+# 2. Set required environment variables (tokens, passwords)
+# 3. Enable desired notifiers (enabled = true)
+# 4. Adjust templates and behaviors as needed
+
+# =============================================================================
+# HTTP SERVER CONFIGURATION
+# =============================================================================
+
+[server]
+# Address and port to listen for CloudEvents requests
+# Default: ":8080"
+addr = ":8080"
+
+# HTTP read timeout in seconds
+# Default: 10
+read_timeout_sec = 10
+
+# HTTP write timeout in seconds
+# Default: 10
+write_timeout_sec = 10
+
+# =============================================================================
+# GLOBAL SETTINGS
+# =============================================================================
+
+# Tekton Dashboard URL to enrich result links
+# Optional
+dashboard_url = "https://tekton.example.com"
+
+# LRU cache size for event deduplication
+# Default: 10000
+dedupe_size = 10000
+
+# =============================================================================
+# EVENT FILTER
+# =============================================================================
+
+[filter]
+# Process TaskRun events
+# Default: false
+allow_taskrun = false
+
+# Process PipelineRun events
+# Default: true
+allow_pipelinerun = true
+
+# Silently ignore events from unknown decoders
+# Default: true
+ignore_unknown = true
+
+# =============================================================================
+# LOGGING
+# =============================================================================
+
+[logging]
+# Log level: debug, info, warn, error
+# Default: "info"
+level = "info"
+
+# =============================================================================
+# DEBUG MODE
+# =============================================================================
+
+[debug]
+# Enable debug mode (increases verbosity)
+# Default: false
+enabled = false
+
+# Log incoming CloudEvent payloads (truncated to 4KB)
+# Default: false
+log_payloads = true
+
+# Log outgoing HTTP calls to SCM APIs
+# Default: false
+log_http_calls = true
+
+# =============================================================================
+# NOTIFIERS - SCM PROVIDERS
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# GitHub (Cloud or Enterprise Server)
+# -----------------------------------------------------------------------------
+[notifiers.github]
+enabled = true
+
+# Personal access token or GitHub App token
+# Required scopes: repo:status, repo (if using actions)
+token = "${GITHUB_TOKEN}"
+
+# API base URL (for GitHub Enterprise Server)
+base_url = "https://api.github.com"
+
+# Skip TLS certificate verification (testing only)
+# Default: false
+insecure_skip_verify = false
+
+
+[notifiers.github.actions.pr_comment]
+# Enable Pull Request comments
+enabled = false
+
+# CEL expression for conditional triggering (optional)
+# Filter by resource type and state
+when = 'event.Resource == "taskrun" && event.State == "failure"'
+
+# Go template for PR comments
+# Available variables:
+#   {{.State}} - Pipeline state (success, failure, error, etc.)
+#   {{.RunName}} - Run name (for display)
+#   {{.Context}} - Status context
+#   {{.CommitSHA}} - Commit SHA
+#   {{.TargetURL}} - URL to results
+#   {{.Repo.Owner}}, {{.Repo.Name}} - Repository owner and name
+# Available functions:
+#   {{IssueRef "owner" "repo" 123}} - Reference #123
+#   {{PRRef "owner" "repo" 456}} - Reference #456
+#   {{UserMention "username"}} - Mention @username
+#   {{Truncate .Description 100}} - Truncate text
+template = """
+## Pipeline {{.State}}
+
+**Run:** {{.RunName}}
+**Commit:** {{.CommitSHA}}
+{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
+
+{{if eq .State "failure"}}
+Build failed. Check the logs for details.
+{{else if eq .State "success"}}
+Build passed successfully! ✅
+{{end}}
+"""
+
+# States that trigger the comment
+# Options: success, failure, error, pending, running
+on_states = ["success", "failure"]
+
+[notifiers.github.actions.issue_comment]
+# Enable Issue comments
+enabled = false
+
+# Filter by namespace
+when = 'event.Namespace == "production"'
+
+template = """
+Pipeline {{.Context}} finished with state: **{{.State}}**
+
+{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
+"""
+
+on_states = ["failure", "error"]
+
+[notifiers.github.actions.label]
+# Enable automatic labels
+enabled = false
+
+# Label applied when build succeeds
+success_label = "ci:passed"
+
+# Label applied when build fails
+failure_label = "ci:failed"
+
+# -----------------------------------------------------------------------------
+# GitLab Cloud
+# -----------------------------------------------------------------------------
+[notifiers.gitlab_cloud]
+enabled = true
+
+# Personal access token or project access token
+# Required scopes: api or write_repository
+token = "${GITLAB_CLOUD_TOKEN}"
+
+# GitLab API base URL
+base_url = "https://gitlab.com/api/v4"
+
+insecure_skip_verify = false
+
+[notifiers.gitlab_cloud.actions.label]
+# GitLab uses :: for label namespaces
+enabled = false
+success_label = "pipeline::success"
+failure_label = "pipeline::failed"
+
+# -----------------------------------------------------------------------------
+# GitLab Server (self-hosted)
+# -----------------------------------------------------------------------------
+[notifiers.gitlab_server]
+enabled = false
+
+token = "${GITLAB_SERVER_TOKEN}"
+
+# Your GitLab instance URL
+base_url = "https://gitlab.company.example.com/api/v4"
+
+insecure_skip_verify = false
+
+[notifiers.gitlab_server.actions.label]
+enabled = false
+success_label = "pipeline::success"
+failure_label = "pipeline::failed"
+
+# -----------------------------------------------------------------------------
+# Bitbucket Cloud
+# -----------------------------------------------------------------------------
+[notifiers.bitbucket_cloud]
+enabled = true
+
+# Bitbucket account username
+username = "${BB_CLOUD_USER}"
+
+# App password (not your login password)
+# Create at: Personal Settings > App passwords
+app_password = "${BB_CLOUD_PASS}"
+
+base_url = "https://api.bitbucket.org/2.0"
+insecure_skip_verify = false
+
+# Note: Bitbucket Cloud only supports commit status currently
+# Actions (comments, labels) are not supported
+
+# -----------------------------------------------------------------------------
+# Bitbucket Server (Data Center)
+# -----------------------------------------------------------------------------
+[notifiers.bitbucket_server]
+enabled = false
+
+# Personal access token
+token = "${BB_SERVER_TOKEN}"
+
+base_url = "https://bitbucket.company.example.com"
+insecure_skip_verify = false
+
+# Note: Bitbucket Server only supports commit status currently
+# Actions (comments, labels) are not supported
+
+# -----------------------------------------------------------------------------
+# Azure DevOps
+# -----------------------------------------------------------------------------
+[notifiers.azure_devops]
+enabled = true
+
+# Personal Access Token (PAT)
+# Required scopes: Code (Status) - Read & Write
+token = "${AZURE_TOKEN}"
+
+# Base URL (optional, uses Azure default if omitted)
+base_url = "https://dev.azure.com"
+
+# Commit status genre (CI system identifier)
+genre = "tekton-ci"
+
+insecure_skip_verify = false
+
+[notifiers.azure_devops.actions.label]
+enabled = false
+success_label = "build-passed"
+failure_label = "build-failed"
+
+# Composite filter: pipelinerun from specific org
+when = 'event.Resource == "pipelinerun" && event.Repo.Owner == "myorg"'
+
+# -----------------------------------------------------------------------------
+# Gitea
+# -----------------------------------------------------------------------------
+[notifiers.gitea]
+enabled = false
+
+token = "${GITEA_TOKEN}"
+
+# Your Gitea instance URL
+base_url = "https://gitea.company.example.com"
+
+insecure_skip_verify = false
+
+[notifiers.gitea.actions.pr_comment]
+enabled = false
+
+# Filter by run name prefix
+when = 'event.RunName.startsWith("nightly-")'
+
+template = """
+## Pipeline {{.State}}
+
+**Run:** {{.RunName}}
+**Commit:** {{.CommitSHA}}
+{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
+"""
+
+on_states = ["success", "failure"]
+
+[notifiers.gitea.actions.issue_comment]
+enabled = false
+
+template = """
+Pipeline {{.Context}} finished: **{{.State}}**
+{{if .TargetURL}}[Results]({{.TargetURL}}){{end}}
+"""
+
+on_states = ["failure", "error"]
+
+[notifiers.gitea.actions.label]
+enabled = false
+success_label = "ci:passed"
+failure_label = "ci:failed"
+
+# -----------------------------------------------------------------------------
+# SourceHut
+# -----------------------------------------------------------------------------
+[notifiers.sourcehut]
+enabled = false
+
+# OAuth token from meta.sr.ht
+token = "${SOURCEHUT_TOKEN}"
+
+# Base URL (optional, defaults to sr.ht)
+base_url = "https://builds.sr.ht"
+
+insecure_skip_verify = false
+
+# Note: SourceHut uses mailing list system, no inline comments support
+# Only commit status is supported
+
+# =============================================================================
+# NOTIFIERS - CHAT & ALERTING
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Slack
+# -----------------------------------------------------------------------------
+[notifiers.slack]
+enabled = false
+
+# Incoming Webhook URL
+# Create at: Slack App > Incoming Webhooks
+webhook_url = "${SLACK_WEBHOOK_URL}"
+
+# Channel to send messages (optional, uses webhook channel if omitted)
+channel = "#ci-notifications"
+
+# Bot username (optional)
+username = "Tekton CI"
+
+# Bot icon emoji (optional)
+icon_emoji = ":robot_face:"
+
+# States that trigger notification
+notify_on = ["failure", "error"]
+
+# -----------------------------------------------------------------------------
+# Microsoft Teams
+# -----------------------------------------------------------------------------
+[notifiers.teams]
+enabled = false
+
+# Webhook URL from Teams Incoming Webhook connector
+# Create at: Teams > Connectors > Incoming Webhook
+webhook_url = "${TEAMS_WEBHOOK_URL}"
+
+notify_on = ["failure", "error"]
+
+# -----------------------------------------------------------------------------
+# Discord
+# -----------------------------------------------------------------------------
+[notifiers.discord]
+enabled = false
+
+# Discord Webhook URL
+# Create at: Server Settings > Integrations > Webhooks
+webhook_url = "${DISCORD_WEBHOOK_URL}"
+
+# Bot username (optional)
+username = "Tekton CI"
+
+notify_on = ["failure", "error"]
+
+# -----------------------------------------------------------------------------
+# PagerDuty
+# -----------------------------------------------------------------------------
+[notifiers.pagerduty]
+enabled = false
+
+# Integration Key from PagerDuty service
+# Find at: Service > Integrations > Events API V2
+integration_key = "${PAGERDUTY_INTEGRATION_KEY}"
+
+# Default severity for alerts
+# Options: critical, error, warning, info
+severity = "error"
+
+
+# -----------------------------------------------------------------------------
+# Datadog
+# -----------------------------------------------------------------------------
+[notifiers.datadog]
+enabled = false
+
+# Datadog API Key
+# Find at: Organization Settings > API Keys
+api_key = "${DATADOG_API_KEY}"
+
+# Datadog site: datadoghq.com (US) or datadoghq.eu (EU)
+site = "datadoghq.com"
+
+# Custom tags for events
+tags = ["source:tekton", "env:production"]
+
+notify_on = ["failure", "error"]
+
+# -----------------------------------------------------------------------------
+# Generic Webhook
+# -----------------------------------------------------------------------------
+[notifiers.webhook]
+enabled = false
+
+# Webhook endpoint URL
+url = "https://your-service.example.com/webhooks/tekton"
+
+notify_on = ["success", "failure", "error"]
+
+# Custom HTTP headers (optional)
+[notifiers.webhook.headers]
+Authorization = "Bearer ${WEBHOOK_TOKEN}"
+X-Custom-Header = "custom-value"
+
+# Note: The payload sent follows the domain.Event format

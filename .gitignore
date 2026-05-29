@@ -1,0 +1,8 @@
+bin/
+*.test
+*.out
+.idea/
+.vscode/
+deploy/secret.yaml
+receiver
+.envrc

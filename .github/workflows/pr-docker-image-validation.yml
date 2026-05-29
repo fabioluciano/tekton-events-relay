@@ -1,0 +1,85 @@
+---
+name: PR Docker Validation
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - "Dockerfile"
+      - "**.go"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/pr-docker-validation.yml"
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docker-security:
+    name: Docker Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6.0.2
+
+      - name: Run hadolint
+        uses: hadolint/hadolint-action@v3.3.0
+        with:
+          dockerfile: Dockerfile
+          failure-threshold: warning
+          format: sarif
+          output-file: hadolint-results.sarif
+          no-fail: true
+
+      - name: Upload hadolint results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v4.36.0
+        if: always() && hashFiles('hadolint-results.sarif') != ''
+        with:
+          sarif_file: "hadolint-results.sarif"
+          category: hadolint-dockerfile
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4.1.0
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v7.2.0
+        with:
+          context: .
+          push: false
+          load: true
+          tags: tekton-events-relay:pr-${{ github.event.pull_request.number }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@v0.36.0
+        continue-on-error: true
+        with:
+          image-ref: tekton-events-relay:pr-${{ github.event.pull_request.number }}
+          format: "sarif"
+          output: "trivy-results.sarif"
+          severity: "HIGH,CRITICAL"
+          exit-code: "0"
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v4.36.0
+        if: always() && hashFiles('trivy-results.sarif') != ''
+        with:
+          sarif_file: "trivy-results.sarif"
+          category: trivy-docker-scan
+
+      - name: Upload Trivy scan results
+        uses: actions/upload-artifact@v7.0.1
+        if: always()
+        with:
+          name: trivy-results
+          path: trivy-results.sarif
+          retention-days: 30

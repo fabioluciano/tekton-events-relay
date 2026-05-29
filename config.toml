@@ -1,0 +1,12 @@
+[server]
+addr = ":8080"
+
+[logging]
+level = "info"
+
+[debug]
+enabled = false
+log_payloads = true
+log_http_calls = true
+
+[notifiers]

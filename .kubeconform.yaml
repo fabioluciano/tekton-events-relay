@@ -1,0 +1,14 @@
+# Kubeconform configuration file
+
+# Kubernetes API versions to support
+kubernetes-versions:
+  - "1.31.0"
+  - "1.30.0"
+  - "1.29.0"
+
+# Validation settings
+strict: true
+summary: true
+ignore-missing-schemas: false
+reject-kinds: []
+n: 4 # Number of goroutines

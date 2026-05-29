@@ -1,0 +1,249 @@
+# Default values for tekton-events-relay.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+replicaCount: 2
+
+image:
+  repository: ghcr.io/fabioluciano/tekton-events-relay
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# Common labels to add to all resources
+commonLabels: {}
+
+# Common annotations to add to all resources
+commonAnnotations: {}
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+  # Auto-mount service account token
+  automountServiceAccountToken: false
+
+podAnnotations: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  capabilities:
+    drop:
+      - ALL
+  seccompProfile:
+    type: RuntimeDefault
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+  annotations: {}
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 256Mi
+    ephemeral-storage: 1Gi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+    ephemeral-storage: 100Mi
+
+startupProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  initialDelaySeconds: 0
+  periodSeconds: 5
+  failureThreshold: 30
+
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  periodSeconds: 5
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - tekton-events-relay
+          topologyKey: kubernetes.io/hostname
+  nodeAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 50
+        preference:
+          matchExpressions:
+            - key: node-role.kubernetes.io/worker
+              operator: In
+              values:
+                - "true"
+
+# Owner and contact information
+owner: "platform-team"
+email: "platform@example.com"
+
+# Pod Disruption Budget
+podDisruptionBudget:
+  minAvailable: 1
+
+# Horizontal Pod Autoscaler
+autoscaling:
+  enabled: false
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 75
+  targetMemoryUtilizationPercentage: 80
+
+# Application configuration
+# configFormat: toml or json (default: toml, json shows deprecation warning)
+configFormat: toml
+
+config:
+  server:
+    addr: ":8080"
+    read_timeout_sec: 10
+    write_timeout_sec: 10
+  dashboard_url: "https://tekton.company.example.com"
+  dedupe_size: 10000
+  filter:
+    allow_taskrun: false
+    allow_pipelinerun: true
+    ignore_unknown: true
+  notifiers:
+    github:
+      enabled: true
+      # token provided via secret
+      actions:
+        pr_comment:
+          enabled: false
+          template: |
+            ## Pipeline {{.State}}
+            **Run:** {{.RunName}}
+            **Commit:** {{.CommitSHA}}
+            {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
+          on_states:
+            - success
+            - failure
+        issue_comment:
+          enabled: false
+          template: |
+            Pipeline {{.Context}} finished with state: **{{.State}}**
+            {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
+          on_states:
+            - failure
+            - error
+        label:
+          enabled: false
+          success_label: "ci:passed"
+          failure_label: "ci:failed"
+    gitlab_cloud:
+      enabled: true
+      base_url: "https://gitlab.com/api/v4"
+      # token provided via secret
+      actions:
+        label:
+          enabled: false
+          success_label: "pipeline::success"
+          failure_label: "pipeline::failed"
+    gitlab_server:
+      enabled: false
+      base_url: "https://gitlab.company.example.com/api/v4"
+      # token provided via secret
+      actions:
+        label:
+          enabled: false
+          success_label: "pipeline::success"
+          failure_label: "pipeline::failed"
+    bitbucket_cloud:
+      enabled: true
+      # username and app_password provided via secret
+      # Note: No action handlers implemented yet (commit status only)
+    bitbucket_server:
+      enabled: false
+      base_url: "https://bitbucket.company.example.com"
+      # token provided via secret
+      # Note: No action handlers implemented yet (commit status only)
+    azure_devops:
+      enabled: true
+      genre: "tekton-ci"
+      # token provided via secret
+      actions:
+        label:
+          enabled: false
+          success_label: "build-passed"
+          failure_label: "build-failed"
+    gitea:
+      enabled: false
+      base_url: "https://gitea.company.example.com"
+      # token provided via secret
+      actions:
+        pr_comment:
+          enabled: false
+          template: |
+            ## Pipeline {{.State}}
+            **Run:** {{.RunName}}
+            **Commit:** {{.CommitSHA}}
+            {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
+          on_states:
+            - success
+            - failure
+        issue_comment:
+          enabled: false
+          template: |
+            Pipeline {{.Context}} finished: **{{.State}}**
+            {{if .TargetURL}}[Results]({{.TargetURL}}){{end}}
+          on_states:
+            - failure
+            - error
+        label:
+          enabled: false
+          success_label: "ci:passed"
+          failure_label: "ci:failed"
+    sourcehut:
+      enabled: false
+      # token provided via secret
+      # Note: SourceHut does not support inline comments or labels (mailing list based)
+
+# Secret configuration for SCM tokens
+# Create a secret named <release-name>-tokens with the following keys:
+# GITHUB_TOKEN, GITLAB_CLOUD_TOKEN, GITLAB_SERVER_TOKEN, BB_CLOUD_USER,
+# BB_CLOUD_PASS, BB_SERVER_TOKEN, AZURE_TOKEN, GITEA_TOKEN, SOURCEHUT_TOKEN
+existingSecret: ""

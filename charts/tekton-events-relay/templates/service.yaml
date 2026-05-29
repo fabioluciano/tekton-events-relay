@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    {{- include "tekton-events-relay.annotations" . | nindent 4 }}
+  {{- with .Values.service.annotations }}
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  labels:
+    {{- include "tekton-events-relay.labels" . | nindent 4 }}
+  name: {{ include "tekton-events-relay.fullname" . }}
+spec:
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      protocol: TCP
+      targetPort: http
+  selector:
+    {{- include "tekton-events-relay.selectorLabels" . | nindent 4 }}
+  type: {{ .Values.service.type }}

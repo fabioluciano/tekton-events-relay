@@ -1,0 +1,5 @@
+# Gitleaks ignore file
+# False positives in test files
+
+# Test mock data - not real credentials
+internal/notifier/scm/bitbucket/reporter_test.go:generic-api-key:582

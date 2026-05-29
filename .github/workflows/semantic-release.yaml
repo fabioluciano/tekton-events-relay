@@ -1,0 +1,59 @@
+# Workflow: Semantic Release
+# Runs when a PR is merged to main (pull_request closed + merged).
+# Executes semantic-release to:
+#   - calculate next version based on commits (Conventional Commits)
+#   - create Git tag
+#   - generate CHANGELOG.md
+#   - create GitHub Release with automatic notes
+#
+# Expected Conventional Commits:
+#   feat:     → minor bump (1.x.0)
+#   fix:      → patch bump (1.0.x)
+#   perf:     → patch bump
+#   feat!:    → major bump (x.0.0)
+#   BREAKING CHANGE: → major bump
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write       # create tag and release
+  pull-requests: write  # comment on PR with generated version
+  issues: write         # semantic-release closes referenced issues
+
+jobs:
+  release:
+    name: Semantic Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          # Fetch full history — required for semantic-release
+          # to calculate version correctly from commits.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6.4.0
+        with:
+          node-version: lts/*
+
+      - name: Install semantic-release
+        run: |
+          npm install --save-dev \
+            semantic-release \
+            @semantic-release/changelog \
+            @semantic-release/git \
+            @semantic-release/github \
+            @semantic-release/commit-analyzer \
+            @semantic-release/release-notes-generator \
+            conventional-changelog-conventionalcommits
+
+      - name: Run semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
+        run: npx semantic-release

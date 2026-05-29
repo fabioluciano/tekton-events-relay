@@ -1,0 +1,4 @@
+[submodule "docs"]
+	path = docs
+	url = https://github.com/fabioluciano/tekton-events-relay.wiki.git
+	branch = master

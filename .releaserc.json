@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json.schemastore.org/semantic-release",
+  "branches": ["main"],
+  "plugins": [
+    [
+      "@semantic-release/commit-analyzer",
+      {
+        "preset": "conventionalcommits",
+        "releaseRules": [
+          { "type": "feat",     "release": "minor" },
+          { "type": "fix",      "release": "patch" },
+          { "type": "perf",     "release": "patch" },
+          { "type": "refactor", "release": "patch" },
+          { "type": "docs",     "release": false   },
+          { "type": "style",    "release": false   },
+          { "type": "test",     "release": false   },
+          { "type": "chore",    "release": false   },
+          { "type": "ci",       "release": false   },
+          { "breaking": true,   "release": "major" }
+        ]
+      }
+    ],
+    [
+      "@semantic-release/release-notes-generator",
+      {
+        "preset": "conventionalcommits",
+        "presetConfig": {
+          "types": [
+            { "type": "feat",     "section": "Features"         },
+            { "type": "fix",      "section": "Bug Fixes"        },
+            { "type": "perf",     "section": "Performance"      },
+            { "type": "refactor", "section": "Refactoring"      },
+            { "type": "docs",     "section": "Documentation", "hidden": true },
+            { "type": "chore",    "section": "Chores",        "hidden": true },
+            { "type": "ci",       "section": "CI",            "hidden": true }
+          ]
+        }
+      }
+    ],
+    [
+      "@semantic-release/changelog",
+      {
+        "changelogFile": "CHANGELOG.md",
+        "changelogTitle": "# Changelog\n\nAll notable changes to tekton-events-relay are documented here.\nFormat follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).\nVersioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html)."
+      }
+    ],
+    [
+      "@semantic-release/github",
+      {
+        "releaseName": "${nextRelease.version}",
+        "successComment": "🎉 This PR is included in version **${nextRelease.version}**.\n\nRelease: [${nextRelease.gitTag}](${releases[0].url})",
+        "failComment": "❌ Release failed. See [CI logs](${ciUrl}) for details.",
+        "releasedLabels": ["released"],
+        "addReleases": "bottom",
+        "releaseBodyTemplate": "<%= nextRelease.notes %>\n\n---\n\n## 📦 Installation\n\n### Docker Image\n\n```bash\ndocker pull ghcr.io/fabioluciano/tekton-events-relay:<%= nextRelease.version %>\n```\n\n### Helm Chart (OCI)\n\n```bash\nhelm install tekton-events-relay \\\n  oci://ghcr.io/fabioluciano/charts/tekton-events-relay \\\n  --version <%= nextRelease.version %>\n```\n\n### Quick Start\n\n```bash\n# With GitHub integration\nhelm install tekton-events-relay \\\n  oci://ghcr.io/fabioluciano/charts/tekton-events-relay \\\n  --version <%= nextRelease.version %> \\\n  --set config.github_token=\"$GITHUB_TOKEN\" \\\n  --namespace tekton-events-relay \\\n  --create-namespace\n```\n\nSee [Helm Installation Guide](https://github.com/fabioluciano/tekton-events-relay/blob/main/docs/helm-installation.md) for complete configuration."
+      }
+    ],
+    [
+      "@semantic-release/git",
+      {
+        "assets": ["CHANGELOG.md"],
+        "message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
+      }
+    ]
+  ]
+}

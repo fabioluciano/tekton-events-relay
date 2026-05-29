@@ -1,0 +1,52 @@
+name: Helm Chart Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release-chart:
+    name: Package and Publish Helm Chart
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+
+      - name: Install Helm
+        uses: azure/setup-helm@v5.0.0
+        with:
+          version: "v3.16.3"
+
+      - name: Update Chart version
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          sed -i "s/^version:.*/version: $VERSION/" charts/tekton-events-relay/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"$VERSION\"/" charts/tekton-events-relay/Chart.yaml
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4.2.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Package chart
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          helm package charts/tekton-events-relay --version $VERSION
+
+      - name: Push to OCI registry
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          helm push tekton-events-relay-${VERSION}.tgz oci://ghcr.io/fabioluciano/charts

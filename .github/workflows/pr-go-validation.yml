@@ -1,0 +1,119 @@
+name: Tekton Events Relay - PR Validation
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - "**.go"
+      - "go.mod"
+      - "go.sum"
+      - ".golangci.yml"
+      - ".github/workflows/pr-go-validation.yml"
+
+permissions:
+  contents: read
+  security-events: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go-quality:
+    name: Go Quality Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6.0.2
+
+      - name: Setup Go
+        uses: actions/setup-go@v6.4.0
+        with:
+          go-version: "1.26.2"
+          cache: true
+
+      - name: Install goimports
+        run: go install golang.org/x/tools/cmd/goimports@latest
+
+      - name: Check Go formatting (gofmt)
+        run: |
+          UNFORMATTED=$(gofmt -l .)
+          if [ -n "$UNFORMATTED" ]; then
+            echo "::error::Files not formatted with gofmt:"
+            echo "$UNFORMATTED"
+            exit 1
+          fi
+
+      - name: Check imports (goimports)
+        run: |
+          UNFORMATTED=$(goimports -l -local github.com/fabioluciano/tekton-events-relay .)
+          if [ -n "$UNFORMATTED" ]; then
+            echo "::error::Files not formatted with goimports:"
+            echo "$UNFORMATTED"
+            exit 1
+          fi
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v9.2.1
+        with:
+          version: v2.12.2
+          args: --timeout=5m
+
+      - name: Build application
+        run: go build -o bin/tekton-events-relay ./cmd/receiver
+
+      - name: Run tests with race detector
+        run: go test -race -count=1 -timeout=5m -short -coverprofile=coverage.txt -covermode=atomic ./...
+
+      - name: Check go mod tidy
+        run: |
+          go mod tidy
+          if [ -n "$(git status --porcelain go.mod go.sum)" ]; then
+            echo "::error::go mod tidy produced changes. Please run 'go mod tidy' locally and commit the changes."
+            git diff go.mod go.sum
+            exit 1
+          fi
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: coverage-report
+          path: coverage.txt
+          retention-days: 30
+
+  security-scan:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2.3.9
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@v0.36.0
+        continue-on-error: true
+        with:
+          scan-type: "fs"
+          scan-ref: "."
+          format: "sarif"
+          output: "trivy-results.sarif"
+          severity: "HIGH,CRITICAL"
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v4.36.0
+        if: hashFiles('trivy-results.sarif') != ''
+        with:
+          sarif_file: "trivy-results.sarif"
+          category: trivy-code-scan

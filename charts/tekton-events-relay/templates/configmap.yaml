@@ -1,0 +1,157 @@
+apiVersion: v1
+data:
+  # For complete configuration reference including all action handlers,
+  # see examples/config.toml in the repository
+  config.toml: |
+    [server]
+    addr = {{ .Values.config.server.addr | quote }}
+    read_timeout_sec = {{ .Values.config.server.read_timeout_sec }}
+    write_timeout_sec = {{ .Values.config.server.write_timeout_sec }}
+
+    dashboard_url = {{ .Values.config.dashboard_url | quote }}
+    dedupe_size = {{ .Values.config.dedupe_size }}
+
+    [filter]
+    allow_taskrun = {{ .Values.config.filter.allow_taskrun }}
+    allow_pipelinerun = {{ .Values.config.filter.allow_pipelinerun }}
+    ignore_unknown = {{ .Values.config.filter.ignore_unknown }}
+
+    [notifiers.github]
+    enabled = {{ .Values.config.notifiers.github.enabled }}
+    token = "${GITHUB_TOKEN}"
+    {{- if .Values.config.notifiers.github.actions }}
+    {{- if .Values.config.notifiers.github.actions.pr_comment }}
+    {{- if .Values.config.notifiers.github.actions.pr_comment.enabled }}
+
+    [notifiers.github.actions.pr_comment]
+    enabled = true
+    template = """
+{{ .Values.config.notifiers.github.actions.pr_comment.template | nindent 4 }}"""
+    on_states = {{ .Values.config.notifiers.github.actions.pr_comment.on_states | toJson }}
+    {{- end }}
+    {{- end }}
+    {{- if .Values.config.notifiers.github.actions.issue_comment }}
+    {{- if .Values.config.notifiers.github.actions.issue_comment.enabled }}
+
+    [notifiers.github.actions.issue_comment]
+    enabled = true
+    template = """
+{{ .Values.config.notifiers.github.actions.issue_comment.template | nindent 4 }}"""
+    on_states = {{ .Values.config.notifiers.github.actions.issue_comment.on_states | toJson }}
+    {{- end }}
+    {{- end }}
+    {{- if .Values.config.notifiers.github.actions.label }}
+    {{- if .Values.config.notifiers.github.actions.label.enabled }}
+
+    [notifiers.github.actions.label]
+    enabled = true
+    success_label = {{ .Values.config.notifiers.github.actions.label.success_label | quote }}
+    failure_label = {{ .Values.config.notifiers.github.actions.label.failure_label | quote }}
+    {{- end }}
+    {{- end }}
+    {{- end }}
+
+    [notifiers.gitlab_cloud]
+    enabled = {{ .Values.config.notifiers.gitlab_cloud.enabled }}
+    token = "${GITLAB_CLOUD_TOKEN}"
+    base_url = {{ .Values.config.notifiers.gitlab_cloud.base_url | quote }}
+    {{- if .Values.config.notifiers.gitlab_cloud.actions }}
+    {{- if .Values.config.notifiers.gitlab_cloud.actions.label }}
+    {{- if .Values.config.notifiers.gitlab_cloud.actions.label.enabled }}
+
+    [notifiers.gitlab_cloud.actions.label]
+    enabled = true
+    success_label = {{ .Values.config.notifiers.gitlab_cloud.actions.label.success_label | quote }}
+    failure_label = {{ .Values.config.notifiers.gitlab_cloud.actions.label.failure_label | quote }}
+    {{- end }}
+    {{- end }}
+    {{- end }}
+
+    [notifiers.gitlab_server]
+    enabled = {{ .Values.config.notifiers.gitlab_server.enabled }}
+    token = "${GITLAB_SERVER_TOKEN}"
+    base_url = {{ .Values.config.notifiers.gitlab_server.base_url | quote }}
+    {{- if .Values.config.notifiers.gitlab_server.actions }}
+    {{- if .Values.config.notifiers.gitlab_server.actions.label }}
+    {{- if .Values.config.notifiers.gitlab_server.actions.label.enabled }}
+
+    [notifiers.gitlab_server.actions.label]
+    enabled = true
+    success_label = {{ .Values.config.notifiers.gitlab_server.actions.label.success_label | quote }}
+    failure_label = {{ .Values.config.notifiers.gitlab_server.actions.label.failure_label | quote }}
+    {{- end }}
+    {{- end }}
+    {{- end }}
+
+    [notifiers.bitbucket_cloud]
+    enabled = {{ .Values.config.notifiers.bitbucket_cloud.enabled }}
+    username = "${BB_CLOUD_USER}"
+    app_password = "${BB_CLOUD_PASS}"
+
+    [notifiers.bitbucket_server]
+    enabled = {{ .Values.config.notifiers.bitbucket_server.enabled }}
+    token = "${BB_SERVER_TOKEN}"
+    base_url = {{ .Values.config.notifiers.bitbucket_server.base_url | quote }}
+
+    [notifiers.azure_devops]
+    enabled = {{ .Values.config.notifiers.azure_devops.enabled }}
+    token = "${AZURE_TOKEN}"
+    genre = {{ .Values.config.notifiers.azure_devops.genre | quote }}
+    {{- if .Values.config.notifiers.azure_devops.actions }}
+    {{- if .Values.config.notifiers.azure_devops.actions.label }}
+    {{- if .Values.config.notifiers.azure_devops.actions.label.enabled }}
+
+    [notifiers.azure_devops.actions.label]
+    enabled = true
+    success_label = {{ .Values.config.notifiers.azure_devops.actions.label.success_label | quote }}
+    failure_label = {{ .Values.config.notifiers.azure_devops.actions.label.failure_label | quote }}
+    {{- end }}
+    {{- end }}
+    {{- end }}
+
+    [notifiers.gitea]
+    enabled = {{ .Values.config.notifiers.gitea.enabled }}
+    token = "${GITEA_TOKEN}"
+    base_url = {{ .Values.config.notifiers.gitea.base_url | quote }}
+    {{- if .Values.config.notifiers.gitea.actions }}
+    {{- if .Values.config.notifiers.gitea.actions.pr_comment }}
+    {{- if .Values.config.notifiers.gitea.actions.pr_comment.enabled }}
+
+    [notifiers.gitea.actions.pr_comment]
+    enabled = true
+    template = """
+{{ .Values.config.notifiers.gitea.actions.pr_comment.template | nindent 4 }}"""
+    on_states = {{ .Values.config.notifiers.gitea.actions.pr_comment.on_states | toJson }}
+    {{- end }}
+    {{- end }}
+    {{- if .Values.config.notifiers.gitea.actions.issue_comment }}
+    {{- if .Values.config.notifiers.gitea.actions.issue_comment.enabled }}
+
+    [notifiers.gitea.actions.issue_comment]
+    enabled = true
+    template = """
+{{ .Values.config.notifiers.gitea.actions.issue_comment.template | nindent 4 }}"""
+    on_states = {{ .Values.config.notifiers.gitea.actions.issue_comment.on_states | toJson }}
+    {{- end }}
+    {{- end }}
+    {{- if .Values.config.notifiers.gitea.actions.label }}
+    {{- if .Values.config.notifiers.gitea.actions.label.enabled }}
+
+    [notifiers.gitea.actions.label]
+    enabled = true
+    success_label = {{ .Values.config.notifiers.gitea.actions.label.success_label | quote }}
+    failure_label = {{ .Values.config.notifiers.gitea.actions.label.failure_label | quote }}
+    {{- end }}
+    {{- end }}
+    {{- end }}
+
+    [notifiers.sourcehut]
+    enabled = {{ .Values.config.notifiers.sourcehut.enabled }}
+    token = "${SOURCEHUT_TOKEN}"
+kind: ConfigMap
+metadata:
+  annotations:
+    {{- include "tekton-events-relay.annotations" . | nindent 4 }}
+  labels:
+    {{- include "tekton-events-relay.labels" . | nindent 4 }}
+  name: {{ include "tekton-events-relay.fullname" . }}-config

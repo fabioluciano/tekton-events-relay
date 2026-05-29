@@ -1,0 +1,59 @@
+# golangci-lint configuration for tekton-events-relay
+# Reference: https://golangci-lint.run/usage/configuration/
+
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+  modules-download-mode: readonly
+  allow-parallel-runners: true
+
+linters:
+  enable:
+    - govet
+    - errcheck
+    - staticcheck
+    - ineffassign
+    - unused
+    - goconst
+    - misspell
+    - revive
+    - unconvert
+    - unparam
+    - gocritic
+    - gosec
+    - errorlint
+    - errname
+    - gocyclo
+    - dupl
+    - bodyclose
+    - noctx
+    - rowserrcheck
+    - sqlclosecheck
+    - nilerr
+    - nilnil
+    - wastedassign
+    - whitespace
+    - prealloc
+    - nakedret
+    - nestif
+    - predeclared
+
+  disable:
+    - exhaustive
+    - exhaustruct
+    - gochecknoinits
+    - gochecknoglobals
+    - lll
+    - paralleltest
+    - varnamelen
+    - wrapcheck
+    - nlreturn
+    - godox
+    - bodyclose
+    - noctx
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

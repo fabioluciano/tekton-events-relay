@@ -1,0 +1,48 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/Users/fabioluciano/.local/share/mise/installs/node/25.9.0/bin/node\" \"/Users/fabioluciano/.claude/plugins/cache/context-mode/context-mode/1.0.121/hooks/vscode-copilot/pretooluse.mjs\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/Users/fabioluciano/.local/share/mise/installs/node/25.9.0/bin/node\" \"/Users/fabioluciano/.claude/plugins/cache/context-mode/context-mode/1.0.121/hooks/vscode-copilot/posttooluse.mjs\""
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/Users/fabioluciano/.local/share/mise/installs/node/25.9.0/bin/node\" \"/Users/fabioluciano/.claude/plugins/cache/context-mode/context-mode/1.0.121/hooks/vscode-copilot/precompact.mjs\""
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/Users/fabioluciano/.local/share/mise/installs/node/25.9.0/bin/node\" \"/Users/fabioluciano/.claude/plugins/cache/context-mode/context-mode/1.0.121/hooks/vscode-copilot/sessionstart.mjs\""
+          }
+        ]
+      }
+    ]
+  }
+}

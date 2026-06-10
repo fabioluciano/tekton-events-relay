@@ -7,12 +7,8 @@ on:
   pull_request:
     branches:
       - main
-  push:
-    branches:
-      - 'feature/**'
-      - 'fix/**'
-      - 'bugfix/**'
-      - 'hotfix/**'
+      - "rc/**"
+      - "rc-*"
 
 permissions:
   contents: read

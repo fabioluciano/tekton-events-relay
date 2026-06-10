@@ -25,6 +25,7 @@ keywords:
   - scm
   - cicd
 home: https://github.com/fabioluciano/tekton-events-relay
+icon: https://raw.githubusercontent.com/fabioluciano/tekton-events-relay/main/assets/icon.svg
 sources:
   - https://github.com/fabioluciano/tekton-events-relay
 maintainers:

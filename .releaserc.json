@@ -52,7 +52,7 @@
       "@semantic-release/github",
       {
         "releaseName": "${nextRelease.version}",
-        "successComment": false,
+        "successCommentCondition": false,
         "failComment": "❌ Release failed. See [CI logs](${ciUrl}) for details.",
         "releasedLabels": ["released"],
         "addReleases": "bottom",

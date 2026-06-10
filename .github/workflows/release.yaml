@@ -51,6 +51,15 @@ jobs:
     uses: ./.github/workflows/ci-helm.yaml
     secrets: inherit
 
+  security:
+    name: Security Scan
+    uses: ./.github/workflows/security-codeql.yaml
+    secrets: inherit
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+
   release:
     name: Semantic Release
     runs-on: ubuntu-latest

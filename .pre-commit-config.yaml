@@ -1,0 +1,220 @@
+# Pre-commit hooks for tekton-events-relay
+#
+# Installation:
+#   pip install pre-commit
+#   pre-commit install
+#   pre-commit install --hook-type commit-msg
+#
+# Manual execution:
+#   pre-commit run --all-files
+#
+# Performance tips:
+#   - Use 'pre-commit run' without --all-files for faster checks on staged files
+#   - Cache is stored in ~/.cache/pre-commit
+#   - Use SKIP env var to skip slow checks: SKIP=helm-trivy-mise,go-test-repo-mod git commit
+
+default_install_hook_types: [pre-commit, commit-msg]
+default_stages: [pre-commit]
+fail_fast: false
+minimum_pre_commit_version: "3.0.0"
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+        exclude: ^charts/.*/templates/.*\.yaml$
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=500]
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: no-commit-to-branch
+        args: [--branch=main, --branch=master]
+      - id: check-case-conflict
+      - id: detect-private-key
+
+  - repo: local
+    hooks:
+      - id: go-fmt-mise
+        name: go-fmt (via mise)
+        entry: mise exec -- go fmt ./...
+        language: system
+        types: [go]
+        pass_filenames: false
+
+      - id: go-vet-mise
+        name: go-vet (via mise)
+        entry: mise exec -- go vet ./...
+        language: system
+        types: [go]
+        pass_filenames: false
+
+      - id: go-build-mise
+        name: go-build (via mise)
+        entry: mise exec -- go build ./...
+        language: system
+        types: [go]
+        pass_filenames: false
+
+      - id: go-test-mise
+        name: go-test (via mise)
+        entry: mise exec -- go test -race -count=1 -timeout=5m -short ./...
+        language: system
+        types: [go]
+        pass_filenames: false
+
+      - id: go-mod-tidy-mise
+        name: go-mod-tidy (via mise)
+        entry: mise exec -- go mod tidy
+        language: system
+        types: [go]
+        pass_filenames: false
+
+  - repo: local
+    hooks:
+      - id: golangci-lint-mise
+        name: golangci-lint (via mise)
+        entry: mise exec golangci-lint@2.12.2 -- golangci-lint run
+        args: [--timeout=5m, --fix]
+        language: system
+        types: [go]
+        pass_filenames: false
+
+      - id: go-deadcode-mise
+        name: go-deadcode (via mise)
+        entry: mise exec -- go run golang.org/x/tools/cmd/deadcode@latest
+        args: [./...]
+        language: system
+        types: [go]
+        pass_filenames: false
+
+      - id: go-imports-mise
+        name: go-imports (via mise)
+        entry: mise exec -- goimports
+        args: [-w, -local, github.com/fabioluciano/tekton-events-relay]
+        language: system
+        types: [go]
+        pass_filenames: true
+
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v4.4.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+        args:
+          - feat
+          - fix
+          - perf
+          - refactor
+          - docs
+          - test
+          - chore
+          - ci
+          - build
+          - style
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.0
+    hooks:
+      - id: gitleaks
+
+  - repo: local
+    hooks:
+      - id: yamllint-mise
+        name: yamllint (via mise)
+        entry: mise exec yamllint@1.38.0 -- yamllint
+        language: system
+        args: [--config-file, .yamllint.yaml]
+        files: \.(yaml|yml)$
+        exclude: ^charts/.*/templates/.*\.yaml$
+
+  - repo: https://github.com/gruntwork-io/pre-commit
+    rev: v0.1.30
+    hooks:
+      - id: helmlint
+        args: [charts/tekton-events-relay]
+
+  # Helm Security & Best Practices
+  - repo: local
+    hooks:
+      - id: helm-lint-mise
+        name: Helm Lint (via mise)
+        entry: mise run helm-lint
+        language: system
+        files: ^charts/.*\.(yaml|yml)$
+        pass_filenames: false
+
+      - id: helm-kubeconform-mise
+        name: Kubeconform Schema Validation (via mise)
+        entry: mise run helm-kubeconform
+        language: system
+        files: ^charts/.*\.(yaml|yml)$
+        pass_filenames: false
+
+      - id: helm-kubesec-mise
+        name: Kubesec Security Risk Analysis (via mise)
+        entry: mise run helm-kubesec
+        language: system
+        files: ^charts/.*\.(yaml|yml)$
+        pass_filenames: false
+
+      - id: helm-kubelinter-mise
+        name: KubeLinter Best Practices (via mise)
+        entry: mise run helm-kubelinter
+        language: system
+        files: ^charts/.*\.(yaml|yml)$
+        pass_filenames: false
+
+      - id: helm-trivy-mise
+        name: Trivy IaC Scanner (via mise)
+        entry: mise run helm-trivy
+        language: system
+        files: ^charts/
+        pass_filenames: false
+
+  - repo: local
+    hooks:
+      - id: helm-docs-mise
+        name: Helm Docs (via mise)
+        entry: mise run helm-docs
+        language: system
+        files: ^charts/.*/
+        pass_filenames: false
+
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.48.0
+    hooks:
+      - id: markdownlint
+        args: [--fix, --disable, MD013, MD033]
+        files: \.(md|markdown)$
+
+  - repo: local
+    hooks:
+      - id: hadolint-mise
+        name: hadolint (via mise)
+        entry: mise exec hadolint@2.14.0 -- hadolint
+        language: system
+        types: [dockerfile]
+        args: [--ignore, DL3018, --ignore, DL3008]
+
+ci:
+  autofix_commit_msg: "chore: auto-fix pre-commit hooks"
+  autofix_prs: true
+  autoupdate_commit_msg: "chore: auto-update pre-commit hooks"
+  autoupdate_schedule: weekly
+  skip:
+    - go-test-repo-mod
+    - helmlint
+    - helm-lint-mise
+    - helm-kubeconform-mise
+    - helm-kubesec-mise
+    - helm-kubelinter-mise
+    - helm-trivy-mise
+    - helm-docs-mise
+  submodules: false

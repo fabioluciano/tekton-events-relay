@@ -1,0 +1,161 @@
+[tools]
+go = "1.26.4"
+golangci-lint = "2.12.2"
+hadolint = "2.14.0"
+yamllint = "1.38.0"
+pre-commit = "4.6.0"
+helm = "4.2.0"
+helm-docs = "1.14.2"
+kubectl = "1.36.1"
+act = "0.2.89"
+gitleaks = "8.30.1"
+markdownlint-cli2 = "0.22.1"
+"go:golang.org/x/tools/cmd/goimports" = "latest"
+"go:golang.org/x/tools/gopls" = "latest"
+"go:golang.org/x/tools/cmd/deadcode" = "latest"
+
+# Helm security and validation tools
+trivy = "0.71.0"
+kube-linter = "0.8.3"
+kubeconform = "0.8.0"
+kubesec = "2.14.2"
+
+[env]
+GOFLAGS = "-mod=readonly"
+
+[tasks.install-precommit]
+description = "Install pre-commit hooks"
+run = "pre-commit install && pre-commit install --hook-type commit-msg"
+
+[tasks.test]
+description = "Run tests with race detector"
+run = "go test -race -coverprofile=coverage.txt -covermode=atomic ./..."
+
+[tasks.lint]
+description = "Run golangci-lint"
+run = "golangci-lint run --timeout=5m"
+
+[tasks.fmt]
+description = "Format Go code"
+run = "gofmt -w ."
+
+[tasks.build]
+description = "Build the application"
+run = "go build -o bin/tekton-events-relay ./cmd/receiver"
+
+# Helm validation and security tasks
+[tasks.helm-lint]
+description = "Lint Helm charts"
+run = "helm lint charts/tekton-events-relay"
+
+[tasks.helm-docs]
+description = "Generate Helm chart documentation"
+run = '''
+  echo "📝 Generating Helm documentation..."
+  helm-docs --chart-search-root=charts
+  echo "✅ Helm documentation generated"
+'''
+
+[tasks.helm-template]
+description = "Render Helm templates for validation"
+run = "helm template tekton-events-relay charts/tekton-events-relay --debug"
+
+[tasks.helm-kubeconform]
+description = "Validate Helm manifests against Kubernetes schemas"
+run = '''
+  echo "🔍 Running Kubeconform validation..."
+  helm template tekton-events-relay charts/tekton-events-relay | kubeconform -strict -summary
+'''
+
+[tasks.helm-kubesec]
+description = "Security risk analysis for Kubernetes resources"
+run = '''
+  echo "🔍 Running Kubesec security risk analysis..."
+  RESULT=$(helm template tekton-events-relay charts/tekton-events-relay | kubesec scan - 2>&1 || true)
+
+  # Mostra score e status
+  echo "$RESULT" | jq -r '.[] | select(.score != 0) | "\n\(.object):\n  Score: \(.score)/18\n  Status: \(.message)"'
+
+  # Mostra recomendações de melhoria
+  ADVISE=$(echo "$RESULT" | jq -r '.[] | select(.score != 0) | .scoring.advise[]? | "  [+\(.points)] \(.id): \(.reason)"' 2>/dev/null | sort -u || true)
+
+  if [ -n "$ADVISE" ]; then
+    echo "\n💡 Recommendations to improve score:"
+    echo "$ADVISE"
+  fi
+
+  # Verifica se há scores negativos (crítico)
+  MIN_SCORE=$(echo "$RESULT" | jq '[.[] | select(.score != 0) | .score] | min' 2>/dev/null)
+
+  if [ "$MIN_SCORE" != "null" ] && [ "$MIN_SCORE" != "" ] && [ "$MIN_SCORE" -lt 0 ]; then
+    echo "\n❌ FAILED: Critical security issues detected (score < 0)"
+    echo "$RESULT" | jq -r '.[] | select(.score < 0) | "\nCritical issues:\n\(.scoring.critical[]? | "  ❌ \(.id): \(.reason)")"'
+    exit 1
+  fi
+
+  if [ "$MIN_SCORE" != "null" ] && [ "$MIN_SCORE" != "" ]; then
+    echo "\n✅ Security check passed (min score: $MIN_SCORE)"
+  else
+    echo "\nℹ️ No scoreable resources found"
+  fi
+'''
+
+[tasks.helm-security]
+description = "Run all Helm security checks"
+depends = ["helm-kubelinter", "helm-kubesec", "helm-trivy", "helm-kubeconform"]
+
+[tasks.helm-kubelinter]
+description = "Run KubeLinter best practices check"
+run = """
+  echo "🔍 Running KubeLinter..."
+  kube-linter lint --config .kube-linter.yaml charts/tekton-events-relay/
+"""
+
+[tasks.helm-trivy]
+description = "Run Trivy IaC scanner on Helm charts"
+run = """
+  echo "🔍 Running Trivy IaC scanner..."
+  trivy config --severity HIGH,CRITICAL --exit-code 0 charts/
+"""
+
+[tasks.helm-validate]
+description = "Validate and test Helm chart"
+run = '''
+  echo "📋 Validating Helm chart..."
+  helm lint charts/tekton-events-relay
+  echo "\n🎨 Rendering templates..."
+  helm template tekton-events-relay charts/tekton-events-relay > /dev/null
+  echo "\n✅ Validating against Kubernetes schemas..."
+  helm template tekton-events-relay charts/tekton-events-relay | kubeconform -strict -summary
+  echo "\n🔒 Running security risk analysis..."
+  helm template tekton-events-relay charts/tekton-events-relay | \
+    kubesec scan - 2>&1 | \
+    jq -r '.[] | select(.score != 0) | "  \(.object): score \(.score)"'
+  echo "\n✅ Helm chart validation complete"
+'''
+
+[tasks.helm-security-report]
+description = "Generate comprehensive security report for Helm charts"
+run = '''
+  echo "📊 Generating Helm Security Report"
+  echo "================================="
+  echo ""
+  echo "🔍 1. Kubeconform Schema Validation"
+  echo "-------------------------------------"
+  helm template tekton-events-relay charts/tekton-events-relay | kubeconform -strict -summary || true
+  echo ""
+  echo "🔍 2. Kubesec Security Risk Analysis"
+  echo "--------------------------------------"
+  helm template tekton-events-relay charts/tekton-events-relay | kubesec scan - 2>&1 | \
+    jq -r '.[] | select(.score != 0) | "\nResource: \(.object)\nScore: \(.score)/18\nStatus: \(.message)\n\nPassed checks (+\(.scoring.passed | length)):\n\(.scoring.passed[] | "  ✅ \(.id): \(.reason)")\n\nRecommendations (+\(.scoring.advise | length)):\n\(.scoring.advise[] | "  💡 \(.id): \(.reason)")\n"' || true
+  echo ""
+  echo "🔍 3. KubeLinter Best Practices"
+  echo "-------------------------------"
+  kube-linter lint --config .kube-linter.yaml charts/tekton-events-relay/ || true
+  echo ""
+  echo "🔍 4. Trivy IaC Scanner"
+  echo "----------------------"
+  trivy config --severity HIGH,CRITICAL charts/ || true
+  echo ""
+  echo "✅ Security report generation complete"
+'''

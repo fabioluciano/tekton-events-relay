@@ -1,0 +1,804 @@
+# Default values for tekton-events-relay.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+replicaCount: 2
+
+image:
+  repository: ghcr.io/fabioluciano/tekton-events-relay
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# Common labels to add to all resources
+commonLabels: {}
+
+# Common annotations to add to all resources
+commonAnnotations: {}
+
+serviceAccount:
+  # RBAC (Role-Based Access Control) configuration for the application
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+  # Auto-mount service account token
+  automountServiceAccountToken: false
+
+podAnnotations: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  appArmorProfile:
+    type: RuntimeDefault
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  capabilities:
+    drop:
+      - ALL
+  appArmorProfile:
+    type: RuntimeDefault
+  seccompProfile:
+    type: RuntimeDefault
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+  annotations: {}
+
+# Resource management
+# Memory scaling: For higher throughput, increase memory requests proportionally
+# Consider 128Mi/256Mi for high-volume deployments
+resources:
+  limits:
+    cpu: 500m
+    memory: 256Mi
+    ephemeral-storage: 256Mi
+  requests:
+    cpu: 100m
+    memory: 64Mi
+    ephemeral-storage: 100Mi
+
+startupProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  initialDelaySeconds: 0
+  periodSeconds: 5
+  failureThreshold: 30
+
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /readyz
+    port: http
+  periodSeconds: 5
+
+nodeSelector: {}
+
+tolerations: []
+
+# Pod anti-affinity configuration
+# mode: "soft" (default) uses preferredDuringSchedulingIgnoredDuringExecution - scheduler will try to
+#        spread pods across nodes but will allow co-location if necessary (works in dev/test clusters)
+# mode: "hard" uses requiredDuringSchedulingIgnoredDuringExecution - scheduler must guarantee pod
+#        separation across nodes (for production deployments requiring strict node isolation)
+affinity:
+  mode: soft
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - tekton-events-relay
+          topologyKey: kubernetes.io/hostname
+  nodeAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 50
+        preference:
+          matchExpressions:
+            - key: node-role.kubernetes.io/worker
+              operator: In
+              values:
+                - "true"
+
+# Owner and contact information
+owner: "platform-team"
+email: "platform@example.com"
+
+# Pod Disruption Budget
+podDisruptionBudget:
+  minAvailable: 1
+
+# Horizontal Pod Autoscaler
+# NOTE (Production Guidance): Enable HPA (horizontal pod autoscaling) only with metrics-server deployed and resource requests properly configured.
+# Monitor initial deployments without HPA to establish baseline metrics before enabling auto-scaling.
+autoscaling:
+  enabled: false
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 75
+  targetMemoryUtilizationPercentage: 80
+
+config:
+  # -- HTTP server configuration
+  server:
+    # -- Server listen address and port
+    addr: ":8080"
+    # -- Metrics server address (empty to use main server)
+    metrics_addr: "" # optional: separate port like ":9090"
+    # -- HTTP read timeout in seconds
+    read_timeout_sec: 10
+    # -- HTTP write timeout in seconds
+    write_timeout_sec: 10
+    # -- Graceful shutdown timeout in seconds
+    shutdown_timeout_sec: 30
+    # -- Maximum request body size in bytes
+    max_body_size: 1048576 # 1MB default
+
+    # Rate limiting (optional, default OFF)
+    # -- Rate limiting configuration
+    rate_limit:
+      enabled: false
+      # -- Maximum requests per second
+      requests_per_second: 100.0
+      # -- Maximum burst size for rate limiter
+      burst: 200
+
+    # Authentication (optional, default OFF)
+    # -- Webhook authentication configuration
+    auth:
+      enabled: false
+      type: "hmac-sha256" # or "bearer"
+      # -- Reference to webhook secret for HMAC validation
+      secret_file: "${WEBHOOK_SECRET}"
+  # -- Base URL for the Tekton dashboard (used in notification links)
+  dashboard_url: "https://tekton.company.example.com"
+  # -- Size of the deduplication cache to prevent duplicate notifications
+  dedupe_size: 10000
+
+  # Logging configuration
+  # -- Logging configuration
+  logging:
+    # -- Log level (debug, info, warn, error)
+    level: "info" # debug, info, warn, error
+    # Verbose options (only available when level=debug, otherwise config validation fails)
+    # -- Verbose logging options
+    verbose:
+      # -- Include caller information in logs
+      caller: false # Add caller info to logs
+      # -- Log HTTP calls
+      http_calls: false # Log outbound HTTP calls
+      # -- Log event payloads
+      payloads: false # Log full request/response payloads (sanitized)
+
+  # -- Event filtering configuration
+  filter:
+    # -- Process TaskRun events
+    allow_taskrun: true
+    # -- Process PipelineRun events
+    allow_pipelinerun: true
+    # -- Process CustomRun events
+    allow_customrun: false
+    # -- Process EventListener events
+    allow_eventlistener: false
+    # -- Ignore unknown event types
+    ignore_unknown: true
+
+  # Pipeline Summary Accumulator (Feature 3)
+  # Aggregates TaskRun events into single PR comment when PipelineRun completes
+  # -- Event accumulation configuration (batch multiple events)
+  accumulator:
+    enabled: false # Enable accumulator
+    # -- Time to live for accumulated events
+    ttl: 30s # Time-to-live for buffered events
+    # -- Maximum number of events to accumulate
+    max_size: 100 # Maximum number of pipeline runs to track
+
+  # -- OpenTelemetry tracing configuration
+  tracing:
+    # -- OTLP endpoint for trace export (e.g., "otel-collector:4318"). Empty = tracing disabled.
+    endpoint: ""
+    # -- Service name reported in traces
+    service_name: "tekton-events-relay"
+
+  # SCM providers with action-based handlers
+  scm:
+    # -- GitHub SCM provider configuration
+    github:
+      - name: default
+        # -- Enable or disable this SCM provider instance
+        enabled: false
+        # -- API base URL for the SCM provider
+        base_url: "https://api.github.com"
+        # Authentication: token OR GitHub App (mutually exclusive)
+        # -- Webhook authentication configuration
+        auth:
+          # Token-based auth (recommended for simple setup):
+          # -- Kubernetes Secret containing credentials
+          secret_name: github-default-token # optional: defaults to /etc/secrets/github/default/token
+          # secret_key: token  # optional: override default key "token"
+          # GitHub App auth (for advanced features):
+          # app_id: 123456
+          # installation_id: 789012
+          # Note: private key must be mounted at /etc/github-app/private-key.pem
+          # Create secret: kubectl create secret generic github-app-private-key
+          # --from-file=private-key.pem=path/to/private-key.pem
+        actions:
+          - name: commit-status
+            # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
+            type: commit_status
+            # -- Enable or disable this SCM provider instance
+            enabled: false
+            when: 'event.Resource == "pipelinerun"'
+          # Feature 4: GitHub Check Runs - richer UI integration
+          - name: check-run
+            # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
+            type: check_run
+            # -- Enable or disable this SCM provider instance
+            enabled: false
+            when: 'stateIn("success", "failure", "error")'
+            template: |
+              ## Build Result: {{.State}}
+              **Run:** {{.RunName}}
+              **Namespace:** {{.Namespace}}
+              {{if .TargetURL}}[View Logs]({{.TargetURL}}){{end}}
+          # Feature 5: Deployment Status - track deployments by environment
+          - name: deployment-status
+            # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
+            type: deployment_status
+            # -- Enable or disable this SCM provider instance
+            enabled: false
+            # Environment is derived from event context/annotations at runtime
+            when: 'stateIn("success", "failure")'
+          - name: pr-comment
+            # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
+            type: pr_comment
+            # -- Enable or disable this SCM provider instance
+            enabled: false
+            when: 'stateIn("success", "failure")'
+            # Feature 6: Chat Notifier Templates - customizable Go templates
+            template: |
+              ## Pipeline {{.State}}
+              **Run:** {{.RunName}}
+              **Commit:** {{.CommitSHA}}
+              {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
+          - name: issue-comment
+            # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
+            type: issue_comment
+            # -- Enable or disable this SCM provider instance
+            enabled: false
+            when: 'stateIn("failure", "error")'
+            template: |
+              Pipeline {{.Context}} finished with state: **{{.State}}**
+              {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
+          - name: discussion-comment
+            # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
+            type: discussion_comment
+            # -- Enable or disable this SCM provider instance
+            enabled: false
+            when: 'stateIn("success", "failure")'
+            template: |
+              ## Pipeline {{.State}}
+              **Run:** {{.RunName}}
+              **Commit:** {{.CommitSHA}}
+              {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
+          - name: label
+            # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
+            type: label
+            # -- Enable or disable this SCM provider instance
+            enabled: false
+            when: ""
+            # -- Label to add when pipeline succeeds
+            success_label: "ci:passed"
+            # -- Label to add when pipeline fails
+            failure_label: "ci:failed"
+
+    # -- GitLab SCM provider configuration
+    gitlab:
+      - name: cloud
+        # -- Deployment model: 'saas' for gitlab.com, 'self-managed' for self-hosted.
+        # This field is required when instance is enabled. Currently metadata-only but
+        # enables future SaaS-specific behaviors (rate limiting, feature detection).
+        variant: saas
+        # -- Enable or disable this SCM provider instance
+        enabled: false
+        # -- API base URL for the SCM provider
+        base_url: "https://gitlab.com/api/v4"
+        # -- Authentication configuration (PAT or OAuth2, mutually exclusive)
+        # auth:
+        #   secret_name: gitlab-cloud-token        # PAT token secret
+        #   secret_key: token                      # optional: key within secret
+        #   oauth2:                               # OAuth2 client credentials
+        #     client_id_secret_name: gitlab-oauth2-creds
+        #     client_secret_secret_name: gitlab-oauth2-creds
+        #     token_url: "https://gitlab.com/oauth/token"
+        # -- Actions to perform when events are received
+        actions:
+          - name: commit-status
+            # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
+            type: commit_status
+            # -- Enable or disable this SCM provider instance
+            enabled: false
+            when: ""
+          - name: pr-comment
+            # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
+            type: pr_comment
+            # -- Enable or disable this SCM provider instance
+            enabled: false
+            when: 'stateIn("failure", "error")'
+            template: |
+              ## Pipeline {{.State}}
+              **Run:** {{.RunName}}
+              **Commit:** {{.CommitSHA}}
+              {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
+          - name: issue-comment
+            # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
+            type: issue_comment
+            # -- Enable or disable this SCM provider instance
+            enabled: false
+            when: 'stateIn("failure", "error")'
+            template: |
+              Pipeline {{.Context}} finished with state: **{{.State}}**
+              {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
+          - name: label
+            # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
+            type: label
+            # -- Enable or disable this SCM provider instance
+            enabled: false
+            when: ""
+            # -- Label to add when pipeline succeeds
+            success_label: "pipeline::success"
+            # -- Label to add when pipeline fails
+            failure_label: "pipeline::failed"
+      - name: server
+        # -- Deployment model: 'saas' for gitlab.com, 'self-managed' for self-hosted
+        variant: self-managed
+        # -- Enable or disable this SCM provider instance
+        enabled: false
+        # -- API base URL for the SCM provider
+        base_url: "https://gitlab.company.example.com/api/v4"
+        # -- Authentication configuration (PAT or OAuth2, mutually exclusive)
+        # auth:
+        #   secret_name: gitlab-server-token       # PAT token secret
+        #   secret_key: token                      # optional: key within secret
+        #   oauth2:                               # OAuth2 client credentials
+        #     client_id_secret_name: gitlab-oauth2-creds
+        #     client_secret_secret_name: gitlab-oauth2-creds
+        #     token_url: "https://gitlab.company.example.com/oauth/token"
+        # -- Actions to perform when events are received
+        actions:
+          - name: commit-status
+            # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
+            type: commit_status
+            # -- Enable or disable this SCM provider instance
+            enabled: false
+            when: ""
+          - name: pr-comment
+            # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
+            type: pr_comment
+            # -- Enable or disable this SCM provider instance
+            enabled: false
+            when: 'stateIn("failure", "error")'
+            template: |
+              ## Pipeline {{.State}}
+              **Run:** {{.RunName}}
+              **Commit:** {{.CommitSHA}}
+              {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
+          - name: issue-comment
+            # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
+            type: issue_comment
+            # -- Enable or disable this SCM provider instance
+            enabled: false
+            when: 'stateIn("failure", "error")'
+            template: |
+              Pipeline {{.Context}} finished with state: **{{.State}}**
+              {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
+          - name: label
+            # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
+            type: label
+            # -- Enable or disable this SCM provider instance
+            enabled: false
+            when: ""
+            # -- Label to add when pipeline succeeds
+            success_label: "pipeline::success"
+            # -- Label to add when pipeline fails
+            failure_label: "pipeline::failed"
+
+    # -- Bitbucket SCM provider configuration
+    bitbucket:
+      - name: cloud
+        # -- SCM variant (cloud or server)
+        variant: cloud
+        # -- Enable or disable this SCM provider instance
+        enabled: false
+        # -- Authentication configuration (variant=cloud: username/app_password or oauth2)
+        # auth:
+        #   username_secret_name: bitbucket-cloud-creds
+        #   app_password_secret_name: bitbucket-cloud-creds
+        #   oauth2:                                     # OAuth2 client credentials
+        #     client_id_secret_name: bitbucket-oauth2-creds
+        #     client_secret_secret_name: bitbucket-oauth2-creds
+        #     token_url: "https://bitbucket.org/site/oauth2/access_token"
+        # -- Actions to perform when events are received
+        actions:
+          - name: commit-status
+            # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
+            type: commit_status
+            # -- Enable or disable this SCM provider instance
+            enabled: false
+            when: ""
+      - name: server
+        # -- SCM variant (cloud or server)
+        variant: server
+        # -- Enable or disable this SCM provider instance
+        enabled: false
+        # -- API base URL for the SCM provider
+        base_url: "https://bitbucket.company.example.com"
+        # -- Authentication configuration (variant=server: token)
+        # auth:
+        #   secret_name: bitbucket-server-token
+        #   # secret_key: token  # optional, default: token
+        # -- Actions to perform when events are received
+        actions:
+          - name: commit-status
+            # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
+            type: commit_status
+            # -- Enable or disable this SCM provider instance
+            enabled: false
+            when: ""
+
+    # -- Azure DevOps SCM provider configuration
+    azure_devops:
+      - name: default
+        # -- Enable or disable this SCM provider instance
+        enabled: false
+        # -- Build status context/genre identifier
+        genre: "tekton-ci"
+        # -- API base URL for Azure DevOps
+        base_url: "https://dev.azure.com"
+        # -- Skip TLS verification (not recommended for production)
+        insecure_skip_verify: false
+        # secret_name: azure-devops-token
+        # -- Actions to perform when events are received
+        actions:
+          - name: commit-status
+            # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
+            type: commit_status
+            # -- Enable or disable this SCM provider instance
+            enabled: false
+            when: ""
+          - name: label
+            # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
+            type: label
+            # -- Enable or disable this SCM provider instance
+            enabled: false
+            when: ""
+            # -- Label to add when pipeline succeeds
+            success_label: "build-passed"
+            # -- Label to add when pipeline fails
+            failure_label: "build-failed"
+
+    # -- Gitea SCM provider configuration
+    gitea:
+      - name: default
+        # -- Enable or disable this SCM provider instance
+        enabled: false
+        # -- API base URL for the SCM provider
+        base_url: "https://gitea.company.example.com"
+        # -- Authentication configuration (PAT or OAuth2, mutually exclusive)
+        # auth:
+        #   secret_name: gitea-token               # PAT token secret
+        #   secret_key: token                      # optional: key within secret
+        #   oauth2:                               # OAuth2 client credentials
+        #     client_id_secret_name: gitea-oauth2-creds
+        #     client_secret_secret_name: gitea-oauth2-creds
+        #     token_url: "https://gitea.company.example.com/login/oauth/access_token"
+        # -- Actions to perform when events are received
+        actions:
+          - name: commit-status
+            # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
+            type: commit_status
+            # -- Enable or disable this SCM provider instance
+            enabled: false
+            when: ""
+          - name: pr-comment
+            # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
+            type: pr_comment
+            # -- Enable or disable this SCM provider instance
+            enabled: false
+            when: 'stateIn("success", "failure")'
+            template: |
+              ## Pipeline {{.State}}
+              **Run:** {{.RunName}}
+              **Commit:** {{.CommitSHA}}
+              {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
+          - name: issue-comment
+            # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
+            type: issue_comment
+            # -- Enable or disable this SCM provider instance
+            enabled: false
+            when: 'stateIn("failure", "error")'
+            template: |
+              Pipeline {{.Context}} finished: **{{.State}}**
+              {{if .TargetURL}}[Results]({{.TargetURL}}){{end}}
+          - name: label
+            # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
+            type: label
+            # -- Enable or disable this SCM provider instance
+            enabled: false
+            when: ""
+            # -- Label to add when pipeline succeeds
+            success_label: "ci:passed"
+            # -- Label to add when pipeline fails
+            failure_label: "ci:failed"
+
+    # -- SourceHut SCM provider configuration
+    sourcehut:
+      - name: default
+        # -- Enable or disable this SCM provider instance
+        enabled: false
+        # secret_name: sourcehut-token
+        # -- Actions to perform when events are received
+        actions:
+          - name: commit-status
+            # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
+            type: commit_status
+            # -- Enable or disable this SCM provider instance
+            enabled: false
+            when: ""
+
+  # ==========================================================================
+  # NOTIFIERS - CHAT & ALERTING
+  # ==========================================================================
+  # Notifiers send pipeline events to external chat/alerting systems.
+  # Each notifier supports: name, enabled, when (CEL), template (Go template).
+  #
+  # NOTE on secrets in Helm context:
+  #   Use Helm template syntax (e.g., {{ .Values.secrets.slackWebhookUrl }}) for
+  #   values injected at deploy time. Runtime env var expansion (${ENV_VAR}) is
+  #   used when the binary reads the config at startup.
+  #   In this values.yaml, we use ${ENV_VAR} syntax because the config is rendered
+  #   into a ConfigMap and expanded at runtime by the application.
+  notifiers:
+    # -------------------------------------------------------------------------
+    # Slack
+    # -------------------------------------------------------------------------
+    # -- Slack notification channels configuration. Supports multiple channels with independent webhook secrets and templates.
+    slack:
+      # -- Unique identifier for this Slack channel configuration
+      - name: main-channel
+        # -- Enable or disable this Slack notifier instance
+        enabled: false
+        # Webhook mode: secret_name: slack-webhook (key: webhook_url)
+        # Bot token mode: secret_name: slack-bot-token (key: token), bot_token.channel_id required
+        # secret_name: slack-webhook
+        # bot_token:
+        #   channel_id: "C12345"
+        # -- Slack channel to post notifications (e.g., #ci-notifications, @username)
+        channel: "#ci-notifications"
+        # -- Display name for the bot posting messages
+        username: "Tekton CI"
+        # -- Emoji icon for the bot (e.g., :robot_face:, :warning:)
+        icon_emoji: ":robot_face:"
+        # -- CEL expression to filter which events trigger notifications
+        when: 'event.State == "failure" || event.State == "error"'
+        # -- Go template for the Slack message body. Available variables: .State, .RunName, .CommitSHA, .TargetURL
+        template: |
+          :warning: *Pipeline {{.State}}*
+          *Run:* `{{.RunName}}`
+          *Commit:* `{{.CommitSHA}}`
+          {{if .TargetURL}}<{{.TargetURL}}|View in Dashboard>{{end}}
+
+    # -------------------------------------------------------------------------
+    # Microsoft Teams
+    # -------------------------------------------------------------------------
+    # -- Microsoft Teams notification channels configuration. Supports multiple channels with independent webhook secrets and templates.
+    teams:
+      # -- Unique identifier for this Teams channel configuration
+      - name: main-channel
+        # -- Enable or disable this Teams notifier instance
+        enabled: false
+        # secret_name: teams-webhook (key: webhook_url)
+        # -- CEL expression to filter which events trigger notifications
+        when: 'event.State == "success" || event.State == "failure" || event.State == "error"'
+        # -- Go template for the Teams message body. Available variables: .State, .RunName, .Namespace, .CommitSHA, .TargetURL
+        template: |
+          **Pipeline {{.State}}**
+          | Field | Value |
+          |-------|-------|
+          | Run | {{.RunName}} |
+          | Namespace | {{.Namespace}} |
+          | Commit | {{.CommitSHA}} |
+          {{if .TargetURL}}[View in Dashboard]({{.TargetURL}}){{end}}
+
+    # -------------------------------------------------------------------------
+    # Discord
+    # -------------------------------------------------------------------------
+    # -- Discord notification channels configuration. Supports multiple channels with independent webhook secrets and templates.
+    discord:
+      # -- Unique identifier for this Discord channel configuration
+      - name: main-channel
+        # -- Enable or disable this Discord notifier instance
+        enabled: false
+        # Webhook mode: secret_name: discord-webhook (key: webhook_url)
+        # Bot token mode: secret_name: discord-bot-token (key: token), bot_token.channel_id required
+        # secret_name: discord-webhook
+        # bot_token:
+        #   channel_id: "123456789012345678"
+        # -- Display name for the bot posting messages
+        username: "Tekton CI"
+        # -- CEL expression to filter which events trigger notifications
+        when: 'event.Namespace == "staging" || event.Namespace == "production"'
+        # -- Go template for the Discord message body. Available variables: .State, .RunName, .Namespace, .CommitSHA, .TargetURL
+        template: |
+          **Pipeline {{.State}}** in `{{.Namespace}}`
+          ```
+          Run:    {{.RunName}}
+          Commit: {{.CommitSHA}}
+          ```
+          {{if .TargetURL}}[View in Dashboard]({{.TargetURL}}){{end}}
+
+    # -------------------------------------------------------------------------
+    # PagerDuty
+    # -------------------------------------------------------------------------
+    # -- PagerDuty incident services configuration. Supports multiple services with independent integration keys.
+    pagerduty:
+      # -- Unique identifier for this PagerDuty service configuration
+      - name: main-service
+        # -- Enable or disable this PagerDuty notifier instance
+        enabled: false
+        # secret_name: pagerduty-integration-key (key: integration_key)
+        # -- Incident severity level (critical, error, warning, info)
+        severity: "critical"
+        # -- CEL expression to filter which events trigger incidents
+        when: 'event.State == "failure" || event.State == "error"'
+
+    # -------------------------------------------------------------------------
+    # Datadog
+    # -------------------------------------------------------------------------
+    # -- Datadog event tracking configuration. Supports multiple instances with independent API keys and sites.
+    datadog:
+      # -- Unique identifier for this Datadog instance configuration
+      - name: main-instance
+        # -- Enable or disable this Datadog notifier instance
+        enabled: false
+        # secret_name: datadog-api-key
+        # -- Datadog site (datadoghq.com, datadoghq.eu, us3.datadoghq.com, etc.)
+        site: "datadoghq.com"
+        # Custom tags appended to auto-generated tags (state, context, namespace, etc.)
+        # -- Custom tags appended to auto-generated tags (state, context, namespace are added automatically)
+        tags:
+          - "env:production"
+          - "team:platform"
+          - "service:tekton-events-relay"
+        # -- CEL expression to filter which events are sent to Datadog
+        when: 'event.State == "success" || event.State == "failure" || event.State == "error"'
+
+    # -------------------------------------------------------------------------
+    # Generic Webhook
+    # -------------------------------------------------------------------------
+    # -- Generic webhook endpoints configuration. Supports multiple webhooks with custom headers and payloads.
+    webhook:
+      # -- Unique identifier for this webhook configuration
+      - name: main-webhook
+        # -- Enable or disable this webhook notifier instance
+        enabled: false
+        # url_secret_name: custom-webhook (key: url)
+        # -- CEL expression to filter which events trigger webhook calls
+        when: 'event.State == "success" || event.State == "failure" || event.State == "error"'
+        # Custom HTTP headers for authentication and routing
+        # -- Custom HTTP headers sent with the webhook request (e.g., authentication tokens, routing keys)
+        headers:
+          X-Source: "tekton-events-relay"
+
+# Secret mounting is automatic based on secret_name in each provider instance
+# Secrets are mounted as volumes at /etc/secrets/{provider}/{instance}/{key}
+#
+# Example: Create a secret for GitHub
+#   kubectl create secret generic github-default-token --from-literal=token="ghp_xxx"
+#
+# Then in config.scm.github[0], set:
+#   secret_name: github-default-token
+#
+# The chart will automatically mount it at /etc/secrets/github/default/token
+#
+# Standard keys by provider:
+#   github, gitlab, azure, gitea, sourcehut: token
+#   bitbucket cloud: username, app_password
+#   bitbucket server: token
+#   slack, teams, discord: webhook_url (or bot_token.token_secret_name for bot mode)
+#   pagerduty: integration_key
+#   datadog: api_key
+#   webhook: url_secret_name (+ optional auth: token_file_secret_name, username_file_secret_name, etc.)
+
+# Monitoring configuration
+monitoring:
+  # ServiceMonitor for Prometheus Operator
+  serviceMonitor:
+    enabled: false
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+    additionalLabels: {}
+      # prometheus: kube-prometheus
+
+# DNS configuration for pod
+# ndots: Set ndots=2 to ensure DNS queries for service names (e.g., "service", "service.namespace")
+# are resolved correctly without unnecessary parent domain searches. This optimizes DNS lookups
+# for in-cluster services and reduces resolver query latency.
+dnsPolicy: ClusterFirst
+dnsConfig:
+  options:
+    - name: ndots
+      value: "2"
+
+# Network Policy configuration
+# WARNING: Requires a CNI plugin that supports NetworkPolicy (e.g., Calico, Cilium, Weave).
+# Enabling on a cluster without CNI support will block all pod-to-pod communication.
+networkPolicy:
+  enabled: true
+
+# Template configuration
+# ==========================================================================
+# TEMPLATES
+# ==========================================================================
+# Templates allow you to reference and use custom notification message templates
+# from external ConfigMaps in your Kubernetes cluster.
+#
+# HOW TO REFERENCE TEMPLATES:
+#   1. Create a ConfigMap with your custom templates in the cluster:
+#      kubectl create configmap my-templates \
+#        --from-file=slack.tpl \
+#        --from-file=teams.tpl \
+#        -n my-namespace
+#
+#   2. In your notifier configuration (scm.github.actions or notifiers.*),
+#      reference the template file name using the ConfigMap path syntax:
+#      template: configmap://my-templates/slack.tpl
+#
+#   3. The application will load and use the template from the ConfigMap
+#      instead of the inline template defined in values.yaml
+#
+# OVERRIDING WITH CUSTOM CONFIGMAP:
+#   To use a custom ConfigMap instead of inline templates:
+#   1. Set templates.enabled: true
+#   2. Create a ConfigMap in your target namespace with template files
+#   3. Update notifier/action configs to reference: configmap://<configmap-name>/<filename>
+#   4. Ensure the ConfigMap is mounted as a volume in the deployment
+#
+# DEFAULT BEHAVIOR (templates.enabled: false):
+#   When disabled (default), all templates remain inline in values.yaml.
+#   No ConfigMap mounting occurs and no behavior changes from current setup.
+#   This ensures backward compatibility with existing deployments.
+#
+templates:
+  enabled: false

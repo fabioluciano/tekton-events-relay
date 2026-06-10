@@ -1,0 +1,15 @@
+bin/
+*.test
+*.out
+.idea/
+.vscode/
+deploy/secret.yaml
+/receiver
+.envrc
+*.tgz
+
+mempalace.yaml
+entities.json
+
+# Claude Code worktrees and session data
+.claude/

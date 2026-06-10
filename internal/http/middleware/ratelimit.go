@@ -1,0 +1,109 @@
+package middleware
+
+import (
+	"net"
+	"net/http"
+	"sync"
+	"time"
+
+	"golang.org/x/time/rate"
+)
+
+const (
+	rateLimiterTTL     = 5 * time.Minute
+	rateLimiterCleanup = 60 * time.Second
+)
+
+type entry struct {
+	limiter  *rate.Limiter
+	lastSeen time.Time
+}
+
+// RateLimiter implements per-source rate limiting with TTL-based eviction.
+type RateLimiter struct {
+	entries map[string]*entry
+	mu      sync.Mutex
+	rps     float64
+	burst   int
+	stopCh  chan struct{}
+	doneCh  chan struct{}
+}
+
+// NewRateLimiter creates a rate limiter with background cleanup.
+func NewRateLimiter(requestsPerSecond float64, burst int) *RateLimiter {
+	rl := &RateLimiter{
+		entries: make(map[string]*entry),
+		rps:     requestsPerSecond,
+		burst:   burst,
+		stopCh:  make(chan struct{}),
+		doneCh:  make(chan struct{}),
+	}
+	go rl.cleanupLoop()
+	return rl
+}
+
+func (rl *RateLimiter) getLimiter(key string) *rate.Limiter {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	e, exists := rl.entries[key]
+	if !exists {
+		e = &entry{limiter: rate.NewLimiter(rate.Limit(rl.rps), rl.burst)}
+		rl.entries[key] = e
+	}
+	e.lastSeen = time.Now()
+	return e.limiter
+}
+
+func (rl *RateLimiter) cleanupLoop() {
+	defer close(rl.doneCh)
+	ticker := time.NewTicker(rateLimiterCleanup)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			rl.evictStale()
+		case <-rl.stopCh:
+			return
+		}
+	}
+}
+
+func (rl *RateLimiter) evictStale() {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	cutoff := time.Now().Add(-rateLimiterTTL)
+	for key, e := range rl.entries {
+		if e.lastSeen.Before(cutoff) {
+			delete(rl.entries, key)
+		}
+	}
+}
+
+// Middleware returns an HTTP middleware that applies rate limiting.
+func (rl *RateLimiter) Middleware() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			key := r.Header.Get("Ce-Source")
+			if key == "" {
+				host, _, err := net.SplitHostPort(r.RemoteAddr)
+				if err != nil {
+					host = r.RemoteAddr
+				}
+				key = host
+			}
+
+			if !rl.getLimiter(key).Allow() {
+				http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// RateLimitMiddleware creates rate limiting middleware.
+func RateLimitMiddleware(requestsPerSecond float64, burst int) func(http.Handler) http.Handler {
+	return NewRateLimiter(requestsPerSecond, burst).Middleware()
+}

@@ -1,0 +1,59 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  annotations:
+    {{- include "tekton-events-relay.annotations" . | nindent 4 }}
+  labels:
+    {{- include "tekton-events-relay.labels" . | nindent 4 }}
+  name: {{ include "tekton-events-relay.fullname" . }}
+spec:
+  egress:
+    # Allow DNS
+    - ports:
+        - port: 53
+          protocol: UDP
+      to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+    # Allow outbound HTTPS and HTTP for:
+    # - SCM API endpoints (GitHub, GitLab, Bitbucket, Azure DevOps, Gitea, SourceHut)
+    # - Webhook URLs (Slack, Discord, Teams, PagerDuty, Datadog)
+    # Note: Restrict to specific CIDR blocks in production if SCM API endpoints are known
+    - ports:
+        - port: 443
+          protocol: TCP
+    - ports:
+        - port: 80
+          protocol: TCP
+    {{- if .Values.config.tracing.endpoint }}
+    # Allow OTLP gRPC and HTTP for tracing
+    - ports:
+        - port: 4317
+          protocol: TCP
+        - port: 4318
+          protocol: TCP
+    {{- end }}
+  ingress:
+    # Allow traffic from same namespace
+    - from:
+        - podSelector: {}
+      ports:
+        - port: {{ .Values.service.targetPort }}
+          protocol: TCP
+    # Allow traffic from Tekton Pipelines namespace (events controller)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: tekton-pipelines
+      ports:
+        - port: {{ .Values.service.targetPort }}
+          protocol: TCP
+  podSelector:
+    matchLabels:
+      {{- include "tekton-events-relay.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+{{- end }}

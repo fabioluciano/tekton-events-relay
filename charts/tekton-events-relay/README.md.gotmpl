@@ -1,0 +1,89 @@
+{{ template "chart.header" . }}
+
+{{ template "chart.badgesSection" . }}
+
+{{ template "chart.description" . }}
+
+{{ template "chart.homepageLine" . }}
+
+## Installation
+
+```bash
+helm install tekton-events-relay \
+  oci://ghcr.io/fabioluciano/charts/tekton-events-relay \
+  --version {{ template "chart.version" . }}
+```
+
+### Signature Verification
+
+Docker images and Helm charts are signed with [Cosign](https://github.com/sigstore/cosign) using keyless OIDC signing.
+
+**Verify Docker image:**
+```bash
+cosign verify \
+  --certificate-identity-regexp='https://github.com/fabioluciano/tekton-events-relay' \
+  --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
+  ghcr.io/fabioluciano/tekton-events-relay:{{ template "chart.version" . }}
+```
+
+**Verify Helm chart:**
+```bash
+cosign verify \
+  --certificate-identity-regexp='https://github.com/fabioluciano/tekton-events-relay' \
+  --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
+  oci://ghcr.io/fabioluciano/charts/tekton-events-relay:{{ template "chart.version" . }}
+```
+
+Signatures are stored in the [Sigstore Rekor transparency log](https://rekor.sigstore.dev/).
+
+## Configuration
+
+The chart supports multiple SCM providers and notification channels. Enable and configure them through the `config` section in your values.yaml:
+
+### Supported SCM Providers
+- GitHub (commit status, check runs, PR comments, issue comments, discussion comments, labels, deployments)
+- GitLab (commit status, MR notes, issue comments, labels)
+- Bitbucket (Cloud and Server variants, commit status)
+- Azure DevOps (commit status, PR labels)
+- Gitea (commit status, PR comments, issue comments, labels)
+- SourceHut (commit status)
+
+### Supported Notifiers
+- Slack
+- Discord
+- Microsoft Teams
+- Datadog
+- PagerDuty
+- Generic Webhooks
+
+### Quick Start Example
+
+```yaml
+config:
+  dashboard_url: "https://tekton.your-domain.com"
+
+  scm:
+    github:
+      - name: default
+        enabled: true
+        base_url: "https://api.github.com"
+        actions:
+          - name: commit-status
+            type: commit_status
+            enabled: true
+            when: 'event.Resource == "pipelinerun"'
+
+  notifiers:
+    slack:
+      - name: main-channel
+        enabled: true
+        channel: "#ci-notifications"
+        username: "Tekton CI"
+        when: 'event.State == "failure" || event.State == "error"'
+```
+
+{{ template "chart.maintainersSection" . }}
+
+{{ template "chart.sourcesSection" . }}
+
+{{ template "chart.valuesSection" . }}

@@ -1,0 +1,13 @@
+# Artifact Hub repository metadata file
+#
+# This metadata enables Verified Publisher status and ownership claims.
+# Push this file to the OCI registry with the special tag 'artifacthub.io'
+# using the oras command shown in the project documentation.
+#
+repositoryID: b5cc3fad-ac03-4ed6-9cca-25ec617508fd
+owners:
+  - name: fabioluciano
+    email: hi@fabioluciano.com
+ignore:
+  - name: tekton-events-relay
+    version: ^1\.

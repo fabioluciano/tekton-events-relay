@@ -1,0 +1,514 @@
+apiVersion: v1
+data:
+  # For complete configuration reference including all action handlers,
+  # see docs/Configuration.md in the repository
+  config.yaml: |
+    server:
+      addr: {{ .Values.config.server.addr | quote }}
+      {{- if .Values.config.server.metrics_addr }}
+      metrics_addr: {{ .Values.config.server.metrics_addr | quote }}
+      {{- end }}
+      read_timeout_sec: {{ .Values.config.server.read_timeout_sec }}
+      write_timeout_sec: {{ .Values.config.server.write_timeout_sec }}
+      shutdown_timeout_sec: {{ .Values.config.server.shutdown_timeout_sec }}
+      max_body_size: {{ .Values.config.server.max_body_size | int }}
+
+      {{- if .Values.config.server.rate_limit.enabled }}
+      rate_limit:
+        enabled: true
+        requests_per_second: {{ .Values.config.server.rate_limit.requests_per_second }}
+        burst: {{ .Values.config.server.rate_limit.burst }}
+      {{- end }}
+
+      {{- if .Values.config.server.auth.enabled }}
+      auth:
+        enabled: true
+        type: {{ .Values.config.server.auth.type | quote }}
+        secret_file: {{ .Values.config.server.auth.secret_file | quote }}
+      {{- end }}
+
+    dashboard_url: {{ .Values.config.dashboard_url | quote }}
+    dedupe_size: {{ .Values.config.dedupe_size }}
+
+    {{- if .Values.config.accumulator }}
+    accumulator:
+      enabled: {{ .Values.config.accumulator.enabled }}
+      ttl: {{ .Values.config.accumulator.ttl | quote }}
+      max_size: {{ .Values.config.accumulator.max_size }}
+    {{- end }}
+
+    {{- if .Values.config.logging }}
+    logging:
+      level: {{ .Values.config.logging.level | quote }}
+      {{- if .Values.config.logging.verbose }}
+      verbose:
+        caller: {{ .Values.config.logging.verbose.caller }}
+        http_calls: {{ .Values.config.logging.verbose.http_calls }}
+        payloads: {{ .Values.config.logging.verbose.payloads }}
+      {{- end }}
+    {{- end }}
+
+    filter:
+      allow_taskrun: {{ .Values.config.filter.allow_taskrun }}
+      allow_pipelinerun: {{ .Values.config.filter.allow_pipelinerun }}
+      allow_customrun: {{ .Values.config.filter.allow_customrun }}
+      allow_eventlistener: {{ .Values.config.filter.allow_eventlistener }}
+      ignore_unknown: {{ .Values.config.filter.ignore_unknown }}
+
+    {{- if .Values.config.tracing }}
+    {{- if .Values.config.tracing.endpoint }}
+    tracing:
+      endpoint: {{ .Values.config.tracing.endpoint | quote }}
+      {{- if .Values.config.tracing.service_name }}
+      service_name: {{ .Values.config.tracing.service_name | quote }}
+      {{- end }}
+    {{- end }}
+    {{- end }}
+
+    {{- if .Values.config.scm }}
+    scm:
+      {{- if .Values.config.scm.github }}
+      github:
+        {{- range .Values.config.scm.github }}
+        - name: {{ .name }}
+          enabled: {{ .enabled }}
+          {{- if .auth }}
+          auth:
+            {{- if .auth.secret_name }}
+            secret_file: "/etc/secrets/github/{{ .name }}/token"
+            {{- end }}
+            {{- if .auth.secret_key }}
+            secret_key: {{ .auth.secret_key | quote }}
+            {{- end }}
+            {{- if .auth.app_id }}
+            app_id: {{ .auth.app_id }}
+            {{- end }}
+            {{- if .auth.installation_id }}
+            installation_id: {{ .auth.installation_id }}
+            {{- end }}
+            {{- if .auth.private_key_secret_name }}
+            private_key_file: {{ printf "/etc/github-app/%s/private-key.pem" .name | quote }}
+            {{- end }}
+          {{- end }}
+          {{- if .base_url }}
+          base_url: {{ .base_url | quote }}
+          {{- end }}
+          {{- if .insecure_skip_verify }}
+          insecure_skip_verify: {{ .insecure_skip_verify }}
+          {{- end }}
+          {{- if .actions }}
+          actions:
+            {{- range .actions }}
+            - name: {{ .name }}
+              type: {{ .type }}
+              enabled: {{ .enabled }}
+              {{- if .when }}
+              when: {{ .when | quote }}
+              {{- end }}
+              {{- if .template }}
+              template: |
+{{ .template | nindent 16 }}
+              {{- end }}
+              {{- if .success_label }}
+              success_label: {{ .success_label | quote }}
+              {{- end }}
+              {{- if .failure_label }}
+              failure_label: {{ .failure_label | quote }}
+              {{- end }}
+            {{- end }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+
+      {{- if .Values.config.scm.gitlab }}
+      gitlab:
+        {{- range .Values.config.scm.gitlab }}
+        - name: {{ .name }}
+          variant: {{ .variant }}
+          enabled: {{ .enabled }}
+          {{- if .auth }}
+          auth:
+            {{- if .auth.secret_name }}
+            secret_file: "/etc/secrets/gitlab/{{ .name }}/token"
+            {{- end }}
+            {{- if .auth.secret_key }}
+            secret_key: {{ .auth.secret_key | quote }}
+            {{- end }}
+            {{- if .auth.oauth2 }}
+            oauth2:
+              client_id_file: "/etc/secrets/gitlab/{{ .name }}/client_id"
+              client_secret_file: "/etc/secrets/gitlab/{{ .name }}/client_secret"
+              token_url: {{ .auth.oauth2.token_url | quote }}
+            {{- end }}
+          {{- end }}
+          {{- if .base_url }}
+          base_url: {{ .base_url | quote }}
+          {{- end }}
+          {{- if .insecure_skip_verify }}
+          insecure_skip_verify: {{ .insecure_skip_verify }}
+          {{- end }}
+          {{- if .actions }}
+          actions:
+            {{- range .actions }}
+            - name: {{ .name }}
+              type: {{ .type }}
+              enabled: {{ .enabled }}
+              {{- if .when }}
+              when: {{ .when | quote }}
+              {{- end }}
+              {{- if .success_label }}
+              success_label: {{ .success_label | quote }}
+              {{- end }}
+              {{- if .failure_label }}
+              failure_label: {{ .failure_label | quote }}
+              {{- end }}
+            {{- end }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+
+      {{- if .Values.config.scm.bitbucket }}
+      bitbucket:
+        {{- range .Values.config.scm.bitbucket }}
+        - name: {{ .name }}
+          variant: {{ .variant }}
+          enabled: {{ .enabled }}
+          {{- if .auth }}
+          auth:
+            {{- if .auth.username_secret_name }}
+            username_file: "/etc/secrets/bitbucket/{{ .name }}/username"
+            {{- end }}
+            {{- if .auth.app_password_secret_name }}
+            app_password_file: "/etc/secrets/bitbucket/{{ .name }}/app_password"
+            {{- end }}
+            {{- if .auth.secret_name }}
+            token_file: "/etc/secrets/bitbucket/{{ .name }}/token"
+            {{- end }}
+            {{- if .auth.secret_key }}
+            token_key: {{ .auth.secret_key | quote }}
+            {{- end }}
+            {{- if .auth.oauth2 }}
+            oauth2:
+              client_id_file: "/etc/secrets/bitbucket/{{ .name }}/client_id"
+              client_secret_file: "/etc/secrets/bitbucket/{{ .name }}/client_secret"
+              token_url: {{ .auth.oauth2.token_url | quote }}
+            {{- end }}
+          {{- end }}
+          {{- if .base_url }}
+          base_url: {{ .base_url | quote }}
+          {{- end }}
+          {{- if .insecure_skip_verify }}
+          insecure_skip_verify: {{ .insecure_skip_verify }}
+          {{- end }}
+          {{- if .actions }}
+          actions:
+            {{- range .actions }}
+            - name: {{ .name }}
+              type: {{ .type }}
+              enabled: {{ .enabled }}
+              {{- if .when }}
+              when: {{ .when | quote }}
+              {{- end }}
+            {{- end }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+
+      {{- if .Values.config.scm.azure_devops }}
+      azure_devops:
+        {{- range .Values.config.scm.azure_devops }}
+        - name: {{ .name }}
+          enabled: {{ .enabled }}
+          {{- if .secret_name }}
+          secret_file: "/etc/secrets/azure/{{ .name }}/token"
+          {{- end }}
+          {{- if .secret_key }}
+          secret_key: {{ .secret_key | quote }}
+          {{- end }}
+          genre: {{ .genre | quote }}
+          {{- if .base_url }}
+          base_url: {{ .base_url | quote }}
+          {{- end }}
+          {{- if .insecure_skip_verify }}
+          insecure_skip_verify: {{ .insecure_skip_verify }}
+          {{- end }}
+          {{- if .actions }}
+          actions:
+            {{- range .actions }}
+            - name: {{ .name }}
+              type: {{ .type }}
+              enabled: {{ .enabled }}
+              {{- if .when }}
+              when: {{ .when | quote }}
+              {{- end }}
+              {{- if .success_label }}
+              success_label: {{ .success_label | quote }}
+              {{- end }}
+              {{- if .failure_label }}
+              failure_label: {{ .failure_label | quote }}
+              {{- end }}
+            {{- end }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+
+      {{- if .Values.config.scm.gitea }}
+      gitea:
+        {{- range .Values.config.scm.gitea }}
+        - name: {{ .name }}
+          enabled: {{ .enabled }}
+          {{- if .auth }}
+          auth:
+            {{- if .auth.secret_name }}
+            secret_file: "/etc/secrets/gitea/{{ .name }}/token"
+            {{- end }}
+            {{- if .auth.secret_key }}
+            secret_key: {{ .auth.secret_key | quote }}
+            {{- end }}
+            {{- if .auth.oauth2 }}
+            oauth2:
+              client_id_file: "/etc/secrets/gitea/{{ .name }}/client_id"
+              client_secret_file: "/etc/secrets/gitea/{{ .name }}/client_secret"
+              token_url: {{ .auth.oauth2.token_url | quote }}
+            {{- end }}
+          {{- end }}
+          base_url: {{ .base_url | quote }}
+          {{- if .insecure_skip_verify }}
+          insecure_skip_verify: {{ .insecure_skip_verify }}
+          {{- end }}
+          {{- if .actions }}
+          actions:
+            {{- range .actions }}
+            - name: {{ .name }}
+              type: {{ .type }}
+              enabled: {{ .enabled }}
+              {{- if .when }}
+              when: {{ .when | quote }}
+              {{- end }}
+              {{- if .template }}
+              template: |
+{{ .template | nindent 16 }}
+              {{- end }}
+              {{- if .success_label }}
+              success_label: {{ .success_label | quote }}
+              {{- end }}
+              {{- if .failure_label }}
+              failure_label: {{ .failure_label | quote }}
+              {{- end }}
+            {{- end }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+
+      {{- if .Values.config.scm.sourcehut }}
+      sourcehut:
+        {{- range .Values.config.scm.sourcehut }}
+        - name: {{ .name }}
+          enabled: {{ .enabled }}
+          {{- if .auth }}
+          auth:
+            {{- if .auth.secret_name }}
+            secret_file: "/etc/secrets/sourcehut/{{ .name }}/token"
+            {{- end }}
+            {{- if .auth.secret_key }}
+            secret_key: {{ .auth.secret_key | quote }}
+            {{- end }}
+          {{- end }}
+          {{- if .base_url }}
+          base_url: {{ .base_url | quote }}
+          {{- end }}
+          {{- if .insecure_skip_verify }}
+          insecure_skip_verify: {{ .insecure_skip_verify }}
+          {{- end }}
+          {{- if .actions }}
+          actions:
+            {{- range .actions }}
+            - name: {{ .name }}
+              type: {{ .type }}
+              enabled: {{ .enabled }}
+              {{- if .when }}
+              when: {{ .when | quote }}
+              {{- end }}
+            {{- end }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+
+    {{- if .Values.config.notifiers }}
+    notifiers:
+      {{- if .Values.config.notifiers.slack }}
+      slack:
+        {{- range .Values.config.notifiers.slack }}
+        - name: {{ .name }}
+          enabled: {{ .enabled }}
+          {{- if or .secret_name .bot_token }}
+          auth:
+            {{- if .bot_token }}
+            bot_token:
+              token_file: "/etc/secrets/slack/{{ .name }}/token"
+              channel_id: {{ .bot_token.channel_id | quote }}
+            {{- else }}
+            webhook_url_file: "/etc/secrets/slack/{{ .name }}/webhook_url"
+            {{- end }}
+          {{- end }}
+          {{- if .channel }}
+          channel: {{ .channel | quote }}
+          {{- end }}
+          {{- if .username }}
+          username: {{ .username | quote }}
+          {{- end }}
+          {{- if .icon_emoji }}
+          icon_emoji: {{ .icon_emoji | quote }}
+          {{- end }}
+          {{- if .when }}
+          when: {{ .when | quote }}
+          {{- end }}
+          {{- if .template }}
+          template: |
+{{ .template | nindent 12 }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+      {{- if .Values.config.notifiers.teams }}
+      teams:
+        {{- range .Values.config.notifiers.teams }}
+        - name: {{ .name }}
+          enabled: {{ .enabled }}
+          {{- if .secret_name }}
+          auth:
+            webhook_url_file: "/etc/secrets/teams/{{ .name }}/webhook_url"
+          {{- end }}
+          {{- if .when }}
+          when: {{ .when | quote }}
+          {{- end }}
+          {{- if .template }}
+          template: |
+{{ .template | nindent 12 }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+      {{- if .Values.config.notifiers.discord }}
+      discord:
+        {{- range .Values.config.notifiers.discord }}
+        - name: {{ .name }}
+          enabled: {{ .enabled }}
+          {{- if or .secret_name .bot_token }}
+          auth:
+            {{- if .bot_token }}
+            bot_token:
+              token_file: "/etc/secrets/discord/{{ .name }}/token"
+              channel_id: {{ .bot_token.channel_id | quote }}
+            {{- else }}
+            webhook_url_file: "/etc/secrets/discord/{{ .name }}/webhook_url"
+            {{- end }}
+          {{- end }}
+          {{- if .username }}
+          username: {{ .username | quote }}
+          {{- end }}
+          {{- if .avatar_url }}
+          avatar_url: {{ .avatar_url | quote }}
+          {{- end }}
+          {{- if .when }}
+          when: {{ .when | quote }}
+          {{- end }}
+          {{- if .template }}
+          template: |
+{{ .template | nindent 12 }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+      {{- if .Values.config.notifiers.pagerduty }}
+      pagerduty:
+        {{- range .Values.config.notifiers.pagerduty }}
+        - name: {{ .name }}
+          enabled: {{ .enabled }}
+          {{- if .secret_name }}
+          auth:
+            integration_key_file: "/etc/secrets/pagerduty/{{ .name }}/integration_key"
+          {{- end }}
+          {{- if .severity }}
+          severity: {{ .severity | quote }}
+          {{- end }}
+          {{- if .when }}
+          when: {{ .when | quote }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+      {{- if .Values.config.notifiers.datadog }}
+      datadog:
+        {{- range .Values.config.notifiers.datadog }}
+        - name: {{ .name }}
+          enabled: {{ .enabled }}
+          {{- if .secret_name }}
+          auth:
+            api_key_file: "/etc/secrets/datadog/{{ .name }}/api_key"
+          {{- end }}
+          {{- if .site }}
+          site: {{ .site | quote }}
+          {{- end }}
+          {{- if .tags }}
+          tags:
+            {{- range .tags }}
+            - {{ . | quote }}
+            {{- end }}
+          {{- end }}
+          {{- if .when }}
+          when: {{ .when | quote }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+      {{- if .Values.config.notifiers.webhook }}
+      webhook:
+        {{- range .Values.config.notifiers.webhook }}
+        - name: {{ .name }}
+          enabled: {{ .enabled }}
+          {{- if .url_secret_name }}
+          url_file: "/etc/secrets/webhook/{{ .name }}/url"
+          {{- end }}
+          {{- if .url_key }}
+          url_key: {{ .url_key | quote }}
+          {{- end }}
+          {{- if .auth }}
+          auth:
+            type: {{ .auth.type | quote }}
+            {{- if .auth.token_file_secret_name }}
+            token_file: "/etc/secrets/webhook/{{ .name }}/token"
+            {{- end }}
+            {{- if .auth.token_key }}
+            token_key: {{ .auth.token_key | quote }}
+            {{- end }}
+            {{- if .auth.username_file_secret_name }}
+            username_file: "/etc/secrets/webhook/{{ .name }}/username"
+            {{- end }}
+            {{- if .auth.password_file_secret_name }}
+            password_file: "/etc/secrets/webhook/{{ .name }}/password"
+            {{- end }}
+            {{- if .auth.secret_file_secret_name }}
+            secret_file: "/etc/secrets/webhook/{{ .name }}/hmac_secret"
+            {{- end }}
+            {{- if .auth.header }}
+            header: {{ .auth.header | quote }}
+            {{- end }}
+          {{- end }}
+          {{- if .when }}
+          when: {{ .when | quote }}
+          {{- end }}
+          {{- if .headers }}
+          headers:
+            {{- .headers | toYaml | nindent 12 }}
+          {{- end }}
+          {{- if .template }}
+          template: |
+{{ .template | nindent 12 }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+kind: ConfigMap
+metadata:
+  annotations:
+    {{- include "tekton-events-relay.annotations" . | nindent 4 }}
+  labels:
+    {{- include "tekton-events-relay.labels" . | nindent 4 }}
+  name: {{ include "tekton-events-relay.fullname" . }}-config

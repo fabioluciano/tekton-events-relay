@@ -1,0 +1,45 @@
+# Git
+.git
+.gitignore
+.github
+
+# Documentation
+*.md
+docs/
+
+# Build artifacts
+dist/
+out/
+*.test
+*.out
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test coverage
+coverage.txt
+*.cover
+
+# Helm charts (built separately)
+charts/
+
+# CI/CD
+.gitlab-ci.yml
+.releaserc.json
+
+# Development
+tmp/
+temp/
+*.log
+
+# Node modules (semantic-release)
+node_modules/
+package-lock.json

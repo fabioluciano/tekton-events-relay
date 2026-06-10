@@ -1,0 +1,20 @@
+{{- if .Values.monitoring.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "tekton-events-relay.fullname" . }}
+  labels:
+    {{- include "tekton-events-relay.labels" . | nindent 4 }}
+    {{- with .Values.monitoring.serviceMonitor.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "tekton-events-relay.selectorLabels" . | nindent 6 }}
+  endpoints:
+    - port: "{{ if .Values.config.server.metrics_addr }}metrics{{ else }}http{{ end }}"
+      path: {{ .Values.monitoring.serviceMonitor.path | default "/metrics" }}
+      interval: {{ .Values.monitoring.serviceMonitor.interval | default "30s" }}
+      scrapeTimeout: {{ .Values.monitoring.serviceMonitor.scrapeTimeout | default "10s" }}
+{{- end }}

@@ -1,0 +1,367 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    {{- include "tekton-events-relay.annotations" . | nindent 4 }}
+    email: "{{ .Values.email | default "platform@example.com" }}"
+    owner: "{{ .Values.owner | default "platform-team" }}"
+  labels:
+    {{- include "tekton-events-relay.labels" . | nindent 4 }}
+    owner: "{{ .Values.owner | default "platform-team" }}"
+  name: {{ include "tekton-events-relay.fullname" . }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "tekton-events-relay.selectorLabels" . | nindent 6 }}
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+    type: RollingUpdate
+  template:
+    metadata:
+      annotations:
+        {{- include "tekton-events-relay.annotations" . | nindent 8 }}
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        email: "{{ .Values.email | default "platform@example.com" }}"
+        owner: "{{ .Values.owner | default "platform-team" }}"
+      {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "tekton-events-relay.selectorLabels" . | nindent 8 }}
+        owner: "{{ .Values.owner | default "platform-team" }}"
+    spec:
+      affinity:
+        nodeAffinity:
+          {{- toYaml .Values.affinity.nodeAffinity | nindent 10 }}
+        {{- if eq (.Values.affinity.mode | default "soft") "hard" }}
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  {{- include "tekton-events-relay.selectorLabels" . | nindent 18 }}
+              topologyKey: kubernetes.io/hostname
+        {{- else }}
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    {{- include "tekton-events-relay.selectorLabels" . | nindent 20 }}
+                topologyKey: kubernetes.io/hostname
+              weight: 100
+        {{- end }}
+      automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+      containers:
+        - args:
+            - "--config"
+            - "/etc/tekton-events-relay/config.yaml"
+          {{- if or .Values.config.server.auth.enabled .Values.resources.limits.memory }}
+          env:
+            {{- if .Values.config.server.auth.enabled }}
+            {{- end }}
+            {{- if .Values.resources.limits.memory }}
+            # GOMEMLIMIT sets the soft memory limit for the Go runtime's garbage collector.
+            # Set to ~90% of container memory limit to allow headroom for Go internals and prevent OOMKill.
+            # Enables more predictable GC behavior and prevents heap from growing unbounded.
+            - name: GOMEMLIMIT
+              value: "230MiB"
+            {{- end }}
+          {{- end }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - sleep 5
+          livenessProbe:
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          name: receiver
+          ports:
+            - containerPort: {{ .Values.service.targetPort }}
+              name: http
+              protocol: TCP
+          readinessProbe:
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          startupProbe:
+            {{- toYaml .Values.startupProbe | nindent 12 }}
+          volumeMounts:
+            - mountPath: /etc/tekton-events-relay
+              name: config
+              readOnly: true
+            {{- range $inst := .Values.config.scm.github }}
+            {{- if and $inst.enabled $inst.auth $inst.auth.secret_name }}
+            - mountPath: /etc/secrets/github/{{ $inst.name }}
+              name: github-{{ $inst.name }}-secret
+              readOnly: true
+            {{- end }}
+            {{- if and $inst.enabled $inst.auth $inst.auth.private_key_secret_name }}
+            - mountPath: /etc/github-app/{{ $inst.name }}
+              name: github-{{ $inst.name }}-app-key
+              readOnly: true
+            {{- end }}
+            {{- end }}
+            {{- range $inst := .Values.config.scm.gitlab }}
+            {{- if and $inst.enabled $inst.auth $inst.auth.secret_name }}
+            - mountPath: /etc/secrets/gitlab/{{ $inst.name }}
+              name: gitlab-{{ $inst.name }}-secret
+              readOnly: true
+            {{- end }}
+            {{- if and $inst.enabled $inst.auth $inst.auth.oauth2 }}
+            - mountPath: /etc/secrets/gitlab/{{ $inst.name }}
+              name: gitlab-{{ $inst.name }}-oauth2-secret
+              readOnly: true
+            {{- end }}
+            {{- end }}
+            {{- range $inst := .Values.config.scm.bitbucket }}
+            {{- if and $inst.enabled $inst.auth }}
+            {{- if or $inst.auth.username_secret_name $inst.auth.app_password_secret_name $inst.auth.secret_name }}
+            - mountPath: /etc/secrets/bitbucket/{{ $inst.name }}
+              name: bitbucket-{{ $inst.name }}-secret
+              readOnly: true
+            {{- end }}
+            {{- if $inst.auth.oauth2 }}
+            - mountPath: /etc/secrets/bitbucket/{{ $inst.name }}
+              name: bitbucket-{{ $inst.name }}-oauth2-secret
+              readOnly: true
+            {{- end }}
+            {{- end }}
+            {{- end }}
+            {{- range $inst := .Values.config.scm.azure_devops }}
+            {{- if and $inst.enabled $inst.secret_name }}
+            - mountPath: /etc/secrets/azure/{{ $inst.name }}
+              name: azure-{{ $inst.name }}-secret
+              readOnly: true
+            {{- end }}
+            {{- end }}
+            {{- range $inst := .Values.config.scm.gitea }}
+            {{- if and $inst.enabled $inst.auth $inst.auth.secret_name }}
+            - mountPath: /etc/secrets/gitea/{{ $inst.name }}
+              name: gitea-{{ $inst.name }}-secret
+              readOnly: true
+            {{- end }}
+            {{- if and $inst.enabled $inst.auth $inst.auth.oauth2 }}
+            - mountPath: /etc/secrets/gitea/{{ $inst.name }}
+              name: gitea-{{ $inst.name }}-oauth2-secret
+              readOnly: true
+            {{- end }}
+            {{- end }}
+            {{- range $inst := .Values.config.scm.sourcehut }}
+            {{- if and $inst.enabled $inst.auth $inst.auth.secret_name }}
+            - mountPath: /etc/secrets/sourcehut/{{ $inst.name }}
+              name: sourcehut-{{ $inst.name }}-secret
+              readOnly: true
+            {{- end }}
+            {{- end }}
+            {{- range $inst := .Values.config.notifiers.slack }}
+            {{- if and $inst.enabled (or $inst.secret_name (and $inst.bot_token $inst.bot_token.token_secret_name)) }}
+            - mountPath: /etc/secrets/slack/{{ $inst.name }}
+              name: slack-{{ $inst.name }}-secret
+              readOnly: true
+            {{- end }}
+            {{- end }}
+            {{- range $inst := .Values.config.notifiers.teams }}
+            {{- if and $inst.enabled $inst.secret_name }}
+            - mountPath: /etc/secrets/teams/{{ $inst.name }}
+              name: teams-{{ $inst.name }}-secret
+              readOnly: true
+            {{- end }}
+            {{- end }}
+            {{- range $inst := .Values.config.notifiers.discord }}
+            {{- if and $inst.enabled (or $inst.secret_name (and $inst.bot_token $inst.bot_token.token_secret_name)) }}
+            - mountPath: /etc/secrets/discord/{{ $inst.name }}
+              name: discord-{{ $inst.name }}-secret
+              readOnly: true
+            {{- end }}
+            {{- end }}
+            {{- range $inst := .Values.config.notifiers.pagerduty }}
+            {{- if and $inst.enabled $inst.secret_name }}
+            - mountPath: /etc/secrets/pagerduty/{{ $inst.name }}
+              name: pagerduty-{{ $inst.name }}-secret
+              readOnly: true
+            {{- end }}
+            {{- end }}
+            {{- range $inst := .Values.config.notifiers.datadog }}
+            {{- if and $inst.enabled $inst.secret_name }}
+            - mountPath: /etc/secrets/datadog/{{ $inst.name }}
+              name: datadog-{{ $inst.name }}-secret
+              readOnly: true
+            {{- end }}
+            {{- end }}
+            {{- range $inst := .Values.config.notifiers.webhook }}
+            {{- if and $inst.enabled $inst.url_secret_name }}
+            - mountPath: /etc/secrets/webhook/{{ $inst.name }}
+              name: webhook-{{ $inst.name }}-secret
+              readOnly: true
+            {{- end }}
+            {{- end }}
+            {{- if .Values.templates.enabled }}
+            - mountPath: /etc/templates
+              name: templates
+              readOnly: true
+            {{- end }}
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "2"
+          - name: edns0
+      dnsPolicy: ClusterFirst
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      restartPolicy: Always
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      serviceAccountName: {{ include "tekton-events-relay.serviceAccountName" . }}
+      terminationGracePeriodSeconds: 45
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      volumes:
+        - configMap:
+            name: {{ include "tekton-events-relay.fullname" . }}-config
+          name: config
+        {{- range $inst := .Values.config.scm.github }}
+        {{- if and $inst.enabled $inst.auth $inst.auth.secret_name }}
+        - name: github-{{ $inst.name }}-secret
+          secret:
+            secretName: {{ $inst.auth.secret_name }}
+        {{- end }}
+        {{- if and $inst.enabled $inst.auth $inst.auth.private_key_secret_name }}
+        - name: github-{{ $inst.name }}-app-key
+          secret:
+            secretName: {{ $inst.auth.private_key_secret_name }}
+            items:
+              - key: {{ $inst.auth.private_key_secret_key | default "private-key.pem" }}
+                path: private-key.pem
+        {{- end }}
+        {{- end }}
+        {{- range $inst := .Values.config.scm.gitlab }}
+        {{- if and $inst.enabled $inst.auth $inst.auth.secret_name }}
+        - name: gitlab-{{ $inst.name }}-secret
+          secret:
+            secretName: {{ $inst.auth.secret_name }}
+        {{- end }}
+        {{- if and $inst.enabled $inst.auth $inst.auth.oauth2 $inst.auth.oauth2.client_id_secret_name }}
+        - name: gitlab-{{ $inst.name }}-oauth2-secret
+          secret:
+            secretName: {{ $inst.auth.oauth2.client_id_secret_name }}
+        {{- end }}
+        {{- end }}
+        {{- range $inst := .Values.config.scm.bitbucket }}
+        {{- if and $inst.enabled $inst.auth $inst.auth.username_secret_name }}
+        - name: bitbucket-{{ $inst.name }}-secret
+          secret:
+            secretName: {{ $inst.auth.username_secret_name }}
+        {{- end }}
+        {{- if and $inst.enabled $inst.auth $inst.auth.oauth2 $inst.auth.oauth2.client_id_secret_name }}
+        - name: bitbucket-{{ $inst.name }}-oauth2-secret
+          secret:
+            secretName: {{ $inst.auth.oauth2.client_id_secret_name }}
+        {{- end }}
+        {{- if and $inst.enabled $inst.auth $inst.auth.secret_name }}
+        - name: bitbucket-{{ $inst.name }}-secret
+          secret:
+            secretName: {{ $inst.auth.secret_name }}
+        {{- end }}
+        {{- end }}
+        {{- range $inst := .Values.config.scm.azure_devops }}
+        {{- if and $inst.enabled $inst.secret_name }}
+        - name: azure-{{ $inst.name }}-secret
+          secret:
+            secretName: {{ $inst.secret_name }}
+        {{- end }}
+        {{- end }}
+        {{- range $inst := .Values.config.scm.gitea }}
+        {{- if and $inst.enabled $inst.auth $inst.auth.secret_name }}
+        - name: gitea-{{ $inst.name }}-secret
+          secret:
+            secretName: {{ $inst.auth.secret_name }}
+        {{- end }}
+        {{- if and $inst.enabled $inst.auth $inst.auth.oauth2 $inst.auth.oauth2.client_id_secret_name }}
+        - name: gitea-{{ $inst.name }}-oauth2-secret
+          secret:
+            secretName: {{ $inst.auth.oauth2.client_id_secret_name }}
+        {{- end }}
+        {{- end }}
+        {{- range $inst := .Values.config.scm.sourcehut }}
+        {{- if and $inst.enabled $inst.auth $inst.auth.secret_name }}
+        - name: sourcehut-{{ $inst.name }}-secret
+          secret:
+            secretName: {{ $inst.auth.secret_name }}
+        {{- end }}
+        {{- end }}
+        {{- range $inst := .Values.config.notifiers.slack }}
+        {{- if and $inst.enabled $inst.secret_name }}
+        - name: slack-{{ $inst.name }}-secret
+          secret:
+            secretName: {{ $inst.secret_name }}
+        {{- end }}
+        {{- if and $inst.enabled $inst.bot_token $inst.bot_token.token_secret_name }}
+        - name: slack-{{ $inst.name }}-secret
+          secret:
+            secretName: {{ $inst.bot_token.token_secret_name }}
+        {{- end }}
+        {{- end }}
+        {{- range $inst := .Values.config.notifiers.teams }}
+        {{- if and $inst.enabled $inst.secret_name }}
+        - name: teams-{{ $inst.name }}-secret
+          secret:
+            secretName: {{ $inst.secret_name }}
+        {{- end }}
+        {{- end }}
+        {{- range $inst := .Values.config.notifiers.discord }}
+        {{- if and $inst.enabled $inst.secret_name }}
+        - name: discord-{{ $inst.name }}-secret
+          secret:
+            secretName: {{ $inst.secret_name }}
+        {{- end }}
+        {{- if and $inst.enabled $inst.bot_token $inst.bot_token.token_secret_name }}
+        - name: discord-{{ $inst.name }}-secret
+          secret:
+            secretName: {{ $inst.bot_token.token_secret_name }}
+        {{- end }}
+        {{- end }}
+        {{- range $inst := .Values.config.notifiers.pagerduty }}
+        {{- if and $inst.enabled $inst.secret_name }}
+        - name: pagerduty-{{ $inst.name }}-secret
+          secret:
+            secretName: {{ $inst.secret_name }}
+        {{- end }}
+        {{- end }}
+        {{- range $inst := .Values.config.notifiers.datadog }}
+        {{- if and $inst.enabled $inst.secret_name }}
+        - name: datadog-{{ $inst.name }}-secret
+          secret:
+            secretName: {{ $inst.secret_name }}
+        {{- end }}
+        {{- end }}
+        {{- range $inst := .Values.config.notifiers.webhook }}
+        {{- if and $inst.enabled $inst.url_secret_name }}
+        - name: webhook-{{ $inst.name }}-secret
+          secret:
+            secretName: {{ $inst.url_secret_name }}
+        {{- end }}
+        {{- end }}
+        {{- if .Values.templates.enabled }}
+        - name: templates
+          configMap:
+            name: {{ include "tekton-events-relay.fullname" . }}-templates
+        {{- end }}

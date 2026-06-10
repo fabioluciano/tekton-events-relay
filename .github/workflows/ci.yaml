@@ -1,0 +1,45 @@
+# Workflow: CI
+# Runs on feature and fix branches for validation only.
+# No releases are published from these branches.
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - 'feature/**'
+      - 'fix/**'
+      - 'bugfix/**'
+      - 'hotfix/**'
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+jobs:
+  ci-go:
+    name: Go CI
+    uses: ./.github/workflows/ci-go.yaml
+    secrets: inherit
+
+  ci-docker:
+    name: Docker CI
+    uses: ./.github/workflows/ci-docker.yaml
+    secrets: inherit
+
+  ci-helm:
+    name: Helm CI
+    uses: ./.github/workflows/ci-helm.yaml
+    secrets: inherit
+
+  security:
+    name: Security Scan
+    uses: ./.github/workflows/security-codeql.yaml
+    secrets: inherit
+    permissions:
+      security-events: write
+      actions: read
+      contents: read

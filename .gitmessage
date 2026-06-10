@@ -1,0 +1,40 @@
+# <type>(<scope>): <subject>
+#
+# Types:
+#   feat      nova funcionalidade                    → minor bump
+#   fix       correção de bug                        → patch bump
+#   perf      melhoria de performance                → patch bump
+#   refactor  refatoração sem mudança de comportamento → patch bump
+#   docs      documentação apenas                    → sem release
+#   test      testes apenas                          → sem release
+#   chore     manutenção, dependências               → sem release
+#   ci        mudanças de CI/CD                      → sem release
+#
+# Scopes sugeridos:
+#   decoder   internal/event/*
+#   reporter  internal/scm/*
+#   pipeline  internal/pipeline/*
+#   config    internal/config
+#   deploy    deploy/
+#   ci        .github/workflows/
+#
+# Exemplos:
+#   feat(decoder): add Jenkins CloudEvents decoder
+#   fix(reporter): github reporter ignores missing owner annotation
+#   perf(pipeline): replace sync.Map with RWMutex in registry
+#   refactor(decoder): extract truncate helper to internal/stringx
+#   docs(reporter): add argo-sensor example for Gitea
+#   test(reporter): add coverage for azure devops builder
+#   chore(deploy): upgrade distroless base image to nonroot-debian12
+#   ci: cache go modules between PR runs
+#   feat(reporter)!: rename scm.provider label to pipeline.scm.provider
+#
+# Breaking change — adicione no corpo:
+#   BREAKING CHANGE: descrição do que quebrou e como migrar
+#
+# Regras:
+#   - subject em inglês, imperativo, sem ponto final
+#   - máximo 72 caracteres na primeira linha
+#   - linha em branco entre subject e body
+#   - body explica O QUÊ e POR QUÊ, não como
+# ---------------------------------------------------------------------------

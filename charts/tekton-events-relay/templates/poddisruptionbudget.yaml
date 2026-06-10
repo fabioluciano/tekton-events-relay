@@ -1,0 +1,18 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  annotations:
+    {{- include "tekton-events-relay.annotations" . | nindent 4 }}
+  labels:
+    {{- include "tekton-events-relay.labels" . | nindent 4 }}
+  name: {{ include "tekton-events-relay.fullname" . }}
+spec:
+  # maxUnavailable: 1 is preferred over minAvailable for maintainability.
+  # Both configurations allow the same behavior (1 disruption at replicaCount=2),
+  # but maxUnavailable gracefully handles replica count changes without requiring
+  # manual updates to the disruption budget policy.
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      {{- include "tekton-events-relay.selectorLabels" . | nindent 6 }}
+  unhealthyPodEvictionPolicy: AlwaysAllow

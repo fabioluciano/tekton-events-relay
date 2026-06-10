@@ -72,7 +72,7 @@ func TestDiscussionCommentHandler_HappyPath(t *testing.T) {
 	cfg := DiscussionCommentConfig{
 		Token:    "test-token", //nolint:goconst
 		BaseURL:  server.URL,
-		Template: "Pipeline {{.State}}",
+		Template: "/tmp/tekton-test-templates/discussion.tmpl",
 	}
 
 	handler, err := NewDiscussionCommentHandler(cfg, nil)

@@ -26,7 +26,7 @@ const (
 	testInstanceNameMain     = "main"
 	testInstanceNameDisabled = "disabled"
 	testTokenValue           = "token"
-	testTemplate             = "t"
+	testTemplate             = "/tmp/tekton-test-templates/t.tmpl"
 	testLabelOK              = "ok"
 	testLabelFail            = "fail"
 	testInvalidCEL           = notifierBadSyntax
@@ -106,13 +106,13 @@ func TestGitHubFactory_Build_creates_handler_for_each_action_type(t *testing.T) 
 	}{
 		{"commit_status", config.ActionTypeCommitStatus, nil},
 		{"pr_comment", config.ActionTypePRComment, func(a *config.Action) {
-			a.Template = "t"
+			a.Template = testTemplate
 		}},
 		{"issue_comment", config.ActionTypeIssueComment, func(a *config.Action) {
-			a.Template = "t"
+			a.Template = testTemplate
 		}},
 		{"discussion_comment", config.ActionTypeDiscussionComment, func(a *config.Action) {
-			a.Template = "t"
+			a.Template = testTemplate
 		}},
 		{"label", config.ActionTypeLabel, func(a *config.Action) { //nolint:goconst
 			a.SuccessLabel = "ok"
@@ -808,10 +808,10 @@ func TestGiteaFactory_Build_creates_handler_for_each_action_type(t *testing.T) {
 	}{
 		{"commit_status", config.ActionTypeCommitStatus, nil},
 		{"pr_comment", config.ActionTypePRComment, func(a *config.Action) {
-			a.Template = "t"
+			a.Template = testTemplate
 		}},
 		{"issue_comment", config.ActionTypeIssueComment, func(a *config.Action) {
-			a.Template = "t"
+			a.Template = testTemplate
 		}},
 		{"label", config.ActionTypeLabel, func(a *config.Action) {
 			a.SuccessLabel = "ok"

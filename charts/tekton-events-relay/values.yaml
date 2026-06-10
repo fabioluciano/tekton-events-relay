@@ -266,11 +266,10 @@ config:
             # -- Enable or disable this SCM provider instance
             enabled: false
             when: 'stateIn("success", "failure", "error")'
-            template: |
-              ## Build Result: {{.State}}
-              **Run:** {{.RunName}}
-              **Namespace:** {{.Namespace}}
-              {{if .TargetURL}}[View Logs]({{.TargetURL}}){{end}}
+            # Uses default template from tekton-events-relay-templates ConfigMap (key: check_run)
+            # To override, uncomment:
+            # template_configmap: "my-custom-templates"
+            # template_configmap_key: "custom-check-run"
           # Feature 5: Deployment Status - track deployments by environment
           - name: deployment-status
             # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
@@ -285,32 +284,30 @@ config:
             # -- Enable or disable this SCM provider instance
             enabled: false
             when: 'stateIn("success", "failure")'
-            # Feature 6: Chat Notifier Templates - customizable Go templates
-            template: |
-              ## Pipeline {{.State}}
-              **Run:** {{.RunName}}
-              **Commit:** {{.CommitSHA}}
-              {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
+            # Uses default template from tekton-events-relay-templates ConfigMap (key: pr_comment)
+            # To override, uncomment:
+            # template_configmap: "my-custom-templates"
+            # template_configmap_key: "custom-pr-comment"
           - name: issue-comment
             # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
             type: issue_comment
             # -- Enable or disable this SCM provider instance
             enabled: false
             when: 'stateIn("failure", "error")'
-            template: |
-              Pipeline {{.Context}} finished with state: **{{.State}}**
-              {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
+            # Uses default template from tekton-events-relay-templates ConfigMap (key: issue_comment)
+            # To override, uncomment:
+            # template_configmap: "my-custom-templates"
+            # template_configmap_key: "custom-issue-comment"
           - name: discussion-comment
             # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
             type: discussion_comment
             # -- Enable or disable this SCM provider instance
             enabled: false
             when: 'stateIn("success", "failure")'
-            template: |
-              ## Pipeline {{.State}}
-              **Run:** {{.RunName}}
-              **Commit:** {{.CommitSHA}}
-              {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
+            # Uses default template from tekton-events-relay-templates ConfigMap (key: discussion_comment)
+            # To override, uncomment:
+            # template_configmap: "my-custom-templates"
+            # template_configmap_key: "custom-discussion-comment"
           - name: label
             # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
             type: label
@@ -355,20 +352,20 @@ config:
             # -- Enable or disable this SCM provider instance
             enabled: false
             when: 'stateIn("failure", "error")'
-            template: |
-              ## Pipeline {{.State}}
-              **Run:** {{.RunName}}
-              **Commit:** {{.CommitSHA}}
-              {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
+            # Uses default template from tekton-events-relay-templates ConfigMap (key: pr_comment)
+            # To override, uncomment:
+            # template_configmap: "my-custom-templates"
+            # template_configmap_key: "custom-pr-comment"
           - name: issue-comment
             # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
             type: issue_comment
             # -- Enable or disable this SCM provider instance
             enabled: false
             when: 'stateIn("failure", "error")'
-            template: |
-              Pipeline {{.Context}} finished with state: **{{.State}}**
-              {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
+            # Uses default template from tekton-events-relay-templates ConfigMap (key: issue_comment)
+            # To override, uncomment:
+            # template_configmap: "my-custom-templates"
+            # template_configmap_key: "custom-issue-comment"
           - name: label
             # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
             type: label
@@ -408,20 +405,20 @@ config:
             # -- Enable or disable this SCM provider instance
             enabled: false
             when: 'stateIn("failure", "error")'
-            template: |
-              ## Pipeline {{.State}}
-              **Run:** {{.RunName}}
-              **Commit:** {{.CommitSHA}}
-              {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
+            # Uses default template from tekton-events-relay-templates ConfigMap (key: pr_comment)
+            # To override, uncomment:
+            # template_configmap: "my-custom-templates"
+            # template_configmap_key: "custom-pr-comment"
           - name: issue-comment
             # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
             type: issue_comment
             # -- Enable or disable this SCM provider instance
             enabled: false
             when: 'stateIn("failure", "error")'
-            template: |
-              Pipeline {{.Context}} finished with state: **{{.State}}**
-              {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
+            # Uses default template from tekton-events-relay-templates ConfigMap (key: issue_comment)
+            # To override, uncomment:
+            # template_configmap: "my-custom-templates"
+            # template_configmap_key: "custom-issue-comment"
           - name: label
             # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
             type: label
@@ -536,20 +533,20 @@ config:
             # -- Enable or disable this SCM provider instance
             enabled: false
             when: 'stateIn("success", "failure")'
-            template: |
-              ## Pipeline {{.State}}
-              **Run:** {{.RunName}}
-              **Commit:** {{.CommitSHA}}
-              {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
+            # Uses default template from tekton-events-relay-templates ConfigMap (key: pr_comment)
+            # To override, uncomment:
+            # template_configmap: "my-custom-templates"
+            # template_configmap_key: "custom-pr-comment"
           - name: issue-comment
             # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
             type: issue_comment
             # -- Enable or disable this SCM provider instance
             enabled: false
             when: 'stateIn("failure", "error")'
-            template: |
-              Pipeline {{.Context}} finished: **{{.State}}**
-              {{if .TargetURL}}[Results]({{.TargetURL}}){{end}}
+            # Uses default template from tekton-events-relay-templates ConfigMap (key: issue_comment)
+            # To override, uncomment:
+            # template_configmap: "my-custom-templates"
+            # template_configmap_key: "custom-issue-comment"
           - name: label
             # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
             type: label
@@ -611,12 +608,10 @@ config:
         icon_emoji: ":robot_face:"
         # -- CEL expression to filter which events trigger notifications
         when: 'event.State == "failure" || event.State == "error"'
-        # -- Go template for the Slack message body. Available variables: .State, .RunName, .CommitSHA, .TargetURL
-        template: |
-          :warning: *Pipeline {{.State}}*
-          *Run:* `{{.RunName}}`
-          *Commit:* `{{.CommitSHA}}`
-          {{if .TargetURL}}<{{.TargetURL}}|View in Dashboard>{{end}}
+        # Uses default template from tekton-events-relay-templates ConfigMap (key: slack)
+        # To override, uncomment:
+        # template_configmap: "my-custom-templates"
+        # template_configmap_key: "custom-slack"
 
     # -------------------------------------------------------------------------
     # Microsoft Teams
@@ -630,15 +625,10 @@ config:
         # secret_name: teams-webhook (key: webhook_url)
         # -- CEL expression to filter which events trigger notifications
         when: 'event.State == "success" || event.State == "failure" || event.State == "error"'
-        # -- Go template for the Teams message body. Available variables: .State, .RunName, .Namespace, .CommitSHA, .TargetURL
-        template: |
-          **Pipeline {{.State}}**
-          | Field | Value |
-          |-------|-------|
-          | Run | {{.RunName}} |
-          | Namespace | {{.Namespace}} |
-          | Commit | {{.CommitSHA}} |
-          {{if .TargetURL}}[View in Dashboard]({{.TargetURL}}){{end}}
+        # Uses default template from tekton-events-relay-templates ConfigMap (key: teams)
+        # To override, uncomment:
+        # template_configmap: "my-custom-templates"
+        # template_configmap_key: "custom-teams"
 
     # -------------------------------------------------------------------------
     # Discord
@@ -658,14 +648,10 @@ config:
         username: "Tekton CI"
         # -- CEL expression to filter which events trigger notifications
         when: 'event.Namespace == "staging" || event.Namespace == "production"'
-        # -- Go template for the Discord message body. Available variables: .State, .RunName, .Namespace, .CommitSHA, .TargetURL
-        template: |
-          **Pipeline {{.State}}** in `{{.Namespace}}`
-          ```
-          Run:    {{.RunName}}
-          Commit: {{.CommitSHA}}
-          ```
-          {{if .TargetURL}}[View in Dashboard]({{.TargetURL}}){{end}}
+        # Uses default template from tekton-events-relay-templates ConfigMap (key: discord)
+        # To override, uncomment:
+        # template_configmap: "my-custom-templates"
+        # template_configmap_key: "custom-discord"
 
     # -------------------------------------------------------------------------
     # PagerDuty
@@ -774,31 +760,38 @@ networkPolicy:
 # Templates allow you to reference and use custom notification message templates
 # from external ConfigMaps in your Kubernetes cluster.
 #
-# HOW TO REFERENCE TEMPLATES:
-#   1. Create a ConfigMap with your custom templates in the cluster:
-#      kubectl create configmap my-templates \
-#        --from-file=slack.tpl \
-#        --from-file=teams.tpl \
-#        -n my-namespace
+# HOW IT WORKS:
+#   By default, the chart creates a ConfigMap named 'tekton-events-relay-templates'
+#   containing type-based templates (e.g., 'pr_comment', 'slack', 'teams').
+#   Actions and notifiers automatically use these templates unless overridden.
 #
-#   2. In your notifier configuration (scm.github.actions or notifiers.*),
-#      reference the template file name using the ConfigMap path syntax:
-#      template: configmap://my-templates/slack.tpl
+# OVERRIDING TEMPLATES:
+#   To use a custom ConfigMap or key in your action/notifier configuration:
+#     template_configmap: "my-custom-templates"  # ConfigMap name (optional)
+#     template_configmap_key: "my-key"           # Key within ConfigMap (optional)
 #
-#   3. The application will load and use the template from the ConfigMap
-#      instead of the inline template defined in values.yaml
+#   If template_configmap is not specified, defaults to 'tekton-events-relay-templates'
+#   If template_configmap_key is not specified, defaults to type name (e.g., 'pr_comment', 'slack')
 #
-# OVERRIDING WITH CUSTOM CONFIGMAP:
-#   To use a custom ConfigMap instead of inline templates:
-#   1. Set templates.enabled: true
-#   2. Create a ConfigMap in your target namespace with template files
-#   3. Update notifier/action configs to reference: configmap://<configmap-name>/<filename>
-#   4. Ensure the ConfigMap is mounted as a volume in the deployment
+# EXAMPLES:
+#   # Use default ConfigMap with default key (type-based)
+#   - name: pr-comment
+#     type: pr_comment
+#     enabled: true
+#     # Automatically uses: configmap=tekton-events-relay-templates, key=pr_comment
 #
-# DEFAULT BEHAVIOR (templates.enabled: false):
-#   When disabled (default), all templates remain inline in values.yaml.
-#   No ConfigMap mounting occurs and no behavior changes from current setup.
-#   This ensures backward compatibility with existing deployments.
+#   # Use custom ConfigMap with default key
+#   - name: pr-comment
+#     type: pr_comment
+#     enabled: true
+#     # template_configmap: "my-templates"
+#     # Uses: configmap=my-templates, key=pr_comment
 #
-templates:
-  enabled: false
+#   # Use custom ConfigMap with custom key
+#   - name: pr-comment
+#     type: pr_comment
+#     enabled: true
+#     # template_configmap: "my-templates"
+#     # template_configmap_key: "custom-pr-template"
+#     # Uses: configmap=my-templates, key=custom-pr-template
+#

@@ -29,6 +29,9 @@ data:
 
     dashboard_url: {{ .Values.config.dashboard_url | quote }}
     dedupe_size: {{ .Values.config.dedupe_size }}
+    {{- if .Values.config.max_concurrency }}
+    max_concurrency: {{ .Values.config.max_concurrency }}
+    {{- end }}
 
     {{- if .Values.config.accumulator }}
     accumulator:
@@ -105,9 +108,8 @@ data:
               {{- if .when }}
               when: {{ .when | quote }}
               {{- end }}
-              {{- if .template }}
-              template: |
-{{ .template | nindent 16 }}
+              {{- if or (eq .type "pr_comment") (eq .type "issue_comment") (eq .type "discussion_comment") (eq .type "check_run") }}
+              template: /etc/templates/{{ .template_configmap | default (printf "%s-templates" (include "tekton-events-relay.fullname" $)) }}/{{ .template_configmap_key | default (include "tekton-events-relay.defaultTemplateKey" (dict "type" .type "provider" "github")) }}
               {{- end }}
               {{- if .success_label }}
               success_label: {{ .success_label | quote }}
@@ -155,6 +157,9 @@ data:
               enabled: {{ .enabled }}
               {{- if .when }}
               when: {{ .when | quote }}
+              {{- end }}
+              {{- if or (eq .type "pr_comment") (eq .type "issue_comment") }}
+              template: /etc/templates/{{ .template_configmap | default (printf "%s-templates" (include "tekton-events-relay.fullname" $)) }}/{{ .template_configmap_key | default (include "tekton-events-relay.defaultTemplateKey" (dict "type" .type "provider" "gitlab")) }}
               {{- end }}
               {{- if .success_label }}
               success_label: {{ .success_label | quote }}
@@ -285,9 +290,8 @@ data:
               {{- if .when }}
               when: {{ .when | quote }}
               {{- end }}
-              {{- if .template }}
-              template: |
-{{ .template | nindent 16 }}
+              {{- if or (eq .type "pr_comment") (eq .type "issue_comment") }}
+              template: /etc/templates/{{ .template_configmap | default (printf "%s-templates" (include "tekton-events-relay.fullname" $)) }}/{{ .template_configmap_key | default (include "tekton-events-relay.defaultTemplateKey" (dict "type" .type "provider" "gitea")) }}
               {{- end }}
               {{- if .success_label }}
               success_label: {{ .success_label | quote }}
@@ -342,13 +346,13 @@ data:
         {{- range .Values.config.notifiers.slack }}
         - name: {{ .name }}
           enabled: {{ .enabled }}
-          {{- if or .secret_name .bot_token }}
+          {{- if .auth }}
           auth:
-            {{- if .bot_token }}
+            {{- if .auth.bot_token }}
             bot_token:
               token_file: "/etc/secrets/slack/{{ .name }}/token"
-              channel_id: {{ .bot_token.channel_id | quote }}
-            {{- else }}
+              channel_id: {{ .auth.bot_token.channel_id | quote }}
+            {{- else if .auth.webhook_url_secret_name }}
             webhook_url_file: "/etc/secrets/slack/{{ .name }}/webhook_url"
             {{- end }}
           {{- end }}
@@ -364,10 +368,7 @@ data:
           {{- if .when }}
           when: {{ .when | quote }}
           {{- end }}
-          {{- if .template }}
-          template: |
-{{ .template | nindent 12 }}
-          {{- end }}
+          template: /etc/templates/{{ .template_configmap | default (printf "%s-templates" (include "tekton-events-relay.fullname" $)) }}/{{ .template_configmap_key | default (include "tekton-events-relay.defaultTemplateKey" (dict "type" "slack" "provider" "slack")) }}
         {{- end }}
       {{- end }}
       {{- if .Values.config.notifiers.teams }}
@@ -375,17 +376,19 @@ data:
         {{- range .Values.config.notifiers.teams }}
         - name: {{ .name }}
           enabled: {{ .enabled }}
-          {{- if .secret_name }}
+          {{- if .auth }}
+          {{- if .auth.webhook_url_secret_name }}
           auth:
             webhook_url_file: "/etc/secrets/teams/{{ .name }}/webhook_url"
+            {{- if .auth.webhook_url_key }}
+            webhook_url_key: {{ .auth.webhook_url_key | quote }}
+            {{- end }}
+          {{- end }}
           {{- end }}
           {{- if .when }}
           when: {{ .when | quote }}
           {{- end }}
-          {{- if .template }}
-          template: |
-{{ .template | nindent 12 }}
-          {{- end }}
+          template: /etc/templates/{{ .template_configmap | default (printf "%s-templates" (include "tekton-events-relay.fullname" $)) }}/{{ .template_configmap_key | default (include "tekton-events-relay.defaultTemplateKey" (dict "type" "teams" "provider" "teams")) }}
         {{- end }}
       {{- end }}
       {{- if .Values.config.notifiers.discord }}
@@ -393,13 +396,13 @@ data:
         {{- range .Values.config.notifiers.discord }}
         - name: {{ .name }}
           enabled: {{ .enabled }}
-          {{- if or .secret_name .bot_token }}
+          {{- if .auth }}
           auth:
-            {{- if .bot_token }}
+            {{- if .auth.bot_token }}
             bot_token:
               token_file: "/etc/secrets/discord/{{ .name }}/token"
-              channel_id: {{ .bot_token.channel_id | quote }}
-            {{- else }}
+              channel_id: {{ .auth.bot_token.channel_id | quote }}
+            {{- else if .auth.webhook_url_secret_name }}
             webhook_url_file: "/etc/secrets/discord/{{ .name }}/webhook_url"
             {{- end }}
           {{- end }}
@@ -412,10 +415,7 @@ data:
           {{- if .when }}
           when: {{ .when | quote }}
           {{- end }}
-          {{- if .template }}
-          template: |
-{{ .template | nindent 12 }}
-          {{- end }}
+          template: /etc/templates/{{ .template_configmap | default (printf "%s-templates" (include "tekton-events-relay.fullname" $)) }}/{{ .template_configmap_key | default (include "tekton-events-relay.defaultTemplateKey" (dict "type" "discord" "provider" "discord")) }}
         {{- end }}
       {{- end }}
       {{- if .Values.config.notifiers.pagerduty }}
@@ -423,9 +423,14 @@ data:
         {{- range .Values.config.notifiers.pagerduty }}
         - name: {{ .name }}
           enabled: {{ .enabled }}
-          {{- if .secret_name }}
+          {{- if .auth }}
+          {{- if .auth.integration_key_secret_name }}
           auth:
             integration_key_file: "/etc/secrets/pagerduty/{{ .name }}/integration_key"
+            {{- if .auth.integration_key_key }}
+            integration_key_key: {{ .auth.integration_key_key | quote }}
+            {{- end }}
+          {{- end }}
           {{- end }}
           {{- if .severity }}
           severity: {{ .severity | quote }}
@@ -440,9 +445,14 @@ data:
         {{- range .Values.config.notifiers.datadog }}
         - name: {{ .name }}
           enabled: {{ .enabled }}
-          {{- if .secret_name }}
+          {{- if .auth }}
+          {{- if .auth.api_key_secret_name }}
           auth:
             api_key_file: "/etc/secrets/datadog/{{ .name }}/api_key"
+            {{- if .auth.api_key_key }}
+            api_key_key: {{ .auth.api_key_key | quote }}
+            {{- end }}
+          {{- end }}
           {{- end }}
           {{- if .site }}
           site: {{ .site | quote }}
@@ -498,10 +508,7 @@ data:
           headers:
             {{- .headers | toYaml | nindent 12 }}
           {{- end }}
-          {{- if .template }}
-          template: |
-{{ .template | nindent 12 }}
-          {{- end }}
+          template: /etc/templates/{{ .template_configmap | default (printf "%s-templates" (include "tekton-events-relay.fullname" $)) }}/{{ .template_configmap_key | default "webhook-default.tmpl" }}
         {{- end }}
       {{- end }}
     {{- end }}

@@ -182,7 +182,7 @@ func TestIssueCommentHandler_Handle_Success(t *testing.T) {
 	h, err := NewIssueCommentHandler(IssueCommentConfig{
 		Token:    testHandlerToken,
 		BaseURL:  server.URL,
-		Template: "Run {{.RunName}} finished",
+		Template: "/tmp/tekton-test-templates/issue.tmpl",
 	}, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewIssueCommentHandler() unexpected error: %v", err)
@@ -210,7 +210,7 @@ func TestIssueCommentHandler_Handle_4xx(t *testing.T) {
 	h, err := NewIssueCommentHandler(IssueCommentConfig{
 		Token:    testHandlerToken,
 		BaseURL:  server.URL,
-		Template: "msg",
+		Template: "/tmp/tekton-test-templates/msg.tmpl",
 	}, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewIssueCommentHandler() unexpected error: %v", err)
@@ -283,7 +283,7 @@ func TestPRCommentHandler_Handle_Success(t *testing.T) {
 	h, err := NewPRCommentHandler(PRCommentConfig{
 		Token:    testHandlerToken,
 		BaseURL:  server.URL,
-		Template: "PR run done",
+		Template: "/tmp/tekton-test-templates/pr.tmpl",
 	}, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewPRCommentHandler() unexpected error: %v", err)
@@ -311,7 +311,7 @@ func TestPRCommentHandler_Handle_5xx(t *testing.T) {
 	h, err := NewPRCommentHandler(PRCommentConfig{
 		Token:    testHandlerToken,
 		BaseURL:  server.URL,
-		Template: "msg",
+		Template: "/tmp/tekton-test-templates/msg.tmpl",
 	}, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewPRCommentHandler() unexpected error: %v", err)

@@ -1,41 +1,119 @@
-{{- if .Values.templates.enabled }}
 apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: {{ include "tekton-events-relay.fullname" . }}-templates
-  labels:
-    {{- include "tekton-events-relay.labels" . | nindent 4 }}
-  {{- with (include "tekton-events-relay.annotations" .) }}
-  annotations:
-    {{- . | nindent 4 }}
-  {{- end }}
 data:
-  slack-default.tmpl: |
-    {{ "{{- if eq .State \"success\" -}}" }}
-    :white_check_mark: *Pipeline Success*
-    {{ "{{- else if eq .State \"failure\" -}}" }}
-    :x: *Pipeline Failed*
-    {{ "{{- else if eq .State \"error\" -}}" }}
-    :warning: *Pipeline Error*
-    {{ "{{- else -}}" }}
-    :hourglass_flowing_sand: *Pipeline {{ "{{.State}}" }}*
-    {{ "{{- end }}" }}
-    *Run:* {{ "`" }}{{ "{{.RunName}}" }}{{ "`" }}
+  accumulator-default.tmpl: |
+    Pipeline {{ "{{.State}}" }}
+
+    Run: {{ "{{.RunName}}" }}
     {{ "{{- if .PipelineName }}" }}
-    *Pipeline:* {{ "`" }}{{ "{{.PipelineName}}" }}{{ "`" }}
+    Pipeline: {{ "{{.PipelineName}}" }}
     {{ "{{- end }}" }}
-    *Namespace:* {{ "`" }}{{ "{{.Namespace}}" }}{{ "`" }}
+    Namespace: {{ "{{.Namespace}}" }}
     {{ "{{- if .CommitSHA }}" }}
-    *Commit:* {{ "`" }}{{ "{{.CommitSHA}}" }}{{ "`" }}
+    Commit: {{ "{{.CommitSHA}}" }}
     {{ "{{- end }}" }}
     {{ "{{- if .Context }}" }}
-    *Context:* {{ "`" }}{{ "{{.Context}}" }}{{ "`" }}
+    Context: {{ "{{.Context}}" }}
     {{ "{{- end }}" }}
     {{ "{{- if .Description }}" }}
-    *Description:* {{ "{{.Description}}" }}
+    Description: {{ "{{.Description}}" }}
+    {{ "{{- end }}" }}
+    {{ "{{- if .Results }}" }}
+    Results:
+    {{ "{{- range .Results }}" }}
+    - {{ "{{.Name}}" }}: {{ "{{.Value}}" }}
+    {{ "{{- end }}" }}
     {{ "{{- end }}" }}
     {{ "{{- if .TargetURL }}" }}
-    <{{ "{{.TargetURL}}" }}|View in Dashboard>
+    URL: {{ "{{.TargetURL}}" }}
+    {{ "{{- end }}" }}
+
+  azuredevops-comment.tmpl: |
+    ## Pipeline {{ "{{.State}}" }}
+
+    {{ "{{- if eq .State \"success\" }}" }}
+    ✅ Build succeeded
+    {{ "{{- else if eq .State \"failure\" }}" }}
+    ❌ Build failed
+    {{ "{{- else if eq .State \"error\" }}" }}
+    ⚠️ Build error
+    {{ "{{- else }}" }}
+    Build status: **{{ "{{.State}}" }}**
+    {{ "{{- end }}" }}
+
+    **Run:** {{ "{{ .RunName }}" }}
+    {{ "{{- if .PipelineName }}" }}
+    **Pipeline:** {{ "{{ .PipelineName }}" }}
+    {{ "{{- end }}" }}
+    {{ "{{- if .Namespace }}" }}
+    **Namespace:** {{ "{{ .Namespace }}" }}
+    {{ "{{- end }}" }}
+
+    {{ "{{- if .Description }}" }}
+
+    {{ "{{ .Description }}" }}
+    {{ "{{- end }}" }}
+
+    {{ "{{- if .Results }}" }}
+
+    **Results:**
+    {{ "{{- range .Results }}" }}
+    - {{ "{{ .Name }}" }}: {{ "{{ .Value }}" }}
+    {{ "{{- end }}" }}
+    {{ "{{- end }}" }}
+
+    {{ "{{- if .TargetURL }}" }}
+
+    [View Pipeline]({{ "{{ .TargetURL }}" }})
+    {{ "{{- end }}" }}
+
+  bitbucket-comment.tmpl: |
+    ## Pipeline {{ "{{.State}}" }}
+
+    {{ "{{- if eq .State \"success\" }}" }}
+    ✅ Pipeline completed successfully
+    {{ "{{- else if eq .State \"failure\" }}" }}
+    ❌ Pipeline failed
+    {{ "{{- else if eq .State \"error\" }}" }}
+    ⚠️ Pipeline error
+    {{ "{{- else }}" }}
+    Pipeline status: **{{ "{{.State}}" }}**
+    {{ "{{- end }}" }}
+
+    **Run:** {{ "{{ .RunName }}" }}
+    {{ "{{- if .PipelineName }}" }}
+    **Pipeline:** {{ "{{ .PipelineName }}" }}
+    {{ "{{- end }}" }}
+    {{ "{{- if .CommitSHA }}" }}
+    **Commit:** {{ "{{ .CommitSHA }}" }}
+    {{ "{{- end }}" }}
+
+    {{ "{{- if .Description }}" }}
+
+    {{ "{{ .Description }}" }}
+    {{ "{{- end }}" }}
+
+    {{ "{{- if .TargetURL }}" }}
+
+    [View Details]({{ "{{ .TargetURL }}" }})
+    {{ "{{- end }}" }}
+
+  datadog-default.tmpl: |
+    Pipeline {{ "{{.State}}" }} - {{ "{{.RunName}}" }}
+    {{ "{{- if .PipelineName }}" }}
+    Pipeline: {{ "{{.PipelineName}}" }}
+    {{ "{{- end }}" }}
+    Namespace: {{ "{{.Namespace}}" }}
+    {{ "{{- if .CommitSHA }}" }}
+    Commit: {{ "{{.CommitSHA}}" }}
+    {{ "{{- end }}" }}
+    {{ "{{- if .Context }}" }}
+    Context: {{ "{{.Context}}" }}
+    {{ "{{- end }}" }}
+    {{ "{{- if .Description }}" }}
+    Description: {{ "{{.Description}}" }}
+    {{ "{{- end }}" }}
+    {{ "{{- if .TargetURL }}" }}
+    URL: {{ "{{.TargetURL}}" }}
     {{ "{{- end }}" }}
 
   discord-default.tmpl: |
@@ -59,28 +137,165 @@ data:
     [View in Dashboard]({{ "{{.TargetURL}}" }})
     {{ "{{- end }}" }}
 
-  teams-default.tmpl: |
-    **Pipeline {{ "{{.State}}" }}**
+  gitea-issue-comment.tmpl: |
+    ## Pipeline {{ "{{.State}}" }}
 
-    | Field | Value |
-    |-------|-------|
-    | Run | {{ "{{.RunName}}" }} |
-    | Namespace | {{ "{{.Namespace}}" }} |
-    {{ "{{- if .PipelineName }}" }}
-    | Pipeline | {{ "{{.PipelineName}}" }} |
+    {{ "{{- if eq .State \"success\" }}" }}
+    ✅ Pipeline completed successfully
+    {{ "{{- else if eq .State \"failure\" }}" }}
+    ❌ Pipeline failed
+    {{ "{{- else if eq .State \"error\" }}" }}
+    ⚠️ Pipeline error
+    {{ "{{- else }}" }}
+    Pipeline finished: **{{ "{{.State}}" }}**
     {{ "{{- end }}" }}
-    {{ "{{- if .CommitSHA }}" }}
-    | Commit | {{ "{{.CommitSHA}}" }} |
-    {{ "{{- end }}" }}
+
+    **Run:** {{ "{{ .RunName }}" }}
     {{ "{{- if .Context }}" }}
-    | Context | {{ "{{.Context}}" }} |
+    **Context:** {{ "{{ .Context }}" }}
     {{ "{{- end }}" }}
+
     {{ "{{- if .Description }}" }}
-    | Description | {{ "{{.Description}}" }} |
+
+    {{ "{{ .Description }}" }}
     {{ "{{- end }}" }}
 
     {{ "{{- if .TargetURL }}" }}
-    [View in Dashboard]({{ "{{.TargetURL}}" }})
+
+    [View Results]({{ "{{ .TargetURL }}" }})
+    {{ "{{- end }}" }}
+
+  gitea-pr-comment.tmpl: |
+    ## Pipeline {{ "{{.State}}" }}
+
+    {{ "{{- if eq .State \"success\" }}" }}
+    ✅ Pipeline completed successfully
+    {{ "{{- else if eq .State \"failure\" }}" }}
+    ❌ Pipeline failed
+    {{ "{{- else if eq .State \"error\" }}" }}
+    ⚠️ Pipeline error
+    {{ "{{- else }}" }}
+    Pipeline status: **{{ "{{.State}}" }}**
+    {{ "{{- end }}" }}
+
+    **Run:** {{ "{{ .RunName }}" }}
+    {{ "{{- if .PipelineName }}" }}
+    **Pipeline:** {{ "{{ .PipelineName }}" }}
+    {{ "{{- end }}" }}
+    {{ "{{- if .CommitSHA }}" }}
+    **Commit:** {{ "{{ .CommitSHA }}" }}
+    {{ "{{- end }}" }}
+
+    {{ "{{- if .Description }}" }}
+
+    {{ "{{ .Description }}" }}
+    {{ "{{- end }}" }}
+
+    {{ "{{- if .Results }}" }}
+
+    **Results:**
+    {{ "{{- range .Results }}" }}
+    - **{{ "{{ .Name }}" }}:** {{ "{{ .Value }}" }}
+    {{ "{{- end }}" }}
+    {{ "{{- end }}" }}
+
+    {{ "{{- if .TargetURL }}" }}
+
+    [View Results]({{ "{{ .TargetURL }}" }})
+    {{ "{{- end }}" }}
+
+  github-checkrun.tmpl: |
+    ## Build Result: {{ "{{.State}}" }}
+
+    **Run:** {{ "{{.RunName}}" }}
+    {{ "{{- if .PipelineName }}" }}
+    **Pipeline:** {{ "{{.PipelineName}}" }}
+    {{ "{{- end }}" }}
+    **Namespace:** {{ "{{.Namespace}}" }}
+
+    {{ "{{- if .TaskCount }}" }}
+    **Tasks Executed:** {{ "{{.TaskCount}}" }}
+    {{ "{{- end }}" }}
+
+    {{ "{{- if .Description }}" }}
+
+    ### Summary
+    {{ "{{.Description}}" }}
+    {{ "{{- end }}" }}
+
+    {{ "{{- if .Results }}" }}
+
+    ### Results
+    {{ "{{- range .Results }}" }}
+    - **{{ "{{ .Name }}" }}:** {{ "{{ .Value }}" }}
+    {{ "{{- end }}" }}
+    {{ "{{- end }}" }}
+
+    {{ "{{- if .TargetURL }}" }}
+
+    [View Logs]({{ "{{.TargetURL}}" }})
+    {{ "{{- end }}" }}
+
+  github-discussion-comment.tmpl: |
+    ## Pipeline {{ "{{.State}}" }}
+
+    {{ "{{- if eq .State \"success\" }}" }}
+    :white_check_mark: Your pipeline completed successfully!
+    {{ "{{- else if eq .State \"failure\" }}" }}
+    :x: Pipeline failed
+    {{ "{{- else if eq .State \"error\" }}" }}
+    :warning: Pipeline encountered an error
+    {{ "{{- else }}" }}
+    Pipeline is currently: **{{ "{{.State}}" }}**
+    {{ "{{- end }}" }}
+
+    **Run:** {{ "{{ .RunName }}" }}
+    {{ "{{- if .PipelineName }}" }}
+    **Pipeline:** {{ "{{ .PipelineName }}" }}
+    {{ "{{- end }}" }}
+    {{ "{{- if .CommitSHA }}" }}
+    **Commit:** {{ "{{ .CommitSHA }}" }}
+    {{ "{{- end }}" }}
+
+    {{ "{{- if .Description }}" }}
+
+    {{ "{{ .Description }}" }}
+    {{ "{{- end }}" }}
+
+    {{ "{{- if .TargetURL }}" }}
+
+    [View Full Details]({{ "{{ .TargetURL }}" }})
+    {{ "{{- end }}" }}
+
+  github-issue-comment.tmpl: |
+    ## Pipeline {{ "{{.State}}" }}
+
+    {{ "{{- if eq .State \"success\" }}" }}
+    :white_check_mark: Pipeline completed successfully
+    {{ "{{- else if eq .State \"failure\" }}" }}
+    :x: Pipeline failed
+    {{ "{{- else if eq .State \"error\" }}" }}
+    :warning: Pipeline encountered an error
+    {{ "{{- else }}" }}
+    Pipeline status: **{{ "{{.State}}" }}**
+    {{ "{{- end }}" }}
+
+    **Run:** {{ "{{ .RunName }}" }}
+    {{ "{{- if .Context }}" }}
+    **Context:** {{ "{{ .Context }}" }}
+    {{ "{{- end }}" }}
+    {{ "{{- if .Namespace }}" }}
+    **Namespace:** {{ "{{ .Namespace }}" }}
+    {{ "{{- end }}" }}
+
+    {{ "{{- if .Description }}" }}
+
+    {{ "{{ .Description }}" }}
+    {{ "{{- end }}" }}
+
+    {{ "{{- if .TargetURL }}" }}
+
+    [View Details]({{ "{{ .TargetURL }}" }})
     {{ "{{- end }}" }}
 
   github-pr-comment.tmpl: |
@@ -127,100 +342,6 @@ data:
     [View Full Logs]({{ "{{ .TargetURL }}" }})
     {{ "{{- end }}" }}
 
-  github-issue-comment.tmpl: |
-    ## Pipeline {{ "{{.State}}" }}
-
-    {{ "{{- if eq .State \"success\" }}" }}
-    :white_check_mark: Pipeline completed successfully
-    {{ "{{- else if eq .State \"failure\" }}" }}
-    :x: Pipeline failed
-    {{ "{{- else if eq .State \"error\" }}" }}
-    :warning: Pipeline encountered an error
-    {{ "{{- else }}" }}
-    Pipeline status: **{{ "{{.State}}" }}**
-    {{ "{{- end }}" }}
-
-    **Run:** {{ "{{ .RunName }}" }}
-    {{ "{{- if .Context }}" }}
-    **Context:** {{ "{{ .Context }}" }}
-    {{ "{{- end }}" }}
-    {{ "{{- if .Namespace }}" }}
-    **Namespace:** {{ "{{ .Namespace }}" }}
-    {{ "{{- end }}" }}
-
-    {{ "{{- if .Description }}" }}
-
-    {{ "{{ .Description }}" }}
-    {{ "{{- end }}" }}
-
-    {{ "{{- if .TargetURL }}" }}
-
-    [View Details]({{ "{{ .TargetURL }}" }})
-    {{ "{{- end }}" }}
-
-  github-discussion-comment.tmpl: |
-    ## Pipeline {{ "{{.State}}" }}
-
-    {{ "{{- if eq .State \"success\" }}" }}
-    :white_check_mark: Your pipeline completed successfully!
-    {{ "{{- else if eq .State \"failure\" }}" }}
-    :x: Pipeline failed
-    {{ "{{- else if eq .State \"error\" }}" }}
-    :warning: Pipeline encountered an error
-    {{ "{{- else }}" }}
-    Pipeline is currently: **{{ "{{.State}}" }}**
-    {{ "{{- end }}" }}
-
-    **Run:** {{ "{{ .RunName }}" }}
-    {{ "{{- if .PipelineName }}" }}
-    **Pipeline:** {{ "{{ .PipelineName }}" }}
-    {{ "{{- end }}" }}
-    {{ "{{- if .CommitSHA }}" }}
-    **Commit:** {{ "{{ .CommitSHA }}" }}
-    {{ "{{- end }}" }}
-
-    {{ "{{- if .Description }}" }}
-
-    {{ "{{ .Description }}" }}
-    {{ "{{- end }}" }}
-
-    {{ "{{- if .TargetURL }}" }}
-
-    [View Full Details]({{ "{{ .TargetURL }}" }})
-    {{ "{{- end }}" }}
-
-  github-checkrun.tmpl: |
-    ## Build Result: {{ "{{.State}}" }}
-
-    **Run:** {{ "{{.RunName}}" }}
-    {{ "{{- if .PipelineName }}" }}
-    **Pipeline:** {{ "{{.PipelineName}}" }}
-    {{ "{{- end }}" }}
-    **Namespace:** {{ "{{.Namespace}}" }}
-
-    {{ "{{- if .TaskCount }}" }}
-    **Tasks Executed:** {{ "{{.TaskCount}}" }}
-    {{ "{{- end }}" }}
-
-    {{ "{{- if .Description }}" }}
-
-    ### Summary
-    {{ "{{.Description}}" }}
-    {{ "{{- end }}" }}
-
-    {{ "{{- if .Results }}" }}
-
-    ### Results
-    {{ "{{- range .Results }}" }}
-    - **{{ "{{ .Name }}" }}:** {{ "{{ .Value }}" }}
-    {{ "{{- end }}" }}
-    {{ "{{- end }}" }}
-
-    {{ "{{- if .TargetURL }}" }}
-
-    [View Logs]({{ "{{.TargetURL}}" }})
-    {{ "{{- end }}" }}
-
   gitlab-note.tmpl: |
     ## Pipeline {{ "{{.State}}" }}
 
@@ -263,172 +384,40 @@ data:
     [View Details]({{ "{{ .TargetURL }}" }})
     {{ "{{- end }}" }}
 
-  gitea-pr-comment.tmpl: |
-    ## Pipeline {{ "{{.State}}" }}
-
-    {{ "{{- if eq .State \"success\" }}" }}
-    ✅ Pipeline completed successfully
-    {{ "{{- else if eq .State \"failure\" }}" }}
-    ❌ Pipeline failed
-    {{ "{{- else if eq .State \"error\" }}" }}
-    ⚠️ Pipeline error
-    {{ "{{- else }}" }}
-    Pipeline status: **{{ "{{.State}}" }}**
-    {{ "{{- end }}" }}
-
-    **Run:** {{ "{{ .RunName }}" }}
-    {{ "{{- if .PipelineName }}" }}
-    **Pipeline:** {{ "{{ .PipelineName }}" }}
-    {{ "{{- end }}" }}
-    {{ "{{- if .CommitSHA }}" }}
-    **Commit:** {{ "{{ .CommitSHA }}" }}
-    {{ "{{- end }}" }}
-
-    {{ "{{- if .Description }}" }}
-
-    {{ "{{ .Description }}" }}
-    {{ "{{- end }}" }}
-
-    {{ "{{- if .Results }}" }}
-
-    **Results:**
-    {{ "{{- range .Results }}" }}
-    - **{{ "{{ .Name }}" }}:** {{ "{{ .Value }}" }}
-    {{ "{{- end }}" }}
-    {{ "{{- end }}" }}
-
-    {{ "{{- if .TargetURL }}" }}
-
-    [View Results]({{ "{{ .TargetURL }}" }})
-    {{ "{{- end }}" }}
-
-  gitea-issue-comment.tmpl: |
-    ## Pipeline {{ "{{.State}}" }}
-
-    {{ "{{- if eq .State \"success\" }}" }}
-    ✅ Pipeline completed successfully
-    {{ "{{- else if eq .State \"failure\" }}" }}
-    ❌ Pipeline failed
-    {{ "{{- else if eq .State \"error\" }}" }}
-    ⚠️ Pipeline error
-    {{ "{{- else }}" }}
-    Pipeline finished: **{{ "{{.State}}" }}**
-    {{ "{{- end }}" }}
-
-    **Run:** {{ "{{ .RunName }}" }}
-    {{ "{{- if .Context }}" }}
-    **Context:** {{ "{{ .Context }}" }}
-    {{ "{{- end }}" }}
-
-    {{ "{{- if .Description }}" }}
-
-    {{ "{{ .Description }}" }}
-    {{ "{{- end }}" }}
-
-    {{ "{{- if .TargetURL }}" }}
-
-    [View Results]({{ "{{ .TargetURL }}" }})
-    {{ "{{- end }}" }}
-
-  bitbucket-comment.tmpl: |
-    ## Pipeline {{ "{{.State}}" }}
-
-    {{ "{{- if eq .State \"success\" }}" }}
-    ✅ Pipeline completed successfully
-    {{ "{{- else if eq .State \"failure\" }}" }}
-    ❌ Pipeline failed
-    {{ "{{- else if eq .State \"error\" }}" }}
-    ⚠️ Pipeline error
-    {{ "{{- else }}" }}
-    Pipeline status: **{{ "{{.State}}" }}**
-    {{ "{{- end }}" }}
-
-    **Run:** {{ "{{ .RunName }}" }}
-    {{ "{{- if .PipelineName }}" }}
-    **Pipeline:** {{ "{{ .PipelineName }}" }}
-    {{ "{{- end }}" }}
-    {{ "{{- if .CommitSHA }}" }}
-    **Commit:** {{ "{{ .CommitSHA }}" }}
-    {{ "{{- end }}" }}
-
-    {{ "{{- if .Description }}" }}
-
-    {{ "{{ .Description }}" }}
-    {{ "{{- end }}" }}
-
-    {{ "{{- if .TargetURL }}" }}
-
-    [View Details]({{ "{{ .TargetURL }}" }})
-    {{ "{{- end }}" }}
-
-  azuredevops-comment.tmpl: |
-    ## Pipeline {{ "{{.State}}" }}
-
-    {{ "{{- if eq .State \"success\" }}" }}
-    ✅ Build succeeded
-    {{ "{{- else if eq .State \"failure\" }}" }}
-    ❌ Build failed
-    {{ "{{- else if eq .State \"error\" }}" }}
-    ⚠️ Build error
-    {{ "{{- else }}" }}
-    Build status: **{{ "{{.State}}" }}**
-    {{ "{{- end }}" }}
-
-    **Run:** {{ "{{ .RunName }}" }}
-    {{ "{{- if .PipelineName }}" }}
-    **Pipeline:** {{ "{{ .PipelineName }}" }}
-    {{ "{{- end }}" }}
-    {{ "{{- if .Namespace }}" }}
-    **Namespace:** {{ "{{ .Namespace }}" }}
-    {{ "{{- end }}" }}
-
-    {{ "{{- if .Description }}" }}
-
-    {{ "{{ .Description }}" }}
-    {{ "{{- end }}" }}
-
-    {{ "{{- if .Results }}" }}
-
-    **Results:**
-    {{ "{{- range .Results }}" }}
-    - {{ "{{ .Name }}" }}: {{ "{{ .Value }}" }}
-    {{ "{{- end }}" }}
-    {{ "{{- end }}" }}
-
-    {{ "{{- if .TargetURL }}" }}
-
-    [View Pipeline]({{ "{{ .TargetURL }}" }})
-    {{ "{{- end }}" }}
-
-  sourcehut-build.tmpl: |
+  pagerduty-default.tmpl: |
+    {{ "{{- if eq .State \"success\" -}}" }}
+    Pipeline Success
+    {{ "{{- else if eq .State \"failure\" -}}" }}
+    Pipeline Failed
+    {{ "{{- else if eq .State \"error\" -}}" }}
+    Pipeline Error
+    {{ "{{- else -}}" }}
     Pipeline {{ "{{.State}}" }}
+    {{ "{{- end }}" }}
 
     Run: {{ "{{.RunName}}" }}
     {{ "{{- if .PipelineName }}" }}
     Pipeline: {{ "{{.PipelineName}}" }}
     {{ "{{- end }}" }}
+    Namespace: {{ "{{.Namespace}}" }}
     {{ "{{- if .CommitSHA }}" }}
     Commit: {{ "{{.CommitSHA}}" }}
     {{ "{{- end }}" }}
     {{ "{{- if .Context }}" }}
     Context: {{ "{{.Context}}" }}
     {{ "{{- end }}" }}
-
     {{ "{{- if .Description }}" }}
-
-    {{ "{{.Description}}" }}
+    Description: {{ "{{.Description}}" }}
     {{ "{{- end }}" }}
-
-    {{ "{{- if .Results }}" }}
-
-    Results:
-    {{ "{{- range .Results }}" }}
-    - {{ "{{.Name}}" }}: {{ "{{.Value}}" }}
-    {{ "{{- end }}" }}
-    {{ "{{- end }}" }}
-
     {{ "{{- if .TargetURL }}" }}
-
-    View: {{ "{{.TargetURL}}" }}
+    URL: {{ "{{.TargetURL}}" }}
     {{ "{{- end }}" }}
-{{- end }}
+kind: ConfigMap
+metadata:
+  labels:
+    {{- include "tekton-events-relay.labels" . | nindent 4 }}
+  name: {{ include "tekton-events-relay.fullname" . }}-templates
+  {{- with (include "tekton-events-relay.annotations" .) }}
+  annotations:
+    {{- . | nindent 4 }}
+  {{- end }}

@@ -31,6 +31,40 @@ const (
 	msgBuildAllFailed     = "BuildAll failed: %v"
 )
 
+func TestMain(m *testing.M) {
+	// Setup: create template files used by tests
+	templateDir := "/tmp/tekton-test-templates"
+	if err := os.MkdirAll(templateDir, 0750); err != nil {
+		panic(err)
+	}
+
+	templates := map[string]string{
+		"t.tmpl":          "Pipeline {{.State}} for {{.RunName}}",
+		"test.tmpl":       "Test: {{.State}}",
+		"issue.tmpl":      "Issue: {{.State}}",
+		"discussion.tmpl": "Discussion: {{.State}}",
+		"gitea.tmpl":      "Gitea: {{.State}}",
+		"checkrun.tmpl":   "Check: {{.State}}",
+		"pr.tmpl":         "PR: {{.State}}",
+		"msg.tmpl":        "Message: {{.State}}",
+	}
+
+	for name, content := range templates {
+		path := filepath.Join(templateDir, name)
+		if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+			panic(err)
+		}
+	}
+
+	// Run tests
+	code := m.Run()
+
+	// Cleanup
+	_ = os.RemoveAll(templateDir)
+
+	os.Exit(code)
+}
+
 // unmarshalYAML is a helper to unmarshal YAML into a config struct.
 // This is necessary because Instance structs have private fields and cannot be constructed with struct literals.
 func unmarshalYAML(t *testing.T, yamlStr string) *config.Config {
@@ -347,7 +381,7 @@ notifiers:
 				Name:     "bad-cel",
 				Type:     config.ActionTypePRComment,
 				Enabled:  true,
-				Template: "t",
+				Template: "/tmp/tekton-test-templates/t.tmpl",
 				When:     "invalid !!! syntax",
 			},
 		})
@@ -386,18 +420,18 @@ func TestBuildAll(t *testing.T) {
 				Name:     testPRComment,
 				Type:     config.ActionTypePRComment,
 				Enabled:  true,
-				Template: "Test template",
+				Template: "/tmp/tekton-test-templates/test.tmpl",
 			},
 			{
 				Name:     testIssueComment,
 				Type:     config.ActionTypeIssueComment,
 				Enabled:  true,
-				Template: "Issue template"},
+				Template: "/tmp/tekton-test-templates/issue.tmpl"},
 			{
 				Name:     testDiscussionComment,
 				Type:     config.ActionTypeDiscussionComment,
 				Enabled:  true,
-				Template: "Discussion template"},
+				Template: "/tmp/tekton-test-templates/discussion.tmpl"},
 			{
 				Name:         testLabel,
 				Type:         config.ActionTypeLabel,
@@ -458,7 +492,7 @@ func TestBuildAll(t *testing.T) {
         - name: ` + testPRComment + `
           type: pr_comment
           enabled: true
-          template: "Gitea PR comment"`
+          template: "/tmp/tekton-test-templates/gitea.tmpl"`
 
 		cfg := unmarshalYAML(t, yamlStr)
 
@@ -544,7 +578,7 @@ func TestBuildAll(t *testing.T) {
 				Name:     testPRComment,
 				Type:     config.ActionTypePRComment,
 				Enabled:  true,
-				Template: "Test template", When: "event.State == 'success'",
+				Template: "/tmp/tekton-test-templates/test.tmpl", When: "event.State == 'success'",
 			},
 		})
 
@@ -594,7 +628,7 @@ func TestBuildAll(t *testing.T) {
 				Name:     testPRComment,
 				Type:     config.ActionTypePRComment,
 				Enabled:  true,
-				Template: "Test template", When: "invalid CEL syntax !!!",
+				Template: "/tmp/tekton-test-templates/test.tmpl", When: "invalid CEL syntax !!!",
 			},
 		})
 

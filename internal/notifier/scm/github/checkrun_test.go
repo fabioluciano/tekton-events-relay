@@ -181,7 +181,7 @@ func TestCheckRunHandler_Template(t *testing.T) {
 	h, err := NewCheckRunHandler(CheckRunConfig{
 		Token:    "token", //nolint:goconst
 		BaseURL:  server.URL,
-		Template: "Run: {{.RunName}} | State: {{.State}}",
+		Template: "/tmp/tekton-test-templates/checkrun.tmpl",
 	}, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewCheckRunHandler: %v", err)

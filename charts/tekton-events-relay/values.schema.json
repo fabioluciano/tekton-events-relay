@@ -475,6 +475,14 @@
                   "template": {
                     "type": "string",
                     "description": "Go template for the Slack message body. Available variables: .State, .RunName, .CommitSHA, .TargetURL"
+                  },
+                  "template_configmap": {
+                    "type": "string",
+                    "description": "Name of ConfigMap containing external template files"
+                  },
+                  "template_configmap_key": {
+                    "type": "string",
+                    "description": "Key within the ConfigMap for the template file"
                   }
                 },
                 "required": [
@@ -512,6 +520,14 @@
                   "template": {
                     "type": "string",
                     "description": "Go template for the Teams message body. Available variables: .State, .RunName, .Namespace, .CommitSHA, .TargetURL"
+                  },
+                  "template_configmap": {
+                    "type": "string",
+                    "description": "Name of ConfigMap containing external template files"
+                  },
+                  "template_configmap_key": {
+                    "type": "string",
+                    "description": "Key within the ConfigMap for the template file"
                   }
                 },
                 "required": [
@@ -573,6 +589,14 @@
                   "template": {
                     "type": "string",
                     "description": "Go template for the Discord message body. Available variables: .State, .RunName, .Namespace, .CommitSHA, .TargetURL"
+                  },
+                  "template_configmap": {
+                    "type": "string",
+                    "description": "Name of ConfigMap containing external template files"
+                  },
+                  "template_configmap_key": {
+                    "type": "string",
+                    "description": "Key within the ConfigMap for the template file"
                   }
                 },
                 "required": [
@@ -1442,15 +1466,7 @@
       "title": "Template Configuration",
       "description": "Configuration for external template ConfigMaps",
       "properties": {
-        "enabled": {
-          "type": "boolean",
-          "description": "Enable template ConfigMap mounting",
-          "default": false
-        }
-      },
-      "required": [
-        "enabled"
-      ]
+      }
     }
   },
   "$defs": {
@@ -1488,6 +1504,14 @@
         "template": {
           "type": "string",
           "description": "Go template for the notification body"
+        },
+        "template_configmap": {
+          "type": "string",
+          "description": "Name of ConfigMap containing external template files"
+        },
+        "template_configmap_key": {
+          "type": "string",
+          "description": "Key within the ConfigMap for the template file"
         },
         "filter": {
           "type": "object",

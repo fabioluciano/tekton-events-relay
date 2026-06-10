@@ -332,9 +332,19 @@ func (a *statusHandlerAdapter) Type() notifier.ActionType {
 }
 
 func (a *statusHandlerAdapter) Handle(ctx context.Context, e domain.Event) error {
-	// Apply state filtering
-	if !notifier.ShouldNotify(a.notifyOn, e.State) {
-		return nil // Skip
+	// Apply state filtering: if notifyOn is empty, match all; otherwise check if state matches
+	if len(a.notifyOn) > 0 {
+		stateStr := string(e.State)
+		match := false
+		for _, s := range a.notifyOn {
+			if s == stateStr {
+				match = true
+				break
+			}
+		}
+		if !match {
+			return nil // Skip
+		}
 	}
 
 	// Delegate to wrapped handler

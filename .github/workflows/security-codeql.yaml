@@ -2,12 +2,11 @@
 name: CodeQL Analysis
 
 on:
-  push:
-    branches: ["main", "develop"]
   pull_request:
     branches: ["main", "develop"]
   schedule:
     - cron: "19 2 * * 5"
+  workflow_call:
 
 permissions:
   security-events: write

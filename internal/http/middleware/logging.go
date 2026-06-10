@@ -103,11 +103,3 @@ func generateRequestID() string {
 	}
 	return "req_" + hex.EncodeToString(b)
 }
-
-// RequestIDFromContext extracts the request ID from context.
-func RequestIDFromContext(ctx context.Context) string {
-	if id, ok := ctx.Value(requestIDKey).(string); ok {
-		return id
-	}
-	return ""
-}

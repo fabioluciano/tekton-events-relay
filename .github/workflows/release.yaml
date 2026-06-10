@@ -1,5 +1,5 @@
 # Workflow: Release
-# Runs on: main (official releases) and rc/** (prereleases).
+# Runs on: push to main (releases) and rc/** (prereleases)
 # Job 1-3 (ci-*): validate code, Docker, Helm
 # Job 4 (release): runs semantic-release to compute next version,
 #   create Git tag, generate CHANGELOG, and publish GitHub Release.
@@ -57,6 +57,7 @@ jobs:
     secrets: inherit
     permissions:
       security-events: write
+      packages: read
       actions: read
       contents: read
 

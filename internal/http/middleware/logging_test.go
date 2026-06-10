@@ -50,7 +50,10 @@ func TestRequestLogging(t *testing.T) {
 			// Create test handler
 			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				// Verify request ID in context
-				requestID := RequestIDFromContext(r.Context())
+				var requestID string
+				if id, ok := r.Context().Value(requestIDKey).(string); ok {
+					requestID = id
+				}
 				if tt.expectRequestID && requestID == "" {
 					t.Error("Expected request ID in context, got empty")
 				}
@@ -143,7 +146,10 @@ func TestRequestIDFromContext(t *testing.T) {
 		logger := zap.New(core)
 
 		handler := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-			id := RequestIDFromContext(r.Context())
+			var id string
+			if val, ok := r.Context().Value(requestIDKey).(string); ok {
+				id = val
+			}
 			if id != "test-123" {
 				t.Errorf("Expected request ID 'test-123', got '%s'", id)
 			}
@@ -161,7 +167,10 @@ func TestRequestIDFromContext(t *testing.T) {
 
 	t.Run("returns empty string when not present", func(t *testing.T) {
 		ctx := context.Background()
-		id := RequestIDFromContext(ctx)
+		var id string
+		if val, ok := ctx.Value(requestIDKey).(string); ok {
+			id = val
+		}
 		if id != "" {
 			t.Errorf("Expected empty string, got '%s'", id)
 		}

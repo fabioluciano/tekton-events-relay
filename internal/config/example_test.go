@@ -5,7 +5,7 @@ import (
 )
 
 func TestExampleConfigYAML(t *testing.T) {
-	cfg, err := Load("../../docs/examples/config.yaml")
+	cfg, err := Load("../../wiki/examples/config.yaml")
 	if err != nil {
 		t.Fatalf("Failed to parse examples/config.yaml: %v", err)
 	}
@@ -39,7 +39,7 @@ func TestExampleConfigYAML(t *testing.T) {
 }
 
 func TestExampleConfigWhenFields(t *testing.T) {
-	cfg, err := Load("../../docs/examples/config.yaml")
+	cfg, err := Load("../../wiki/examples/config.yaml")
 	if err != nil {
 		t.Fatalf("Failed to parse examples/config.yaml: %v", err)
 	}

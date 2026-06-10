@@ -63,19 +63,3 @@ func ResolveWithReader(filePath string, reader FileReader, log *zap.Logger) (str
 
 	return trimmed, nil
 }
-
-// CheckAccess verifies that a secret file is readable.
-// Returns nil if the file exists and is readable, error otherwise.
-func CheckAccess(filePath string) error {
-	return CheckAccessWithReader(filePath, DefaultReader)
-}
-
-// CheckAccessWithReader verifies secret file accessibility with a custom FileReader.
-func CheckAccessWithReader(filePath string, reader FileReader) error {
-	if filePath == "" {
-		return nil // Empty path is valid (means secret not configured)
-	}
-
-	_, err := reader.ReadFile(filePath)
-	return err
-}

@@ -154,17 +154,3 @@ func (b *Base) Send(ctx context.Context, e domain.Event) error {
 func DefaultHTTPClient() *http.Client {
 	return &http.Client{Timeout: 10 * time.Second}
 }
-
-// ShouldNotify returns true if state matches any entry in notifyOn, or if notifyOn is empty.
-func ShouldNotify(notifyOn []string, state domain.State) bool {
-	if len(notifyOn) == 0 {
-		return true
-	}
-	stateStr := string(state)
-	for _, s := range notifyOn {
-		if s == stateStr {
-			return true
-		}
-	}
-	return false
-}

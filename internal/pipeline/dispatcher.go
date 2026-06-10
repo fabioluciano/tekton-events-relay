@@ -31,6 +31,8 @@ type Dispatcher struct {
 	log            *zap.Logger
 	collectors     *metrics.Collectors
 	maxConcurrency int
+	handlerTimeout time.Duration
+	status         *StatusTracker
 }
 
 // NewDispatcher creates a new Dispatcher with the given registry and logger.
@@ -41,6 +43,19 @@ func NewDispatcher(reg HandlerSource, log *zap.Logger, collectors *metrics.Colle
 		collectors:     collectors,
 		maxConcurrency: maxConcurrency,
 	}
+}
+
+// WithHandlerTimeout sets a per-handler execution deadline so one slow
+// provider cannot stall the whole dispatch. Zero disables the deadline.
+func (d *Dispatcher) WithHandlerTimeout(timeout time.Duration) *Dispatcher {
+	d.handlerTimeout = timeout
+	return d
+}
+
+// WithStatusTracker records per-handler outcomes for the /readyz endpoint.
+func (d *Dispatcher) WithStatusTracker(t *StatusTracker) *Dispatcher {
+	d.status = t
+	return d
 }
 
 // Handle dispatches the event to all registered action handlers.
@@ -88,9 +103,23 @@ func (d *Dispatcher) Handle(ctx context.Context, env *event.Envelope) error {
 				),
 			)
 
+			if d.handlerTimeout > 0 {
+				var cancel context.CancelFunc
+				hCtx, cancel = context.WithTimeout(hCtx, d.handlerTimeout)
+				defer cancel()
+			}
+
 			start := time.Now()
 			err := h.Handle(hCtx, env.Report)
 			duration := time.Since(start)
+
+			if err != nil && errors.Is(err, context.DeadlineExceeded) && d.collectors != nil {
+				d.collectors.HandlerTimeouts.WithLabelValues(h.Name()).Inc()
+			}
+			d.status.Observe(h.Name(), err)
+			if d.collectors != nil {
+				d.collectors.NotifierLatency.WithLabelValues(h.Name(), string(h.Type())).Observe(duration.Seconds())
+			}
 
 			if err != nil {
 				hSpan.RecordError(err)

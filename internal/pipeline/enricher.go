@@ -30,9 +30,17 @@ func (e *Enricher) Handle(ctx context.Context, env *event.Envelope) error {
 }
 
 func (e *Enricher) dashboardLink(r domain.Event) string {
-	kind := "taskruns"
-	if r.Resource == domain.ResourcePipelineRun {
+	var kind string
+	switch r.Resource {
+	case domain.ResourceTaskRun:
+		kind = "taskruns"
+	case domain.ResourcePipelineRun:
 		kind = "pipelineruns"
+	case domain.ResourceCustomRun:
+		kind = "customruns"
+	default:
+		// EventListener and unknown resources have no dashboard page.
+		return ""
 	}
 	return fmt.Sprintf("%s/#/namespaces/%s/%s/%s",
 		e.DashboardURL, r.Namespace, kind, r.RunName)

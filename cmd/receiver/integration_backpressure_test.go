@@ -88,7 +88,7 @@ func TestBackpressure503_Integration(t *testing.T) {
 	chain := &retryableChain{}
 
 	// Create handler
-	handler := httpx.CloudEventsHandler(decoders, chain, logger, collectors, false)
+	handler := httpx.CloudEventsHandler(decoders, chain, logger, collectors, false, nil)
 
 	// Create TaskRun CloudEvent payload
 	taskRunPayload := map[string]any{
@@ -143,7 +143,7 @@ func TestBackpressure503_Integration(t *testing.T) {
 
 	var backpressureCount float64
 	for _, mf := range metricFamilies {
-		if mf.GetName() == "tekton_relay_events_backpressure_total" {
+		if mf.GetName() == "tekton_events_relay_events_backpressure_total" {
 			for _, m := range mf.GetMetric() {
 				backpressureCount = m.GetCounter().GetValue()
 			}
@@ -174,7 +174,7 @@ func TestPermanentError200_Integration(t *testing.T) {
 	chain := &permanentErrorChain{}
 
 	// Create handler
-	handler := httpx.CloudEventsHandler(decoders, chain, logger, collectors, false)
+	handler := httpx.CloudEventsHandler(decoders, chain, logger, collectors, false, nil)
 
 	// Create TaskRun CloudEvent payload
 	taskRunPayload := map[string]any{
@@ -229,7 +229,7 @@ func TestPermanentError200_Integration(t *testing.T) {
 
 	var permanentErrorCount float64
 	for _, mf := range metricFamilies {
-		if mf.GetName() == "tekton_relay_errors_permanent_total" {
+		if mf.GetName() == "tekton_events_relay_errors_permanent_total" {
 			for _, m := range mf.GetMetric() {
 				// Check for chain_error label
 				for _, lp := range m.GetLabel() {
@@ -265,7 +265,7 @@ func TestSuccessful200_Integration(t *testing.T) {
 	chain := &successChain{}
 
 	// Create handler
-	handler := httpx.CloudEventsHandler(decoders, chain, logger, collectors, false)
+	handler := httpx.CloudEventsHandler(decoders, chain, logger, collectors, false, nil)
 
 	// Create TaskRun CloudEvent payload
 	taskRunPayload := map[string]any{
@@ -319,7 +319,7 @@ func TestSuccessful200_Integration(t *testing.T) {
 	}
 
 	for _, mf := range metricFamilies {
-		if mf.GetName() == "tekton_relay_events_backpressure_total" {
+		if mf.GetName() == "tekton_events_relay_events_backpressure_total" {
 			for _, m := range mf.GetMetric() {
 				count := m.GetCounter().GetValue()
 				if count != 0 {
@@ -327,7 +327,7 @@ func TestSuccessful200_Integration(t *testing.T) {
 				}
 			}
 		}
-		if mf.GetName() == "tekton_relay_errors_permanent_total" {
+		if mf.GetName() == "tekton_events_relay_errors_permanent_total" {
 			for _, m := range mf.GetMetric() {
 				count := m.GetCounter().GetValue()
 				if count != 0 {

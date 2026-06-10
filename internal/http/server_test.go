@@ -26,10 +26,10 @@ func (m *mockDecoderSource) Names() []string {
 }
 
 func TestReadyzHandler_AllHealthy(t *testing.T) {
-	registry := &mockHandlerSource{names: []string{"github", "slack"}}
-	decoders := &mockDecoderSource{names: []string{"taskrun", "pipelinerun"}}
+	registry := &mockHandlerSource{names: []string{"github", "slack"}}        //nolint:goconst // test fixture
+	decoders := &mockDecoderSource{names: []string{"taskrun", "pipelinerun"}} //nolint:goconst // test fixture
 
-	health := buildHealthHandler(registry, decoders)
+	health := buildHealthHandler(registry, decoders, nil)
 	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
 	w := httptest.NewRecorder()
 
@@ -44,7 +44,7 @@ func TestReadyzHandler_NoHandlers(t *testing.T) {
 	registry := &mockHandlerSource{names: []string{}}
 	decoders := &mockDecoderSource{names: []string{"taskrun", "pipelinerun"}}
 
-	health := buildHealthHandler(registry, decoders)
+	health := buildHealthHandler(registry, decoders, nil)
 	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
 	w := httptest.NewRecorder()
 
@@ -64,7 +64,7 @@ func TestReadyzHandler_NoDecoders(t *testing.T) {
 	registry := &mockHandlerSource{names: []string{"github", "slack"}}
 	decoders := &mockDecoderSource{names: []string{}}
 
-	health := buildHealthHandler(registry, decoders)
+	health := buildHealthHandler(registry, decoders, nil)
 	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
 	w := httptest.NewRecorder()
 
@@ -84,7 +84,7 @@ func TestReadyzHandler_ChecksRunInOrder(t *testing.T) {
 	registry := &mockHandlerSource{names: []string{"github"}}
 	decoders := &mockDecoderSource{names: []string{"taskrun"}}
 
-	health := buildHealthHandler(registry, decoders)
+	health := buildHealthHandler(registry, decoders, nil)
 	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
 	w := httptest.NewRecorder()
 
@@ -99,7 +99,7 @@ func TestHealthzEndpoint(t *testing.T) {
 	registry := &mockHandlerSource{names: []string{"github"}}
 	decoders := &mockDecoderSource{names: []string{"taskrun"}}
 
-	health := buildHealthHandler(registry, decoders)
+	health := buildHealthHandler(registry, decoders, nil)
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	w := httptest.NewRecorder()
 

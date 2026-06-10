@@ -219,19 +219,34 @@ func populateActivation(activation map[string]any, e domain.Event) {
 		discussionNumber = *e.DiscussionNumber
 	}
 
+	results := make(map[string]string, len(e.Results))
+	for _, r := range e.Results {
+		results[r.Name] = r.Value
+	}
+
 	activation["event"] = map[string]any{
-		"Resource":          string(e.Resource),
-		"State":             string(e.State),
-		"RunName":           e.RunName,
-		"RunID":             e.RunID,
-		"Namespace":         e.Namespace,
-		"Context":           e.Context,
-		"Description":       e.Description,
-		"CommitSHA":         e.CommitSHA,
-		"Provider":          e.Provider,
-		"TaskName":          e.TaskName,
-		"PipelineName":      e.PipelineName,
-		"EventListenerName": e.EventListenerName,
+		"Resource":            string(e.Resource),
+		"State":               string(e.State),
+		"RunName":             e.RunName,
+		"RunID":               e.RunID,
+		"Namespace":           e.Namespace,
+		"Context":             e.Context,
+		"Description":         e.Description,
+		"CommitSHA":           e.CommitSHA,
+		"Provider":            e.Provider,
+		"APIBaseURL":          e.APIBaseURL,
+		"TaskName":            e.TaskName,
+		"PipelineName":        e.PipelineName,
+		"PipelineTaskName":    e.PipelineTaskName,
+		"EventListenerName":   e.EventListenerName,
+		"TriggerName":         e.TriggerName,
+		"TaskDisplayName":     e.TaskDisplayName,
+		"PipelineDisplayName": e.PipelineDisplayName,
+		"TaskCount":           e.TaskCount,
+		"TargetURL":           e.TargetURL,
+		"Results":             results,
+		"StartedAt":           e.StartedAt,
+		"FinishedAt":          e.FinishedAt,
 		"Repo": map[string]string{
 			"Owner":     e.Repo.Owner,
 			"Name":      e.Repo.Name,

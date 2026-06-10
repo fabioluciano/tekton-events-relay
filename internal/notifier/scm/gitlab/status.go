@@ -16,13 +16,18 @@ import (
 type StatusReporter struct {
 	client *Client
 	name   string
+	log    *zap.Logger
 }
 
 // NewStatusReporter creates a new GitLab commit status reporter.
 func NewStatusReporter(token, baseURL, name string, insecureSkipVerify bool, log *zap.Logger) notifier.ActionHandler {
+	if log == nil {
+		log = zap.NewNop()
+	}
 	return &StatusReporter{
 		client: NewClient(token, baseURL, insecureSkipVerify, false, log),
 		name:   name,
+		log:    log,
 	}
 }
 
@@ -39,11 +44,16 @@ func (r *StatusReporter) Handle(ctx context.Context, e domain.Event) error {
 	}
 
 	if e.CommitSHA == "" {
+		r.log.Warn("gitlab status skipped: missing commit SHA",
+			zap.String("run", e.RunName))
 		return nil
 	}
 
 	projectID, pErr := projectIdentifier(e)
 	if pErr != nil {
+		r.log.Warn("gitlab status skipped: project cannot be identified",
+			zap.String("run", e.RunName),
+			zap.Error(pErr))
 		return nil //nolint:nilerr // intentional: drop event if project cannot be identified
 	}
 

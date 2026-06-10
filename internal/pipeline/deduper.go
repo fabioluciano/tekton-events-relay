@@ -3,37 +3,69 @@ package pipeline
 import (
 	"context"
 
-	lru "github.com/hashicorp/golang-lru/v2"
+	"go.uber.org/zap"
 
+	"github.com/fabioluciano/tekton-events-relay/internal/config"
 	"github.com/fabioluciano/tekton-events-relay/internal/event"
 	"github.com/fabioluciano/tekton-events-relay/internal/metrics"
+	"github.com/fabioluciano/tekton-events-relay/internal/store"
 )
 
-// Deduper discards events with duplicate CloudEvent IDs using an LRU cache.
+// Deduper discards events with duplicate CloudEvent IDs using a pluggable
+// dedupe store (in-memory LRU by default, valkey/olric for shared state).
 type Deduper struct {
 	BaseHandler
-	cache      *lru.Cache[string, struct{}]
+	store      store.DedupeStore
+	backend    string
 	collectors *metrics.Collectors
+	log        *zap.Logger
 }
 
-// NewDeduper creates a Deduper with the specified LRU capacity.
+// NewDeduper creates a Deduper backed by an in-memory LRU with the
+// specified capacity. Kept for compatibility; prefer NewDeduperWithStore.
 func NewDeduper(capacity int, collectors *metrics.Collectors) *Deduper {
-	if capacity <= 0 {
-		capacity = 10000
+	mem, _ := store.New(config.StoreConfig{Backend: store.BackendMemory},
+		store.Options{DedupeCapacity: capacity})
+	return NewDeduperWithStore(mem.Dedupe(), store.BackendMemory, collectors, nil)
+}
+
+// NewDeduperWithStore creates a Deduper backed by the given store.
+// Store failures fail open: the event is treated as first-seen so a backend
+// outage degrades to possible duplicates instead of dropped notifications.
+func NewDeduperWithStore(s store.DedupeStore, backend string, collectors *metrics.Collectors, log *zap.Logger) *Deduper {
+	if log == nil {
+		log = zap.NewNop()
 	}
-	c, _ := lru.New[string, struct{}](capacity)
-	return &Deduper{cache: c, collectors: collectors}
+	return &Deduper{store: s, backend: backend, collectors: collectors, log: log}
 }
 
 // Handle checks if the event has been seen before. If so, drops it.
 // Otherwise, records the event ID and passes it to the next handler.
 func (d *Deduper) Handle(ctx context.Context, env *event.Envelope) error {
-	if _, exists := d.cache.Get(env.CloudEventID); exists {
+	first, err := d.store.FirstSeen(ctx, env.CloudEventID)
+	if err != nil {
+		// Fail open: process the event rather than lose it.
+		if d.collectors != nil {
+			d.collectors.StoreErrors.WithLabelValues(d.backend, "dedupe").Inc()
+		}
+		d.log.Warn("dedupe store unavailable, processing event without deduplication",
+			zap.String("ce_id", env.CloudEventID),
+			zap.String("backend", d.backend),
+			zap.Error(err))
+		return d.Next(ctx, env)
+	}
+
+	if !first {
 		if d.collectors != nil {
 			d.collectors.DeduperHits.Inc()
 		}
 		return nil
 	}
-	d.cache.Add(env.CloudEventID, struct{}{})
+
+	if d.collectors != nil {
+		if sized, ok := d.store.(interface{ Len() int }); ok {
+			d.collectors.DedupeCacheSize.Set(float64(sized.Len()))
+		}
+	}
 	return d.Next(ctx, env)
 }

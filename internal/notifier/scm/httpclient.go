@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"time"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/httpx"
 )
@@ -18,7 +17,7 @@ const defaultResponseBodyLimit = 4 * 1024 * 1024 // 4MB
 type AuthFunc func(req *http.Request)
 
 // DoJSON performs an HTTP request with JSON encoding, retry logic, and optional response decoding.
-func DoJSON(ctx context.Context, client *http.Client, maxRetries int, baseDelay time.Duration,
+func DoJSON(ctx context.Context, client *http.Client, retry httpx.RetryPolicy,
 	method, url string, body any, authFn AuthFunc, v any) error {
 	var buf bytes.Buffer
 	if body != nil {
@@ -39,7 +38,7 @@ func DoJSON(ctx context.Context, client *http.Client, maxRetries int, baseDelay 
 		authFn(req)
 	}
 
-	resp, err := httpx.DoWithRetry(client, req, maxRetries, baseDelay)
+	resp, err := httpx.DoWithRetryPolicy(client, req, retry)
 	if err != nil {
 		return fmt.Errorf("http request to %s: %w", url, err)
 	}

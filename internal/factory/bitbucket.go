@@ -94,9 +94,15 @@ func (f *BitbucketFactory) buildHandler(inst config.BitbucketInstance, action co
 				AppPassword:        appPassword,
 				BaseURL:            inst.BaseURL,
 				Template:           action.Template,
+				Mode:               action.Mode,
 				InsecureSkipVerify: inst.InsecureSkipVerify,
 				Log:                log,
 			})
+		}
+		if action.Mode == "upsert" {
+			log.Warn("comment mode 'upsert' is not supported on Bitbucket Server, using 'create'",
+				zap.String("instance", inst.Name),
+				zap.String("action", action.Name))
 		}
 		return bitbucket.NewServerCommentHandler(bitbucket.ServerCommentConfig{
 			Token:              token,

@@ -75,6 +75,17 @@ cosign verify \
 
 > 🔒 **Security issues?** Please follow our [responsible disclosure policy](SECURITY.md).
 
+### Hardening options
+
+- **Webhook replay protection**: with `server.auth.validate_timestamp: true`, requests
+  must carry an `X-Webhook-Timestamp` header (unix seconds) within `timestamp_tolerance`
+  (default 5m) of the server clock, in addition to the HMAC signature.
+- **Native TLS**: set `server.tls.cert_file`/`server.tls.key_file` to serve HTTPS
+  directly instead of relying on ingress termination.
+- **Custom CA / mTLS for outbound calls**: the HTTP client supports custom CA bundles
+  and client certificates — the safe alternative to `insecure_skip_verify` for
+  self-hosted SCM instances.
+
 ---
 
 ## Supported Integrations
@@ -106,6 +117,22 @@ cosign verify \
 - **discussion_comment**: Comment on discussions
 - **deployment_status**: Track environment deployments
 - **label**: Automatically label PRs and issues
+
+#### Idempotent comments (`mode: upsert`)
+
+Comment actions support `mode: upsert`: the relay embeds an invisible HTML marker
+in the comment and, on subsequent events for the same run, edits the existing
+comment instead of posting a new one. This makes comment actions idempotent across
+Tekton retries, pod restarts and multiple replicas — the deduplication state lives
+in the PR itself. Supported by GitHub, Gitea and Bitbucket Cloud (`pr_comment`,
+`issue_comment`); other providers fall back to `create` with a startup warning.
+
+```yaml
+actions:
+  - name: pr-comment
+    type: pr_comment
+    mode: upsert
+```
 
 ---
 
@@ -343,6 +370,41 @@ All events are processed as CloudEvents, enabling:
 - **CEL Expressions**: Rich event filtering with `startsWith()`, `endsWith()`, `contains()`, `matches()`
 - **Backpressure**: HTTP 503 responses when queue is full
 - **OpenTelemetry**: Optional distributed tracing integration
+
+### Shared State Backends (multi-replica)
+
+By default, deduplication and accumulator state live in each pod's memory, which is
+only fully reliable with a single replica. To run multiple replicas (or autoscaling),
+configure a shared state backend:
+
+```yaml
+store:
+  backend: valkey      # or: olric (embedded, no extra deployment)
+  ttl: 1h
+  valkey:
+    address: valkey.tekton-events-relay.svc:6379
+```
+
+- **valkey**: any RESP-compatible server (Valkey, KeyDB). A tiny instance without
+  persistence is enough — losing the cache only risks a rare duplicate notification.
+- **olric**: relay pods form an embedded distributed cache between themselves via
+  gossip. No additional deployment; the Helm chart wires the headless discovery
+  service and NetworkPolicy rules automatically.
+
+Backend failures fail open: events are processed without deduplication rather than
+dropped, and failures are visible in the `tekton_events_relay_store_errors_total` metric.
+
+### Configuration Hot-Reload
+
+The relay reloads its configuration without restart when the config file changes
+(including Kubernetes ConfigMap updates) or on `SIGHUP`. The new configuration is
+validated first — an invalid config is rejected and the current one stays active.
+SCM/notifier instances, actions, filters and the accumulator are rebuilt atomically;
+in-flight events finish on the old configuration. Reload outcomes are exposed via
+the `tekton_events_relay_config_reloads_total{result}` metric.
+
+> Sections that require a restart: `server`, `store`, `dlq`, `logging`, `tracing`
+> (a warning is logged if they change on reload).
 
 ### Template-driven Customization
 

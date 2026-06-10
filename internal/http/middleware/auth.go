@@ -9,8 +9,17 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 )
+
+// TimestampHeader carries the webhook emission time (unix seconds) used by
+// the optional replay protection.
+const TimestampHeader = "X-Webhook-Timestamp"
+
+// DefaultTimestampTolerance bounds the accepted clock skew for replay protection.
+const DefaultTimestampTolerance = 5 * time.Minute
 
 // AuthType represents supported authentication mechanisms.
 type AuthType string
@@ -41,6 +50,13 @@ var validators = map[AuthType]Validator{
 type AuthConfig struct {
 	Type   string
 	Secret string
+
+	// ValidateTimestamp enables replay protection: requests must carry an
+	// X-Webhook-Timestamp header (unix seconds) within TimestampTolerance
+	// of the server clock. Only meaningful with hmac-sha256, where the
+	// signature prevents tampering with the rest of the request.
+	ValidateTimestamp  bool
+	TimestampTolerance time.Duration
 }
 
 // AuthMiddleware returns HTTP middleware that validates requests using HMAC-SHA256 or Bearer token authentication.
@@ -50,8 +66,17 @@ func AuthMiddleware(config AuthConfig) (func(http.Handler) http.Handler, error) 
 		return nil, fmt.Errorf("unsupported auth type: %s", config.Type)
 	}
 
+	tolerance := config.TimestampTolerance
+	if tolerance <= 0 {
+		tolerance = DefaultTimestampTolerance
+	}
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if config.ValidateTimestamp && !timestampFresh(r, tolerance) {
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
 			if !v.Validate(r, config.Secret) {
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
@@ -59,6 +84,24 @@ func AuthMiddleware(config AuthConfig) (func(http.Handler) http.Handler, error) 
 			next.ServeHTTP(w, r)
 		})
 	}, nil
+}
+
+// timestampFresh checks the replay-protection timestamp header against the
+// server clock with the given tolerance (in both directions, to allow skew).
+func timestampFresh(r *http.Request, tolerance time.Duration) bool {
+	raw := r.Header.Get(TimestampHeader)
+	if raw == "" {
+		return false
+	}
+	secs, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return false
+	}
+	delta := time.Since(time.Unix(secs, 0))
+	if delta < 0 {
+		delta = -delta
+	}
+	return delta <= tolerance
 }
 
 func validateHMAC(r *http.Request, secret string) bool {

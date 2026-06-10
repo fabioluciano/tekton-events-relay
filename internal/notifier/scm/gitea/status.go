@@ -14,12 +14,17 @@ import (
 // StatusReporter implements commit status updates for Gitea.
 type StatusReporter struct {
 	client *Client
+	log    *zap.Logger
 }
 
 // NewStatusReporter creates a new Gitea commit status reporter.
 func NewStatusReporter(token, baseURL string, insecureSkipVerify bool, log *zap.Logger) notifier.ActionHandler {
+	if log == nil {
+		log = zap.NewNop()
+	}
 	return &StatusReporter{
 		client: NewClient(token, baseURL, insecureSkipVerify, false, log),
+		log:    log,
 	}
 }
 
@@ -36,6 +41,10 @@ func (r *StatusReporter) Handle(_ context.Context, e domain.Event) error {
 	}
 
 	if e.Repo.Owner == "" || e.Repo.Name == "" || e.CommitSHA == "" {
+		r.log.Warn("gitea status skipped: missing repo owner/name or commit SHA",
+			zap.String("run", e.RunName),
+			zap.String("owner", e.Repo.Owner),
+			zap.String("repo", e.Repo.Name))
 		return nil
 	}
 
@@ -59,8 +68,8 @@ func (r *StatusReporter) Handle(_ context.Context, e domain.Event) error {
 }
 
 var giteaStateMap = scm.StateMap{
-	domain.StatePending:  "pending",
-	domain.StateRunning:  "pending",
+	domain.StatePending:  "pending", //nolint:goconst // mapping clarity
+	domain.StateRunning:  "pending", //nolint:goconst // mapping clarity
 	domain.StateSuccess:  "success",
 	domain.StateFailure:  "failure",
 	domain.StateError:    "error",

@@ -19,6 +19,33 @@ type Collectors struct {
 	ErrorsPermanent    *prometheus.CounterVec // {reason}
 	EventsBackpressure prometheus.Counter
 
+	// Events arriving with a CloudEvent type no decoder understands {type}
+	EventsUnsupportedType *prometheus.CounterVec
+
+	// Outbound HTTP retry observability
+	NotifierRetries       *prometheus.CounterVec // {host, reason}
+	NotifierRateLimitHits *prometheus.CounterVec // {host}
+
+	// State backend failures (dedupe/accumulator fail open on error) {backend, op}
+	StoreErrors *prometheus.CounterVec
+
+	// Dead letter queue observability
+	DLQSize     prometheus.Gauge
+	DLQEnqueued prometheus.Counter
+
+	// Config hot-reload outcomes {result}
+	ConfigReloads *prometheus.CounterVec
+
+	// Handlers exceeding their execution deadline {handler}
+	HandlerTimeouts *prometheus.CounterVec
+
+	// Per-handler dispatch latency {handler, action}
+	NotifierLatency *prometheus.HistogramVec
+
+	// Dedupe entries evicted by the LRU capacity bound (memory backend).
+	// Sustained evictions mean dedupe_size is too small for the event rate.
+	DeduperEvictions prometheus.Counter
+
 	// HTTP RED metrics (D-30)
 	HTTPRequestDuration  *prometheus.HistogramVec // {method, code}
 	HTTPRequestsTotal    *prometheus.CounterVec   // {method, code}
@@ -33,21 +60,21 @@ func NewCollectors(reg prometheus.Registerer) *Collectors {
 	c := &Collectors{
 		EventsReceived: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
-				Name: "tekton_relay_events_received_total",
+				Name: "tekton_events_relay_events_received_total",
 				Help: "Total events received by type and source",
 			},
 			[]string{"type", "source"},
 		),
 		EventsProcessed: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
-				Name: "tekton_relay_events_processed_total",
+				Name: "tekton_events_relay_events_processed_total",
 				Help: "Total events processed by handler and status",
 			},
 			[]string{"handler", "status"},
 		),
 		HandlerDuration: prometheus.NewHistogramVec(
 			prometheus.HistogramOpts{
-				Name:    "tekton_relay_handler_duration_seconds",
+				Name:    "tekton_events_relay_handler_duration_seconds",
 				Help:    "Handler execution duration in seconds",
 				Buckets: buckets,
 			},
@@ -55,27 +82,27 @@ func NewCollectors(reg prometheus.Registerer) *Collectors {
 		),
 		DeduperHits: prometheus.NewCounter(
 			prometheus.CounterOpts{
-				Name: "tekton_relay_deduper_hits_total",
+				Name: "tekton_events_relay_deduper_hits_total",
 				Help: "Total deduper cache hits",
 			},
 		),
 		PipelineErrors: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
-				Name: "tekton_relay_pipeline_errors_total",
+				Name: "tekton_events_relay_pipeline_errors_total",
 				Help: "Total pipeline errors by stage",
 			},
 			[]string{"stage"},
 		),
 		EventsFiltered: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
-				Name: "tekton_relay_events_filtered_total",
+				Name: "tekton_events_relay_events_filtered_total",
 				Help: "Total events filtered by reason",
 			},
 			[]string{"reason"},
 		),
 		ChainDuration: prometheus.NewHistogramVec(
 			prometheus.HistogramOpts{
-				Name:    "tekton_relay_chain_duration_seconds",
+				Name:    "tekton_events_relay_chain_duration_seconds",
 				Help:    "Full chain execution duration in seconds",
 				Buckets: buckets,
 			},
@@ -83,27 +110,95 @@ func NewCollectors(reg prometheus.Registerer) *Collectors {
 		),
 		DedupeCacheSize: prometheus.NewGauge(
 			prometheus.GaugeOpts{
-				Name: "tekton_relay_dedupe_cache_size",
+				Name: "tekton_events_relay_dedupe_cache_size",
 				Help: "Current number of entries in the deduper cache",
 			},
 		),
 		HandlersRegistered: prometheus.NewGauge(
 			prometheus.GaugeOpts{
-				Name: "tekton_relay_handlers_registered",
+				Name: "tekton_events_relay_handlers_registered",
 				Help: "Number of registered action handlers",
 			},
 		),
 		ErrorsPermanent: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
-				Name: "tekton_relay_errors_permanent_total",
+				Name: "tekton_events_relay_errors_permanent_total",
 				Help: "Total permanent (non-retryable) errors by reason",
 			},
 			[]string{"reason"},
 		),
 		EventsBackpressure: prometheus.NewCounter(
 			prometheus.CounterOpts{
-				Name: "tekton_relay_events_backpressure_total",
+				Name: "tekton_events_relay_events_backpressure_total",
 				Help: "Total events dropped due to backpressure",
+			},
+		),
+		EventsUnsupportedType: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "tekton_events_relay_events_unsupported_type_total",
+				Help: "Total events discarded because no decoder is registered for their CloudEvent type",
+			},
+			[]string{"type"},
+		),
+		NotifierRetries: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "tekton_events_relay_notifier_retries_total",
+				Help: "Total outbound HTTP retries by destination host and reason",
+			},
+			[]string{"host", "reason"},
+		),
+		NotifierRateLimitHits: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "tekton_events_relay_notifier_rate_limit_hits_total",
+				Help: "Total HTTP 429 responses received from destination hosts",
+			},
+			[]string{"host"},
+		),
+		StoreErrors: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "tekton_events_relay_store_errors_total",
+				Help: "Total state backend failures by backend and operation (callers fail open)",
+			},
+			[]string{"backend", "op"},
+		),
+		DLQSize: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Name: "tekton_events_relay_dlq_size",
+				Help: "Current number of events in the dead letter queue",
+			},
+		),
+		DLQEnqueued: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Name: "tekton_events_relay_dlq_enqueued_total",
+				Help: "Total events enqueued to the dead letter queue",
+			},
+		),
+		ConfigReloads: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "tekton_events_relay_config_reloads_total",
+				Help: "Total configuration reload attempts by result",
+			},
+			[]string{"result"},
+		),
+		HandlerTimeouts: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "tekton_events_relay_handler_timeouts_total",
+				Help: "Total handler executions aborted by the per-handler timeout",
+			},
+			[]string{"handler"},
+		),
+		NotifierLatency: prometheus.NewHistogramVec(
+			prometheus.HistogramOpts{
+				Name:    "tekton_events_relay_notifier_latency_seconds",
+				Help:    "Notifier dispatch latency by handler and action type",
+				Buckets: buckets,
+			},
+			[]string{"handler", "action"},
+		),
+		DeduperEvictions: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Name: "tekton_events_relay_deduper_evictions_total",
+				Help: "Total dedupe entries evicted by the LRU capacity bound (memory backend)",
 			},
 		),
 		HTTPRequestDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
@@ -133,6 +228,16 @@ func NewCollectors(reg prometheus.Registerer) *Collectors {
 		c.HandlersRegistered,
 		c.ErrorsPermanent,
 		c.EventsBackpressure,
+		c.EventsUnsupportedType,
+		c.NotifierRetries,
+		c.NotifierRateLimitHits,
+		c.StoreErrors,
+		c.DLQSize,
+		c.DLQEnqueued,
+		c.ConfigReloads,
+		c.HandlerTimeouts,
+		c.NotifierLatency,
+		c.DeduperEvictions,
 		c.HTTPRequestDuration,
 		c.HTTPRequestsTotal,
 		c.HTTPRequestsInFlight,

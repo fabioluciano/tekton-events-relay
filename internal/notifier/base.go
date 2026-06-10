@@ -96,7 +96,7 @@ func (b *Base) Send(ctx context.Context, e domain.Event) error {
 		}
 	}
 
-	resp, err := httpx.DoWithRetry(b.HTTP, req, 3, 500*time.Millisecond)
+	resp, err := httpx.DoWithRetryPolicy(b.HTTP, req, httpx.DefaultRetryPolicy())
 	duration := time.Since(start)
 
 	if err != nil {

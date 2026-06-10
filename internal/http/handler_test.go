@@ -42,7 +42,7 @@ func TestCloudEventsHandler_InvalidCloudEvent(t *testing.T) {
 	log := zap.NewNop()
 	collectors := testCollectors(t)
 
-	handler := CloudEventsHandler(decoders, nil, log, collectors, false)
+	handler := CloudEventsHandler(decoders, nil, log, collectors, false, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader("{}"))
 	rec := httptest.NewRecorder()
@@ -69,7 +69,7 @@ func TestCloudEventsHandler_BodyReadError(t *testing.T) {
 	log := zap.NewNop()
 	collectors := testCollectors(t)
 
-	handler := CloudEventsHandler(decoders, nil, log, collectors, false)
+	handler := CloudEventsHandler(decoders, nil, log, collectors, false, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/", io.NopCloser(&errReader{}))
 	req.Header.Set("Ce-Id", testID)
@@ -93,7 +93,7 @@ func TestCloudEventsHandler_NoDecoder(t *testing.T) {
 	log := zap.NewNop()
 	collectors := testCollectors(t)
 
-	handler := CloudEventsHandler(decoders, nil, log, collectors, false)
+	handler := CloudEventsHandler(decoders, nil, log, collectors, false, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"some":"data"}`))
 	req.Header.Set("Ce-Id", testID)
@@ -219,7 +219,7 @@ func TestCloudEventsHandler_ChainErrorReturns500(t *testing.T) {
 	collectors := testCollectors(t)
 
 	chain := &failingChain{}
-	handler := CloudEventsHandler(decoders, chain, log, collectors, false)
+	handler := CloudEventsHandler(decoders, chain, log, collectors, false, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(testRunJSON))
 	req.Header.Set("Ce-Id", testID)
@@ -247,7 +247,7 @@ func TestCloudEventsHandler_NoDecoderReturnsOKNotPanic(t *testing.T) {
 	log := zap.NewNop()
 	collectors := testCollectors(t)
 
-	handler := CloudEventsHandler(decoders, nil, log, collectors, false)
+	handler := CloudEventsHandler(decoders, nil, log, collectors, false, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"data":"test"}`))
 	req.Header.Set("Ce-Id", testID)
@@ -272,7 +272,7 @@ func TestCloudEventsHandler_EmptyRegistryLogsWarning(t *testing.T) {
 	log := zap.New(core)
 	collectors := testCollectors(t)
 
-	handler := CloudEventsHandler(decoders, nil, log, collectors, false)
+	handler := CloudEventsHandler(decoders, nil, log, collectors, false, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"payload":"data"}`))
 	req.Header.Set("Ce-Id", "evt-001")
@@ -312,7 +312,7 @@ func TestCloudEventsHandler_RetryableError503(t *testing.T) {
 	collectors := testCollectors(t)
 
 	chain := &retryableChain{}
-	handler := CloudEventsHandler(decoders, chain, log, collectors, false)
+	handler := CloudEventsHandler(decoders, chain, log, collectors, false, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(testRunJSON))
 	req.Header.Set("Ce-Id", testID)
@@ -355,7 +355,7 @@ func TestCloudEventsHandler_PermanentError200(t *testing.T) {
 	collectors := testCollectors(t)
 
 	chain := &failingChain{}
-	handler := CloudEventsHandler(decoders, chain, log, collectors, false)
+	handler := CloudEventsHandler(decoders, chain, log, collectors, false, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(testRunJSON))
 	req.Header.Set("Ce-Id", testID)
@@ -390,7 +390,7 @@ func TestCloudEventsHandler_Success200(t *testing.T) {
 	collectors := testCollectors(t)
 
 	chain := &successChain{}
-	handler := CloudEventsHandler(decoders, chain, log, collectors, false)
+	handler := CloudEventsHandler(decoders, chain, log, collectors, false, nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(testRunJSON))
 	req.Header.Set("Ce-Id", testID)

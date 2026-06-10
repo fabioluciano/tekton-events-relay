@@ -35,6 +35,11 @@ func (f *AzureFactory) buildHandler(inst config.AzureInstance, action config.Act
 	case config.ActionTypeCommitStatus:
 		return azuredevops.NewStatusReporter(token, inst.BaseURL, inst.Genre, inst.InsecureSkipVerify, log), nil
 	case config.ActionTypePRComment:
+		if action.Mode == "upsert" {
+			log.Warn("comment mode 'upsert' is not supported on Azure DevOps, using 'create'",
+				zap.String("instance", inst.Name),
+				zap.String("action", action.Name))
+		}
 		return azuredevops.NewCommentHandler(azuredevops.CommentConfig{
 			Token:              token,
 			BaseURL:            inst.BaseURL,

@@ -1,3 +1,4 @@
+// Package gitea provides Gitea SCM integration for the relay.
 package gitea
 
 import (

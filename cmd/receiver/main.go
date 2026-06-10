@@ -18,26 +18,35 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
+	"github.com/fabioluciano/tekton-events-relay/internal/accumulator"
 	"github.com/fabioluciano/tekton-events-relay/internal/config"
+	"github.com/fabioluciano/tekton-events-relay/internal/dlq"
 	"github.com/fabioluciano/tekton-events-relay/internal/event"
 	"github.com/fabioluciano/tekton-events-relay/internal/event/tekton"
 	"github.com/fabioluciano/tekton-events-relay/internal/factory"
 	httpx "github.com/fabioluciano/tekton-events-relay/internal/http"
+	relayhttpx "github.com/fabioluciano/tekton-events-relay/internal/httpx"
 	"github.com/fabioluciano/tekton-events-relay/internal/logging"
 	"github.com/fabioluciano/tekton-events-relay/internal/metrics"
-	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
 	"github.com/fabioluciano/tekton-events-relay/internal/pipeline"
+	"github.com/fabioluciano/tekton-events-relay/internal/store"
 	"github.com/fabioluciano/tekton-events-relay/internal/tracing"
 )
 
 type app struct {
-	cfg        *config.Config
-	log        *zap.Logger
-	srv        *http.Server
-	metricsSrv *http.Server
-	reg        *notifier.Registry
-	decoders   *event.Registry
-	cleanup    func()
+	cfg         *config.Config
+	configPath  string
+	log         *zap.Logger
+	srv         *http.Server
+	metricsSrv  *http.Server
+	regHolder   *registryHolder
+	chainHolder *chainHolder
+	decoders    *event.Registry
+	store       store.Store
+	collectors  *metrics.Collectors
+	buildOpts   []factory.BuildOption
+	status      *pipeline.StatusTracker
+	cleanup     func()
 }
 
 func newApp(configPath string) (*app, error) {
@@ -69,8 +78,40 @@ func newApp(configPath string) (*app, error) {
 	)
 	collectors := metrics.NewCollectors(promReg)
 
-	reg, err := factory.BuildAll(cfg, log)
+	relayhttpx.SetDefaultRetryPolicy(relayhttpx.RetryPolicy{
+		MaxAttempts:    cfg.Retry.MaxAttempts,
+		InitialBackoff: cfg.Retry.InitialBackoff,
+		MaxBackoff:     cfg.Retry.MaxBackoff,
+	})
+	relayhttpx.SetRetryMetrics(collectors.NotifierRetries, collectors.NotifierRateLimitHits)
+
+	// State backend for dedupe and accumulation. The store outlives config
+	// reloads so dedupe state survives chain rebuilds.
+	st, err := store.New(cfg.Store, store.Options{
+		DedupeCapacity: cfg.DedupeSize,
+		Log:            log,
+		Collectors:     collectors,
+	})
 	if err != nil {
+		cleanupTracer()
+		_ = log.Sync()
+		return nil, fmt.Errorf("build store: %w", err)
+	}
+
+	var buildOpts []factory.BuildOption
+	if st.Backend() != store.BackendMemory {
+		// The memory backend keeps the accumulator's original LRU buffer;
+		// shared backends route accumulation through the store.
+		log.Info("shared state store initialized", zap.String("backend", st.Backend()))
+		buildOpts = append(buildOpts,
+			factory.WithAccumulatorBuffer(accumulator.NewStoreBuffer(st.RunBuffer(), st.Backend(), collectors, log)))
+	}
+
+	reg, err := factory.BuildAll(cfg, log, buildOpts...)
+	if err != nil {
+		if st != nil {
+			_ = st.Close()
+		}
 		cleanupTracer()
 		_ = log.Sync()
 		return nil, fmt.Errorf("build action handlers: %w", err)
@@ -79,9 +120,25 @@ func newApp(configPath string) (*app, error) {
 	collectors.HandlersRegistered.Set(float64(len(reg.Names())))
 
 	decoders := buildDecoders()
-	chain := buildChain(cfg, reg, log, collectors)
+	regHolder := newRegistryHolder(reg)
+	status := pipeline.NewStatusTracker()
+	chain := newChainHolder(buildChain(cfg, regHolder, log, collectors, st, status))
 
-	srv, err := httpx.BuildServer(cfg, decoders, chain, reg, log, promReg, collectors)
+	var deadLetter dlq.Queue
+	if cfg.DLQ.Enabled {
+		deadLetter, err = dlq.NewFileQueue(cfg.DLQ.Path, cfg.DLQ.MaxSizeBytes)
+		if err != nil {
+			if st != nil {
+				_ = st.Close()
+			}
+			cleanupTracer()
+			_ = log.Sync()
+			return nil, fmt.Errorf("build dlq: %w", err)
+		}
+		log.Info("dead letter queue enabled", zap.String("path", cfg.DLQ.Path))
+	}
+
+	srv, err := httpx.BuildServer(cfg, decoders, chain, regHolder, log, promReg, collectors, deadLetter, status)
 	if err != nil {
 		cleanupTracer()
 		_ = log.Sync()
@@ -99,13 +156,19 @@ func newApp(configPath string) (*app, error) {
 	}
 
 	return &app{
-		cfg:        cfg,
-		log:        log,
-		srv:        srv,
-		metricsSrv: metricsSrv,
-		reg:        reg,
-		decoders:   decoders,
-		cleanup:    cleanup,
+		cfg:         cfg,
+		configPath:  configPath,
+		log:         log,
+		srv:         srv,
+		metricsSrv:  metricsSrv,
+		regHolder:   regHolder,
+		chainHolder: chain,
+		decoders:    decoders,
+		store:       st,
+		collectors:  collectors,
+		buildOpts:   buildOpts,
+		status:      status,
+		cleanup:     cleanup,
 	}, nil
 }
 
@@ -115,12 +178,21 @@ func (a *app) run(ctx context.Context) error {
 	ctx, stop := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	go a.watchConfig(ctx)
+
 	go func() {
 		a.log.Info("server listening",
 			zap.String("addr", a.cfg.Server.Addr),
-			zap.Strings("handlers", a.reg.Names()),
+			zap.Bool("tls", a.cfg.Server.TLS.Enabled()),
+			zap.Strings("handlers", a.regHolder.Names()),
 			zap.Strings("decoders", a.decoders.Names()))
-		if err := a.srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		var err error
+		if a.cfg.Server.TLS.Enabled() {
+			err = a.srv.ListenAndServeTLS(a.cfg.Server.TLS.CertFile, a.cfg.Server.TLS.KeyFile)
+		} else {
+			err = a.srv.ListenAndServe()
+		}
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			a.log.Error("http serve", zap.Error(err))
 			stop()
 		}
@@ -154,6 +226,12 @@ func (a *app) shutdown() error {
 		defer c()
 		if err := a.metricsSrv.Shutdown(metricsCtx); err != nil {
 			a.log.Error("shutdown metrics server", zap.Error(err))
+		}
+	}
+
+	if a.store != nil {
+		if err := a.store.Close(); err != nil {
+			a.log.Error("shutdown store", zap.Error(err))
 		}
 	}
 
@@ -210,7 +288,10 @@ func runValidation(configPath string) {
 	os.Exit(1)
 }
 
-func buildChain(cfg *config.Config, reg pipeline.HandlerSource, log *zap.Logger, collectors *metrics.Collectors) pipeline.Handler {
+// buildChain assembles a processing chain. The chain links are fresh per
+// build (config reloads create a new chain), but dedupe state lives in the
+// shared store so it survives rebuilds.
+func buildChain(cfg *config.Config, reg pipeline.HandlerSource, log *zap.Logger, collectors *metrics.Collectors, st store.Store, status *pipeline.StatusTracker) pipeline.Handler {
 	validator := pipeline.NewValidator()
 	filter := pipeline.NewEventFilter(
 		cfg.Filter.AllowTaskRun,
@@ -219,9 +300,11 @@ func buildChain(cfg *config.Config, reg pipeline.HandlerSource, log *zap.Logger,
 		cfg.Filter.AllowEventListener,
 		cfg.Filter.IgnoreUnknown,
 	)
-	deduper := pipeline.NewDeduper(cfg.DedupeSize, collectors)
+	deduper := pipeline.NewDeduperWithStore(st.Dedupe(), st.Backend(), collectors, log)
 	enricher := pipeline.NewEnricher(cfg.DashboardURL)
-	dispatcher := pipeline.NewDispatcher(reg, log, collectors, cfg.MaxConcurrency)
+	dispatcher := pipeline.NewDispatcher(reg, log, collectors, cfg.MaxConcurrency).
+		WithHandlerTimeout(cfg.HandlerTimeout).
+		WithStatusTracker(status)
 
 	return pipeline.Build(
 		pipeline.WithMetrics(validator, collectors.HandlerDuration.WithLabelValues("validator"), collectors.EventsProcessed, "validator"),

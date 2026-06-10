@@ -17,7 +17,8 @@ import (
 // BuildAccumulator creates an Handler if enabled in config.
 // Returns nil if disabled. When cfg.Provider is set, looks up the named handler
 // from reg; otherwise falls back to log-only mode with a warning.
-func BuildAccumulator(cfg config.AccumulatorConfig, reg *notifier.Registry, log *zap.Logger) (notifier.ActionHandler, error) {
+// A nil buf selects the default in-memory LRU buffer.
+func BuildAccumulator(cfg config.AccumulatorConfig, reg *notifier.Registry, buf accumulator.Buffer, log *zap.Logger) (notifier.ActionHandler, error) {
 	if !cfg.Enabled {
 		return nil, nil //nolint:nilnil // intentional: disabled accumulator returns no handler
 	}
@@ -45,7 +46,9 @@ func BuildAccumulator(cfg config.AccumulatorConfig, reg *notifier.Registry, log 
 		provider = p
 	}
 
-	buf := accumulator.NewLRUBuffer(ttl, maxSize)
+	if buf == nil {
+		buf = accumulator.NewLRUBuffer(ttl, maxSize)
+	}
 	handler := accumulator.NewHandler(
 		"accumulator",
 		provider,

@@ -25,17 +25,18 @@ func DefaultFuncMap() template.FuncMap {
 	return fm
 }
 
-// LoadTemplateString loads a template from an inline string or absolute file path.
+// LoadTemplateString loads a template from an absolute file path.
+// Template path must start with '/' (absolute path). Inline templates are no longer supported.
 func LoadTemplateString(templateStr string) (string, error) {
-	if strings.HasPrefix(templateStr, "/") {
-		//nolint:gosec // G304: Template path from user configuration, validated by absolute path check
-		data, err := os.ReadFile(templateStr)
-		if err != nil {
-			return "", fmt.Errorf("failed to read template file %s: %w", templateStr, err)
-		}
-		return string(data), nil
+	if !strings.HasPrefix(templateStr, "/") {
+		return "", fmt.Errorf("template path must be absolute (start with /), got: %s", templateStr)
 	}
-	return templateStr, nil
+	//nolint:gosec // G304: Template path from user configuration, validated by absolute path check
+	data, err := os.ReadFile(templateStr)
+	if err != nil {
+		return "", fmt.Errorf("failed to read template file %s: %w", templateStr, err)
+	}
+	return string(data), nil
 }
 
 // CompileTemplate parses a named template with the given funcMap.

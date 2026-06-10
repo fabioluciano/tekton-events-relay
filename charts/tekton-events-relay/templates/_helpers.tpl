@@ -97,3 +97,48 @@ Create the name of the secret to use
 {{- define "tekton-events-relay.secretName" -}}
 {{- include "tekton-events-relay.fullname" . }}-tokens
 {{- end }}
+
+{{/*
+Default template key mapping based on action type and provider.
+Returns the default ConfigMap key for a given action type.
+Usage: {{ include "tekton-events-relay.defaultTemplateKey" (dict "type" "pr_comment" "provider" "github") }}
+*/}}
+{{- define "tekton-events-relay.defaultTemplateKey" -}}
+{{- $type := .type -}}
+{{- $provider := .provider -}}
+{{- if eq $type "pr_comment" -}}
+{{- if eq $provider "gitlab" -}}
+gitlab-note.tmpl
+{{- else -}}
+{{- printf "%s-pr-comment.tmpl" $provider -}}
+{{- end -}}
+{{- else if eq $type "issue_comment" -}}
+{{- printf "%s-issue-comment.tmpl" $provider -}}
+{{- else if eq $type "discussion_comment" -}}
+{{- printf "%s-discussion-comment.tmpl" $provider -}}
+{{- else if eq $type "check_run" -}}
+{{- printf "%s-checkrun.tmpl" $provider -}}
+{{- else if eq $type "commit_status" -}}
+{{- printf "%s-commit-status.tmpl" $provider -}}
+{{- else if eq $type "deployment_status" -}}
+{{- printf "%s-deployment-status.tmpl" $provider -}}
+{{- else if eq $type "label" -}}
+{{- printf "%s-label.tmpl" $provider -}}
+{{- else if eq $type "slack" -}}
+slack-default.tmpl
+{{- else if eq $type "teams" -}}
+teams-default.tmpl
+{{- else if eq $type "discord" -}}
+discord-default.tmpl
+{{- else if eq $type "pagerduty" -}}
+pagerduty-default.tmpl
+{{- else if eq $type "datadog" -}}
+datadog-default.tmpl
+{{- else if eq $type "accumulator" -}}
+accumulator-default.tmpl
+{{- else if eq $type "webhook" -}}
+webhook-default.tmpl
+{{- else -}}
+{{- printf "%s-%s.tmpl" $provider $type -}}
+{{- end -}}
+{{- end }}

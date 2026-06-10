@@ -108,9 +108,8 @@ data:
               {{- if .when }}
               when: {{ .when | quote }}
               {{- end }}
-              {{- if .template }}
-              template: |
-{{ .template | nindent 16 }}
+              {{- if or (eq .type "pr_comment") (eq .type "issue_comment") (eq .type "discussion_comment") (eq .type "check_run") }}
+              template: /etc/templates/{{ .template_configmap | default (printf "%s-templates" (include "tekton-events-relay.fullname" $)) }}/{{ .template_configmap_key | default (include "tekton-events-relay.defaultTemplateKey" (dict "type" .type "provider" "github")) }}
               {{- end }}
               {{- if .success_label }}
               success_label: {{ .success_label | quote }}
@@ -158,6 +157,9 @@ data:
               enabled: {{ .enabled }}
               {{- if .when }}
               when: {{ .when | quote }}
+              {{- end }}
+              {{- if or (eq .type "pr_comment") (eq .type "issue_comment") }}
+              template: /etc/templates/{{ .template_configmap | default (printf "%s-templates" (include "tekton-events-relay.fullname" $)) }}/{{ .template_configmap_key | default (include "tekton-events-relay.defaultTemplateKey" (dict "type" .type "provider" "gitlab")) }}
               {{- end }}
               {{- if .success_label }}
               success_label: {{ .success_label | quote }}
@@ -288,9 +290,8 @@ data:
               {{- if .when }}
               when: {{ .when | quote }}
               {{- end }}
-              {{- if .template }}
-              template: |
-{{ .template | nindent 16 }}
+              {{- if or (eq .type "pr_comment") (eq .type "issue_comment") }}
+              template: /etc/templates/{{ .template_configmap | default (printf "%s-templates" (include "tekton-events-relay.fullname" $)) }}/{{ .template_configmap_key | default (include "tekton-events-relay.defaultTemplateKey" (dict "type" .type "provider" "gitea")) }}
               {{- end }}
               {{- if .success_label }}
               success_label: {{ .success_label | quote }}
@@ -367,10 +368,7 @@ data:
           {{- if .when }}
           when: {{ .when | quote }}
           {{- end }}
-          {{- if .template }}
-          template: |
-{{ .template | nindent 12 }}
-          {{- end }}
+          template: /etc/templates/{{ .template_configmap | default (printf "%s-templates" (include "tekton-events-relay.fullname" $)) }}/{{ .template_configmap_key | default (include "tekton-events-relay.defaultTemplateKey" (dict "type" "slack" "provider" "slack")) }}
         {{- end }}
       {{- end }}
       {{- if .Values.config.notifiers.teams }}
@@ -390,10 +388,7 @@ data:
           {{- if .when }}
           when: {{ .when | quote }}
           {{- end }}
-          {{- if .template }}
-          template: |
-{{ .template | nindent 12 }}
-          {{- end }}
+          template: /etc/templates/{{ .template_configmap | default (printf "%s-templates" (include "tekton-events-relay.fullname" $)) }}/{{ .template_configmap_key | default (include "tekton-events-relay.defaultTemplateKey" (dict "type" "teams" "provider" "teams")) }}
         {{- end }}
       {{- end }}
       {{- if .Values.config.notifiers.discord }}
@@ -420,10 +415,7 @@ data:
           {{- if .when }}
           when: {{ .when | quote }}
           {{- end }}
-          {{- if .template }}
-          template: |
-{{ .template | nindent 12 }}
-          {{- end }}
+          template: /etc/templates/{{ .template_configmap | default (printf "%s-templates" (include "tekton-events-relay.fullname" $)) }}/{{ .template_configmap_key | default (include "tekton-events-relay.defaultTemplateKey" (dict "type" "discord" "provider" "discord")) }}
         {{- end }}
       {{- end }}
       {{- if .Values.config.notifiers.pagerduty }}
@@ -516,10 +508,7 @@ data:
           headers:
             {{- .headers | toYaml | nindent 12 }}
           {{- end }}
-          {{- if .template }}
-          template: |
-{{ .template | nindent 12 }}
-          {{- end }}
+          template: /etc/templates/{{ .template_configmap | default (printf "%s-templates" (include "tekton-events-relay.fullname" $)) }}/{{ .template_configmap_key | default "webhook-default.tmpl" }}
         {{- end }}
       {{- end }}
     {{- end }}

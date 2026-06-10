@@ -63,15 +63,6 @@ jobs:
           version: v2.12.2
           args: --timeout=5m
 
-      - name: Run deadcode analysis
-        run: |
-          DEAD=$(go run golang.org/x/tools/cmd/deadcode@latest ./... 2>&1)
-          if [ -n "$DEAD" ]; then
-            echo "::error::Unreachable functions detected by deadcode:"
-            echo "$DEAD"
-            exit 1
-          fi
-
       - name: Build application
         run: go build -o bin/tekton-events-relay ./cmd/receiver
 

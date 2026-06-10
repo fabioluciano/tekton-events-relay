@@ -230,7 +230,7 @@ func TestCELIntegration_EndToEnd(t *testing.T) {
 func TestCELIntegration_ExampleConfigParsing(t *testing.T) {
 	// Verify that examples/config.yaml parses successfully
 	// This ensures CEL expressions in the example config are valid
-	cfg, err := config.Load("../../docs/examples/config.yaml")
+	cfg, err := config.Load("../../wiki/examples/config.yaml")
 	if err != nil {
 		t.Fatalf("failed to load examples/config.yaml: %v", err)
 	}

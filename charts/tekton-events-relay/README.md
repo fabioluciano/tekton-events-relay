@@ -1,6 +1,6 @@
 # tekton-events-relay
 
-![Version: 0.1.2](https://img.shields.io/badge/Version-0.1.2-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.1.2](https://img.shields.io/badge/AppVersion-0.1.2-informational?style=flat-square)
+![Version: 0.2.0-rc.1](https://img.shields.io/badge/Version-0.2.0--rc.1-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.2.0-rc.1](https://img.shields.io/badge/AppVersion-0.2.0--rc.1-informational?style=flat-square)
 
 CloudEvents receiver that reports pipeline execution status to multiple SCM providers
 
@@ -11,7 +11,7 @@ CloudEvents receiver that reports pipeline execution status to multiple SCM prov
 ```bash
 helm install tekton-events-relay \
   oci://ghcr.io/fabioluciano/charts/tekton-events-relay \
-  --version 0.1.2
+  --version 0.2.0-rc.1
 ```
 
 ### Signature Verification
@@ -23,7 +23,7 @@ Docker images and Helm charts are signed with [Cosign](https://github.com/sigsto
 cosign verify \
   --certificate-identity-regexp='https://github.com/fabioluciano/tekton-events-relay' \
   --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
-  ghcr.io/fabioluciano/tekton-events-relay:0.1.2
+  ghcr.io/fabioluciano/tekton-events-relay:0.2.0-rc.1
 ```
 
 **Verify Helm chart:**
@@ -31,7 +31,7 @@ cosign verify \
 cosign verify \
   --certificate-identity-regexp='https://github.com/fabioluciano/tekton-events-relay' \
   --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
-  oci://ghcr.io/fabioluciano/charts/tekton-events-relay:0.1.2
+  oci://ghcr.io/fabioluciano/charts/tekton-events-relay:0.2.0-rc.1
 ```
 
 Signatures are stored in the [Sigstore Rekor transparency log](https://rekor.sigstore.dev/).

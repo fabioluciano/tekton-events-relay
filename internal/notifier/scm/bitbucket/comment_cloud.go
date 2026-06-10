@@ -17,6 +17,8 @@ import (
 type CloudCommentHandler struct {
 	client   *CloudClient
 	template *template.Template
+	mode     string
+	log      *zap.Logger
 }
 
 // CloudCommentConfig configures the Cloud comment handler.
@@ -25,6 +27,7 @@ type CloudCommentConfig struct {
 	AppPassword        string
 	BaseURL            string
 	Template           string
+	Mode               string // scm.ModeCreate (default) or scm.ModeUpsert
 	InsecureSkipVerify bool
 	Log                *zap.Logger
 }
@@ -40,9 +43,20 @@ func NewCloudCommentHandler(cfg CloudCommentConfig) (notifier.ActionHandler, err
 		}
 	}
 
+	mode, err := scm.NormalizeMode(cfg.Mode)
+	if err != nil {
+		return nil, err
+	}
+	log := cfg.Log
+	if log == nil {
+		log = zap.NewNop()
+	}
+
 	return &CloudCommentHandler{
 		client:   NewCloudClient(cfg.Username, cfg.AppPassword, cfg.BaseURL, cfg.InsecureSkipVerify, false, cfg.Log),
 		template: tmpl,
+		mode:     mode,
+		log:      log,
 	}, nil
 }
 
@@ -78,6 +92,19 @@ func (h *CloudCommentHandler) Handle(ctx context.Context, e domain.Event) error 
 		return fmt.Errorf("render template: %w", err)
 	}
 
+	if h.mode == scm.ModeUpsert {
+		marker := scm.Marker(e.RunID, "pr_comment")
+		body = scm.WithMarker(marker, body)
+		if err := scm.Validate(providerCloud, "comment_body", body); err != nil {
+			return err
+		}
+		payload := map[string]any{"content": map[string]string{"raw": body}}
+		if id, found := h.findMarkedComment(ctx, url, marker); found {
+			return h.client.Do(ctx, "PUT", fmt.Sprintf("%s/%d", url, id), payload)
+		}
+		return h.client.Do(ctx, "POST", url, payload)
+	}
+
 	if err := scm.Validate(providerCloud, "comment_body", body); err != nil {
 		return err
 	}
@@ -89,4 +116,31 @@ func (h *CloudCommentHandler) Handle(ctx context.Context, e domain.Event) error 
 	}
 
 	return h.client.Do(ctx, "POST", url, payload)
+}
+
+// cloudCommentList is the subset of Bitbucket Cloud's paginated comment
+// listing used for upsert.
+type cloudCommentList struct {
+	Values []struct {
+		ID      int64 `json:"id"`
+		Content struct {
+			Raw string `json:"raw"`
+		} `json:"content"`
+	} `json:"values"`
+}
+
+// findMarkedComment looks for an existing relay-managed comment carrying
+// the marker. Lookup failures fall back to create.
+func (h *CloudCommentHandler) findMarkedComment(ctx context.Context, listURL, marker string) (int64, bool) {
+	var list cloudCommentList
+	if err := h.client.DoWithResponse(ctx, "GET", listURL+"?pagelen=100", nil, &list); err != nil {
+		h.log.Warn("upsert: listing comments failed, falling back to create", zap.Error(err))
+		return 0, false
+	}
+	for _, c := range list.Values {
+		if scm.HasMarker(c.Content.Raw, marker) {
+			return c.ID, true
+		}
+	}
+	return 0, false
 }

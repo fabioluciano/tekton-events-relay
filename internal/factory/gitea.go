@@ -49,6 +49,7 @@ func (f *GiteaFactory) buildHandler(inst config.GiteaInstance, action config.Act
 			Token:              token,
 			BaseURL:            inst.BaseURL,
 			Template:           action.Template,
+			Mode:               action.Mode,
 			InsecureSkipVerify: inst.InsecureSkipVerify,
 			Log:                log,
 		})
@@ -57,6 +58,7 @@ func (f *GiteaFactory) buildHandler(inst config.GiteaInstance, action config.Act
 			Token:              token,
 			BaseURL:            inst.BaseURL,
 			Template:           action.Template,
+			Mode:               action.Mode,
 			InsecureSkipVerify: inst.InsecureSkipVerify,
 			Log:                log,
 		})

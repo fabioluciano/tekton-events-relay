@@ -21,12 +21,13 @@ type entry struct {
 
 // RateLimiter implements per-source rate limiting with TTL-based eviction.
 type RateLimiter struct {
-	entries map[string]*entry
-	mu      sync.Mutex
-	rps     float64
-	burst   int
-	stopCh  chan struct{}
-	doneCh  chan struct{}
+	entries  map[string]*entry
+	mu       sync.Mutex
+	rps      float64
+	burst    int
+	stopCh   chan struct{}
+	doneCh   chan struct{}
+	stopOnce sync.Once
 }
 
 // NewRateLimiter creates a rate limiter with background cleanup.
@@ -67,6 +68,15 @@ func (rl *RateLimiter) cleanupLoop() {
 			return
 		}
 	}
+}
+
+// Stop terminates the background cleanup goroutine and waits for it to exit.
+// It is safe to call multiple times.
+func (rl *RateLimiter) Stop() {
+	rl.stopOnce.Do(func() {
+		close(rl.stopCh)
+	})
+	<-rl.doneCh
 }
 
 func (rl *RateLimiter) evictStale() {

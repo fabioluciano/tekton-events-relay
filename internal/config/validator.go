@@ -273,6 +273,16 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	switch c.Store.Backend {
+	case "", "memory", "olric":
+	case "valkey":
+		if c.Store.Valkey.Address == "" {
+			return fmt.Errorf("store.valkey: backend selected but missing 'address'")
+		}
+	default:
+		return fmt.Errorf("store.backend: unsupported backend '%s' (must be 'memory', 'valkey' or 'olric')", c.Store.Backend)
+	}
+
 	names := make(map[string]map[string]bool)
 
 	if err := c.validateSCM(names); err != nil {

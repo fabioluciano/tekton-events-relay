@@ -143,7 +143,7 @@ func (h *DiscussionCommentHandler) addDiscussionComment(ctx context.Context, dis
 
 	variables := map[string]any{
 		"discussionId": discussionID,
-		"body":         body,
+		"body":         body, //nolint:goconst // GraphQL field
 	}
 
 	_, err := h.client.DoGraphQL(ctx, mutation, variables)

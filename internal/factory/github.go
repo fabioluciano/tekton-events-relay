@@ -59,6 +59,7 @@ func (f *GitHubFactory) buildHandler(inst config.GitHubInstance, action config.A
 			Token:              client.Token(),
 			BaseURL:            client.BaseURL(),
 			Template:           action.Template,
+			Mode:               action.Mode,
 			InsecureSkipVerify: inst.InsecureSkipVerify,
 		}, log)
 	case config.ActionTypeIssueComment:
@@ -66,6 +67,7 @@ func (f *GitHubFactory) buildHandler(inst config.GitHubInstance, action config.A
 			Token:              client.Token(),
 			BaseURL:            client.BaseURL(),
 			Template:           action.Template,
+			Mode:               action.Mode,
 			InsecureSkipVerify: inst.InsecureSkipVerify,
 		}, log)
 	case config.ActionTypeDiscussionComment:

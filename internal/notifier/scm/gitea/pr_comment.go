@@ -1,4 +1,4 @@
-//nolint:dupl // similar structure to IssueCommentHandler but different endpoint semantics
+//nolint:dupl // pr_comment and issue_comment share structure by design
 package gitea
 
 import (
@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"text/template"
 
-	giteaSDK "code.gitea.io/sdk/gitea"
 	"go.uber.org/zap"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
@@ -18,6 +17,8 @@ import (
 type PRCommentHandler struct {
 	client   *Client
 	template *template.Template
+	mode     string
+	log      *zap.Logger
 }
 
 // PRCommentConfig configures the PR comment handler.
@@ -25,6 +26,7 @@ type PRCommentConfig struct {
 	Token              string
 	BaseURL            string
 	Template           string
+	Mode               string // scm.ModeCreate (default) or scm.ModeUpsert
 	InsecureSkipVerify bool
 	Log                *zap.Logger
 }
@@ -40,9 +42,20 @@ func NewPRCommentHandler(cfg PRCommentConfig) (notifier.ActionHandler, error) {
 		}
 	}
 
+	mode, err := scm.NormalizeMode(cfg.Mode)
+	if err != nil {
+		return nil, err
+	}
+	log := cfg.Log
+	if log == nil {
+		log = zap.NewNop()
+	}
+
 	return &PRCommentHandler{
 		client:   NewClient(cfg.Token, cfg.BaseURL, cfg.InsecureSkipVerify, false, cfg.Log),
 		template: tmpl,
+		mode:     mode,
+		log:      log,
 	}, nil
 }
 
@@ -53,8 +66,6 @@ func (h *PRCommentHandler) Name() string { return providerGitea }
 func (h *PRCommentHandler) Type() notifier.ActionType { return notifier.ActionPRComment }
 
 // Handle posts a comment to a Gitea PR.
-//
-//nolint:dupl // similar structure to IssueCommentHandler but different endpoint semantics
 func (h *PRCommentHandler) Handle(_ context.Context, e domain.Event) error {
 	if e.Provider != providerGitea {
 		return nil
@@ -64,19 +75,5 @@ func (h *PRCommentHandler) Handle(_ context.Context, e domain.Event) error {
 		return nil
 	}
 
-	body, err := scm.RenderTemplate(h.template, e)
-	if err != nil {
-		return fmt.Errorf("render template: %w", err)
-	}
-
-	if err := scm.Validate(providerGitea, "comment_body", body); err != nil {
-		return fmt.Errorf("validate comment body: %w", err)
-	}
-
-	opts := giteaSDK.CreateIssueCommentOption{
-		Body: body,
-	}
-
-	_, _, err = h.client.sdk.CreateIssueComment(e.Repo.Owner, e.Repo.Name, int64(*e.PRNumber), opts)
-	return err
+	return postComment(h.client, h.template, h.mode, h.log, e, int64(*e.PRNumber), "pr_comment")
 }

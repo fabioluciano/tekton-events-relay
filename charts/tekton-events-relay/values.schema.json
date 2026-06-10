@@ -273,6 +273,38 @@
                 "secret_ref": {
                   "type": "string",
                   "description": "Reference to webhook secret for HMAC validation"
+                },
+                "secret_file": {
+                  "type": "string",
+                  "description": "Path to the webhook secret file for HMAC/bearer validation"
+                },
+                "validate_timestamp": {
+                  "type": "boolean",
+                  "description": "Replay protection: require an X-Webhook-Timestamp header (unix seconds) within timestamp_tolerance of the server clock",
+                  "default": false
+                },
+                "timestamp_tolerance": {
+                  "type": "string",
+                  "description": "Accepted clock skew for replay protection (Go duration format)",
+                  "default": "5m",
+                  "pattern": "^[0-9]+(ns|us|µs|ms|s|m|h)$"
+                }
+              }
+            },
+            "tls": {
+              "type": "object",
+              "title": "Native TLS Configuration",
+              "description": "Native TLS for the receiver endpoint; both files must be set, otherwise the server speaks plain HTTP",
+              "properties": {
+                "cert_file": {
+                  "type": "string",
+                  "description": "Path to the PEM certificate (empty = plain HTTP)",
+                  "default": ""
+                },
+                "key_file": {
+                  "type": "string",
+                  "description": "Path to the PEM private key (empty = plain HTTP)",
+                  "default": ""
                 }
               }
             }
@@ -288,6 +320,132 @@
           "description": "Size of the deduplication cache to prevent duplicate notifications",
           "default": 10000,
           "minimum": 1
+        },
+        "handler_timeout": {
+          "type": "string",
+          "description": "Per-handler execution deadline (Go duration format)",
+          "default": "10s",
+          "pattern": "^[0-9]+(ns|us|µs|ms|s|m|h)$"
+        },
+        "retry": {
+          "type": "object",
+          "title": "Outbound HTTP Retry Configuration",
+          "description": "Retry policy for outbound HTTP calls to notifiers and SCM providers (exponential backoff with jitter, Retry-After aware)",
+          "properties": {
+            "max_attempts": {
+              "type": "integer",
+              "description": "Total attempts including the first request",
+              "default": 4,
+              "minimum": 1
+            },
+            "initial_backoff": {
+              "type": "string",
+              "description": "First backoff delay (Go duration format)",
+              "default": "250ms",
+              "pattern": "^[0-9]+(ns|us|µs|ms|s|m|h)$"
+            },
+            "max_backoff": {
+              "type": "string",
+              "description": "Backoff ceiling (Go duration format)",
+              "default": "30s",
+              "pattern": "^[0-9]+(ns|us|µs|ms|s|m|h)$"
+            }
+          }
+        },
+        "store": {
+          "type": "object",
+          "title": "State Backend Configuration",
+          "description": "State backend shared by deduplication and the accumulator. The default memory backend is per-pod (single replica only); valkey and olric share state across replicas.",
+          "properties": {
+            "backend": {
+              "type": "string",
+              "description": "State backend: memory (per-pod), valkey (external RESP server) or olric (embedded distributed cache)",
+              "default": "memory",
+              "enum": ["memory", "valkey", "olric"]
+            },
+            "ttl": {
+              "type": "string",
+              "description": "Entry lifetime on remote backends (Go duration format)",
+              "default": "1h",
+              "pattern": "^[0-9]+(ns|us|µs|ms|s|m|h)$"
+            },
+            "valkey": {
+              "type": "object",
+              "description": "Valkey backend settings (backend: valkey)",
+              "properties": {
+                "address": {
+                  "type": "string",
+                  "description": "Valkey server address (host:port); required when backend=valkey",
+                  "default": ""
+                },
+                "password_file": {
+                  "type": "string",
+                  "description": "File containing the Valkey password (optional)",
+                  "default": ""
+                },
+                "db": {
+                  "type": "integer",
+                  "description": "Valkey logical database",
+                  "default": 0,
+                  "minimum": 0
+                },
+                "key_prefix": {
+                  "type": "string",
+                  "description": "Prefix applied to all keys",
+                  "default": "tekton-events-relay"
+                }
+              }
+            },
+            "olric": {
+              "type": "object",
+              "description": "Olric embedded backend settings (backend: olric)",
+              "properties": {
+                "bind_port": {
+                  "type": "integer",
+                  "description": "Port for olric data traffic between relay pods",
+                  "default": 3320
+                },
+                "memberlist_port": {
+                  "type": "integer",
+                  "description": "Port for memberlist gossip between relay pods (TCP+UDP)",
+                  "default": 3322
+                },
+                "peers": {
+                  "type": "array",
+                  "items": { "type": "string" },
+                  "description": "Peer list override; defaults to the chart's headless gossip service"
+                }
+              }
+            }
+          }
+        },
+        "dlq": {
+          "type": "object",
+          "title": "Dead Letter Queue Configuration",
+          "description": "Preserves events that failed with permanent errors for inspection (GET /api/v1/dlq) and replay (POST /api/v1/dlq/replay)",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Enable the dead letter queue",
+              "default": false
+            },
+            "path": {
+              "type": "string",
+              "description": "JSONL file path (mounted as a writable emptyDir by the chart)",
+              "default": "/var/lib/tekton-events-relay/dlq.jsonl"
+            },
+            "max_size_bytes": {
+              "type": "integer",
+              "description": "Maximum file size in bytes before oldest entries are dropped",
+              "default": 10485760,
+              "minimum": 1024
+            },
+            "volumeSizeLimit": {
+              "type": "string",
+              "description": "Size limit of the emptyDir volume backing the DLQ",
+              "default": "32Mi"
+            }
+          }
         },
         "filter": {
           "type": "object",
@@ -475,14 +633,6 @@
                   "template": {
                     "type": "string",
                     "description": "Go template for the Slack message body. Available variables: .State, .RunName, .CommitSHA, .TargetURL"
-                  },
-                  "template_configmap": {
-                    "type": "string",
-                    "description": "Name of ConfigMap containing external template files"
-                  },
-                  "template_configmap_key": {
-                    "type": "string",
-                    "description": "Key within the ConfigMap for the template file"
                   }
                 },
                 "required": [
@@ -520,14 +670,6 @@
                   "template": {
                     "type": "string",
                     "description": "Go template for the Teams message body. Available variables: .State, .RunName, .Namespace, .CommitSHA, .TargetURL"
-                  },
-                  "template_configmap": {
-                    "type": "string",
-                    "description": "Name of ConfigMap containing external template files"
-                  },
-                  "template_configmap_key": {
-                    "type": "string",
-                    "description": "Key within the ConfigMap for the template file"
                   }
                 },
                 "required": [
@@ -589,14 +731,6 @@
                   "template": {
                     "type": "string",
                     "description": "Go template for the Discord message body. Available variables: .State, .RunName, .Namespace, .CommitSHA, .TargetURL"
-                  },
-                  "template_configmap": {
-                    "type": "string",
-                    "description": "Name of ConfigMap containing external template files"
-                  },
-                  "template_configmap_key": {
-                    "type": "string",
-                    "description": "Key within the ConfigMap for the template file"
                   }
                 },
                 "required": [
@@ -1455,6 +1589,11 @@
           "type": "boolean",
           "description": "Enable network policy creation",
           "default": true
+        },
+        "valkeyPort": {
+          "type": "integer",
+          "description": "Valkey port allowed for egress when config.store.backend=valkey",
+          "default": 6379
         }
       },
       "required": [
@@ -1466,7 +1605,15 @@
       "title": "Template Configuration",
       "description": "Configuration for external template ConfigMaps",
       "properties": {
-      }
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable template ConfigMap mounting",
+          "default": false
+        }
+      },
+      "required": [
+        "enabled"
+      ]
     }
   },
   "$defs": {
@@ -1505,13 +1652,11 @@
           "type": "string",
           "description": "Go template for the notification body"
         },
-        "template_configmap": {
+        "mode": {
           "type": "string",
-          "description": "Name of ConfigMap containing external template files"
-        },
-        "template_configmap_key": {
-          "type": "string",
-          "description": "Key within the ConfigMap for the template file"
+          "description": "Comment posting mode: 'create' posts a new comment per event; 'upsert' embeds an invisible marker and edits the existing comment for the same run (idempotent). Supported by GitHub, Gitea and Bitbucket Cloud comment actions.",
+          "enum": ["create", "upsert"],
+          "default": "create"
         },
         "filter": {
           "type": "object",

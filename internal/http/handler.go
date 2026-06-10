@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/cehttp"
+	"github.com/fabioluciano/tekton-events-relay/internal/dlq"
 	relayerrors "github.com/fabioluciano/tekton-events-relay/internal/errors"
 	"github.com/fabioluciano/tekton-events-relay/internal/event"
 	"github.com/fabioluciano/tekton-events-relay/internal/metrics"
@@ -59,7 +60,8 @@ func redactMap(m map[string]any) {
 }
 
 // CloudEventsHandler returns an HTTP handler that decodes CloudEvents and dispatches them through the processing pipeline.
-func CloudEventsHandler(decoders *event.Registry, chain pipeline.Handler, log *zap.Logger, collectors *metrics.Collectors, logPayloads bool) http.HandlerFunc {
+// deadLetter may be nil; when set, events failing with permanent errors are preserved for replay.
+func CloudEventsHandler(decoders *event.Registry, chain pipeline.Handler, log *zap.Logger, collectors *metrics.Collectors, logPayloads bool, deadLetter dlq.Queue) http.HandlerFunc {
 	tracer := otel.Tracer("tekton-events-relay")
 	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
@@ -117,12 +119,12 @@ func CloudEventsHandler(decoders *event.Registry, chain pipeline.Handler, log *z
 
 		logCloudEvent(log, ce, logPayloads)
 
-		env, ok := decodeEvent(decoders, ce, log, w)
+		env, ok := decodeEvent(decoders, ce, log, collectors, w)
 		if !ok {
 			return
 		}
 
-		handleChainResult(ctx, chain, env, log, collectors, w)
+		handleChainResult(ctx, chain, env, log, collectors, deadLetter, w)
 	}
 }
 
@@ -141,10 +143,15 @@ func logCloudEvent(log *zap.Logger, ce *cehttp.Event, logPayloads bool) {
 	log.Debug("cloudevent received", fields...)
 }
 
-func decodeEvent(decoders *event.Registry, ce *cehttp.Event, log *zap.Logger, w http.ResponseWriter) (*event.Envelope, bool) {
+func decodeEvent(decoders *event.Registry, ce *cehttp.Event, log *zap.Logger, collectors *metrics.Collectors, w http.ResponseWriter) (*event.Envelope, bool) {
 	decoder, err := decoders.Find(ce.Type)
 	if err != nil {
-		log.Debug("no decoder", zap.String("type", ce.Type))
+		log.Warn("no decoder registered for event type, event discarded",
+			zap.String("type", ce.Type),
+			zap.String("ce_id", ce.ID))
+		if collectors != nil {
+			collectors.EventsUnsupportedType.WithLabelValues(ce.Type).Inc()
+		}
 		w.WriteHeader(http.StatusOK)
 		return nil, false
 	}
@@ -157,7 +164,7 @@ func decodeEvent(decoders *event.Registry, ce *cehttp.Event, log *zap.Logger, w 
 	return env, true
 }
 
-func handleChainResult(ctx context.Context, chain pipeline.Handler, env *event.Envelope, log *zap.Logger, collectors *metrics.Collectors, w http.ResponseWriter) {
+func handleChainResult(ctx context.Context, chain pipeline.Handler, env *event.Envelope, log *zap.Logger, collectors *metrics.Collectors, deadLetter dlq.Queue, w http.ResponseWriter) {
 	if err := chain.Handle(ctx, env); err != nil {
 		if relayerrors.IsRetryable(err) {
 			collectors.EventsBackpressure.Inc()
@@ -171,6 +178,27 @@ func handleChainResult(ctx context.Context, chain pipeline.Handler, env *event.E
 		log.Error("permanent error in pipeline chain",
 			zap.String("ce_id", env.CloudEventID),
 			zap.Error(err))
+		preserveInDLQ(ctx, deadLetter, env, err, log, collectors)
 	}
 	w.WriteHeader(http.StatusOK)
+}
+
+// preserveInDLQ stores a permanently failed event for later inspection and
+// replay. DLQ failures are logged but never fail the request.
+func preserveInDLQ(ctx context.Context, deadLetter dlq.Queue, env *event.Envelope, cause error, log *zap.Logger, collectors *metrics.Collectors) {
+	if deadLetter == nil {
+		return
+	}
+	if err := deadLetter.Enqueue(ctx, env, cause); err != nil {
+		log.Error("failed to enqueue event to DLQ",
+			zap.String("ce_id", env.CloudEventID),
+			zap.Error(err))
+		return
+	}
+	log.Info("event preserved in DLQ for replay",
+		zap.String("ce_id", env.CloudEventID))
+	if collectors != nil {
+		collectors.DLQEnqueued.Inc()
+		updateDLQSizeGauge(ctx, deadLetter, collectors)
+	}
 }

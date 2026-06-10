@@ -1,4 +1,4 @@
-//nolint:dupl // similar structure to IssueCommentHandler but different endpoint semantics
+//nolint:dupl // pr_comment and issue_comment share structure by design
 package github
 
 import (
@@ -17,6 +17,8 @@ import (
 type PRCommentHandler struct {
 	client   *Client
 	template *template.Template
+	mode     string
+	log      *zap.Logger
 }
 
 // PRCommentConfig configures the PR comment handler.
@@ -24,6 +26,7 @@ type PRCommentConfig struct {
 	Token              string
 	BaseURL            string
 	Template           string
+	Mode               string // scm.ModeCreate (default) or scm.ModeUpsert
 	InsecureSkipVerify bool
 }
 
@@ -38,9 +41,19 @@ func NewPRCommentHandler(cfg PRCommentConfig, log *zap.Logger) (notifier.ActionH
 		}
 	}
 
+	mode, err := scm.NormalizeMode(cfg.Mode)
+	if err != nil {
+		return nil, err
+	}
+	if log == nil {
+		log = zap.NewNop()
+	}
+
 	return &PRCommentHandler{
 		client:   NewClient(cfg.Token, cfg.BaseURL, cfg.InsecureSkipVerify, log, false),
 		template: tmpl,
+		mode:     mode,
+		log:      log,
 	}, nil
 }
 
@@ -64,19 +77,6 @@ func (h *PRCommentHandler) Handle(ctx context.Context, e domain.Event) error {
 		return nil
 	}
 
-	// GitHub PRs use issues API for comments
-	url := fmt.Sprintf("%s/repos/%s/%s/issues/%d/comments",
-		h.client.baseURL, e.Repo.Owner, e.Repo.Name, *e.PRNumber)
-
-	body, err := scm.RenderTemplate(h.template, e)
-	if err != nil {
-		return fmt.Errorf("render template: %w", err)
-	}
-
-	if err := scm.Validate(providerGitHub, "comment_body", body); err != nil {
-		return err
-	}
-
-	payload := map[string]string{"body": body}
-	return h.client.Do(ctx, "POST", url, payload)
+	// GitHub PRs use the issues API for comments.
+	return postIssueComment(ctx, h.client, h.template, h.mode, h.log, e, *e.PRNumber, "pr_comment")
 }

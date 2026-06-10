@@ -100,9 +100,10 @@ spec:
             - mountPath: /etc/tekton-events-relay
               name: config
               readOnly: true
-            - mountPath: /etc/templates/{{ include "tekton-events-relay.fullname" . }}-templates
-              name: templates
-              readOnly: true
+            {{- if .Values.config.dlq.enabled }}
+            - mountPath: /var/lib/tekton-events-relay
+              name: dlq
+            {{- end }}
             {{- range $inst := .Values.config.scm.github }}
             {{- if and $inst.enabled $inst.auth $inst.auth.secret_name }}
             - mountPath: /etc/secrets/github/{{ $inst.name }}
@@ -209,6 +210,11 @@ spec:
               readOnly: true
             {{- end }}
             {{- end }}
+            {{- if .Values.templates.enabled }}
+            - mountPath: /etc/templates
+              name: templates
+              readOnly: true
+            {{- end }}
       dnsConfig:
         options:
           - name: ndots
@@ -236,9 +242,14 @@ spec:
         - configMap:
             name: {{ include "tekton-events-relay.fullname" . }}-config
           name: config
-        - configMap:
-            name: {{ include "tekton-events-relay.fullname" . }}-templates
-          name: templates
+        {{- if .Values.config.dlq.enabled }}
+        # Writable storage for the dead letter queue (readOnlyRootFilesystem).
+        # emptyDir survives container restarts but not pod rescheduling; use a
+        # PVC via extra manifests if stronger durability is needed.
+        - name: dlq
+          emptyDir:
+            sizeLimit: {{ .Values.config.dlq.volumeSizeLimit }}
+        {{- end }}
         {{- range $inst := .Values.config.scm.github }}
         {{- if and $inst.enabled $inst.auth $inst.auth.secret_name }}
         - name: github-{{ $inst.name }}-secret
@@ -360,4 +371,9 @@ spec:
           secret:
             secretName: {{ $inst.url_secret_name }}
         {{- end }}
+        {{- end }}
+        {{- if .Values.templates.enabled }}
+        - name: templates
+          configMap:
+            name: {{ include "tekton-events-relay.fullname" . }}-templates
         {{- end }}

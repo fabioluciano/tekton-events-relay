@@ -27,6 +27,54 @@ type AccumulatorConfig struct {
 	Provider *AccumulatorProviderConfig `yaml:"provider,omitempty" json:"provider,omitempty"`
 }
 
+// RetryConfig controls outbound HTTP retry behavior for all notifiers
+// and SCM clients (exponential backoff with jitter, Retry-After aware).
+type RetryConfig struct {
+	MaxAttempts    int           `yaml:"max_attempts" json:"max_attempts"`       // total attempts including the first
+	InitialBackoff time.Duration `yaml:"initial_backoff" json:"initial_backoff"` // first backoff delay
+	MaxBackoff     time.Duration `yaml:"max_backoff" json:"max_backoff"`         // backoff ceiling
+}
+
+// StoreConfig selects the state backend shared by the deduper and the
+// accumulator. The default in-memory backend is per-pod: state is lost on
+// restart and not shared between replicas, so deduplication and accumulation
+// are only fully reliable with a single replica. Use valkey or olric to run
+// multiple replicas correctly.
+type StoreConfig struct {
+	Backend string        `yaml:"backend" json:"backend" validate:"omitempty,oneof=memory valkey olric"` // memory | valkey | olric
+	TTL     time.Duration `yaml:"ttl,omitempty" json:"ttl,omitempty"`                                    // entry lifetime on remote backends
+	Valkey  ValkeyConfig  `yaml:"valkey,omitempty" json:"valkey,omitempty"`
+	Olric   OlricConfig   `yaml:"olric,omitempty" json:"olric,omitempty"`
+}
+
+// ValkeyConfig configures the valkey backend (any RESP-compatible server).
+type ValkeyConfig struct {
+	Address      string `yaml:"address" json:"address"`
+	PasswordFile string `yaml:"password_file,omitempty" json:"password_file,omitempty"`
+	DB           int    `yaml:"db,omitempty" json:"db,omitempty"`
+	KeyPrefix    string `yaml:"key_prefix,omitempty" json:"key_prefix,omitempty"`
+}
+
+// OlricConfig configures the embedded olric backend. Relay pods form a
+// distributed cache between themselves via memberlist gossip.
+type OlricConfig struct {
+	BindAddr       string   `yaml:"bind_addr,omitempty" json:"bind_addr,omitempty"`
+	BindPort       int      `yaml:"bind_port,omitempty" json:"bind_port,omitempty"`
+	MemberlistPort int      `yaml:"memberlist_port,omitempty" json:"memberlist_port,omitempty"`
+	Peers          []string `yaml:"peers,omitempty" json:"peers,omitempty"` // host:memberlist_port of other relay pods (headless service)
+	Env            string   `yaml:"env,omitempty" json:"env,omitempty"`     // memberlist profile: local | lan | wan
+}
+
+// DLQConfig controls the dead letter queue for events that failed with
+// permanent errors. Disabled by default; when enabled, failed events are
+// preserved in a JSONL file and can be inspected and replayed via
+// GET /api/v1/dlq and POST /api/v1/dlq/replay.
+type DLQConfig struct {
+	Enabled      bool   `yaml:"enabled" json:"enabled"`
+	Path         string `yaml:"path,omitempty" json:"path,omitempty"`
+	MaxSizeBytes int64  `yaml:"max_size_bytes,omitempty" json:"max_size_bytes,omitempty"`
+}
+
 // Config represents the application configuration loaded from YAML.
 type Config struct {
 	Server         Server            `yaml:"server" validate:"required"`
@@ -34,6 +82,10 @@ type Config struct {
 	Filter         FilterConfig      `yaml:"filter"`
 	DedupeSize     int               `yaml:"dedupe_size"`
 	MaxConcurrency int               `yaml:"max_concurrency"`
+	HandlerTimeout time.Duration     `yaml:"handler_timeout,omitempty" json:"handler_timeout,omitempty"` // per-handler execution deadline
+	Retry          RetryConfig       `yaml:"retry,omitempty" json:"retry,omitempty"`
+	Store          StoreConfig       `yaml:"store,omitempty" json:"store,omitempty"`
+	DLQ            DLQConfig         `yaml:"dlq,omitempty" json:"dlq,omitempty"`
 	Accumulator    AccumulatorConfig `yaml:"accumulator,omitempty" json:"accumulator,omitempty"`
 	SCM            SCMConfig         `yaml:"scm" validate:"required"`
 	Notifiers      NotifiersConfig   `yaml:"notifiers" validate:"required"`
@@ -51,7 +103,19 @@ type Server struct {
 	MaxBodySize        int64           `yaml:"max_body_size"`
 	RateLimit          RateLimitConfig `yaml:"rate_limit"`
 	Auth               AuthConfig      `yaml:"auth"`
+	TLS                ServerTLSConfig `yaml:"tls,omitempty" json:"tls,omitempty"`
 }
+
+// ServerTLSConfig enables native TLS on the receiver endpoint. Both files
+// must be set; when empty the server speaks plain HTTP (TLS terminated by
+// the ingress).
+type ServerTLSConfig struct {
+	CertFile string `yaml:"cert_file,omitempty" json:"cert_file,omitempty"`
+	KeyFile  string `yaml:"key_file,omitempty" json:"key_file,omitempty"`
+}
+
+// Enabled reports whether native TLS is configured.
+func (t ServerTLSConfig) Enabled() bool { return t.CertFile != "" && t.KeyFile != "" }
 
 // RateLimitConfig holds rate limiting configuration.
 type RateLimitConfig struct {
@@ -65,6 +129,12 @@ type AuthConfig struct {
 	Enabled    bool   `yaml:"enabled" validate:"omitempty"`
 	Type       string `yaml:"type" validate:"omitempty,oneof=hmac-sha256 bearer"`
 	SecretFile string `yaml:"secret_file" validate:"required_if=Enabled true"`
+
+	// ValidateTimestamp enables webhook replay protection: requests must
+	// carry an X-Webhook-Timestamp header (unix seconds) within
+	// timestamp_tolerance of the server clock. Default tolerance: 5m.
+	ValidateTimestamp  bool          `yaml:"validate_timestamp,omitempty" json:"validate_timestamp,omitempty"`
+	TimestampTolerance time.Duration `yaml:"timestamp_tolerance,omitempty" json:"timestamp_tolerance,omitempty"`
 }
 
 // Defaults for security middleware.
@@ -148,6 +218,11 @@ type Action struct {
 	Type    ActionType `yaml:"type" validate:"required"`
 	Enabled bool       `yaml:"enabled"`
 	When    string     `yaml:"when,omitempty"`
+
+	// Mode controls comment actions: "create" (default) posts a new comment
+	// per event; "upsert" embeds an invisible marker and edits the existing
+	// comment for the same run, making the action idempotent.
+	Mode string `yaml:"mode,omitempty" validate:"omitempty,oneof=create upsert"`
 
 	// Comment action fields
 	// Template is an inline Go text/template for formatting comments on PR/issue/discussion comments and webhook payloads.
@@ -562,6 +637,30 @@ func applyDefaults(c *Config) {
 	}
 	if c.MaxConcurrency == 0 {
 		c.MaxConcurrency = 100
+	}
+	if c.HandlerTimeout == 0 {
+		c.HandlerTimeout = 10 * time.Second
+	}
+	if c.Retry.MaxAttempts == 0 {
+		c.Retry.MaxAttempts = 4
+	}
+	if c.Retry.InitialBackoff == 0 {
+		c.Retry.InitialBackoff = 250 * time.Millisecond
+	}
+	if c.Retry.MaxBackoff == 0 {
+		c.Retry.MaxBackoff = 30 * time.Second
+	}
+	if c.Store.Backend == "" {
+		c.Store.Backend = "memory"
+	}
+	if c.Store.TTL == 0 {
+		c.Store.TTL = time.Hour
+	}
+	if c.DLQ.Path == "" {
+		c.DLQ.Path = "/var/lib/tekton-events-relay/dlq.jsonl"
+	}
+	if c.DLQ.MaxSizeBytes == 0 {
+		c.DLQ.MaxSizeBytes = 10 * 1024 * 1024
 	}
 	if !c.Filter.AllowTaskRun && !c.Filter.AllowPipelineRun {
 		c.Filter.AllowPipelineRun = true

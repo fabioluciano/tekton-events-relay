@@ -25,12 +25,63 @@ data:
         enabled: true
         type: {{ .Values.config.server.auth.type | quote }}
         secret_file: {{ .Values.config.server.auth.secret_file | quote }}
+        {{- if .Values.config.server.auth.validate_timestamp }}
+        validate_timestamp: true
+        timestamp_tolerance: {{ .Values.config.server.auth.timestamp_tolerance | default "5m" | quote }}
+        {{- end }}
+      {{- end }}
+      {{- if and .Values.config.server.tls .Values.config.server.tls.cert_file .Values.config.server.tls.key_file }}
+      tls:
+        cert_file: {{ .Values.config.server.tls.cert_file | quote }}
+        key_file: {{ .Values.config.server.tls.key_file | quote }}
       {{- end }}
 
     dashboard_url: {{ .Values.config.dashboard_url | quote }}
     dedupe_size: {{ .Values.config.dedupe_size }}
-    {{- if .Values.config.max_concurrency }}
-    max_concurrency: {{ .Values.config.max_concurrency }}
+    {{- if .Values.config.handler_timeout }}
+    handler_timeout: {{ .Values.config.handler_timeout | quote }}
+    {{- end }}
+
+    {{- if .Values.config.retry }}
+    retry:
+      max_attempts: {{ .Values.config.retry.max_attempts }}
+      initial_backoff: {{ .Values.config.retry.initial_backoff | quote }}
+      max_backoff: {{ .Values.config.retry.max_backoff | quote }}
+    {{- end }}
+
+    {{- if .Values.config.store }}
+    store:
+      backend: {{ .Values.config.store.backend | quote }}
+      ttl: {{ .Values.config.store.ttl | quote }}
+      {{- if eq .Values.config.store.backend "valkey" }}
+      valkey:
+        address: {{ required "config.store.valkey.address is required when store.backend=valkey" .Values.config.store.valkey.address | quote }}
+        {{- if .Values.config.store.valkey.password_file }}
+        password_file: {{ .Values.config.store.valkey.password_file | quote }}
+        {{- end }}
+        db: {{ .Values.config.store.valkey.db | int }}
+        key_prefix: {{ .Values.config.store.valkey.key_prefix | quote }}
+      {{- end }}
+      {{- if eq .Values.config.store.backend "olric" }}
+      olric:
+        bind_port: {{ .Values.config.store.olric.bind_port }}
+        memberlist_port: {{ .Values.config.store.olric.memberlist_port }}
+        peers:
+          {{- if .Values.config.store.olric.peers }}
+          {{- range .Values.config.store.olric.peers }}
+          - {{ . | quote }}
+          {{- end }}
+          {{- else }}
+          - "{{ include "tekton-events-relay.fullname" . }}-gossip:{{ .Values.config.store.olric.memberlist_port }}"
+          {{- end }}
+      {{- end }}
+    {{- end }}
+
+    {{- if .Values.config.dlq.enabled }}
+    dlq:
+      enabled: true
+      path: {{ .Values.config.dlq.path | quote }}
+      max_size_bytes: {{ .Values.config.dlq.max_size_bytes | int }}
     {{- end }}
 
     {{- if .Values.config.accumulator }}
@@ -108,8 +159,12 @@ data:
               {{- if .when }}
               when: {{ .when | quote }}
               {{- end }}
-              {{- if or (eq .type "pr_comment") (eq .type "issue_comment") (eq .type "discussion_comment") (eq .type "check_run") }}
-              template: /etc/templates/{{ .template_configmap | default (printf "%s-templates" (include "tekton-events-relay.fullname" $)) }}/{{ .template_configmap_key | default (include "tekton-events-relay.defaultTemplateKey" (dict "type" .type "provider" "github")) }}
+              {{- if .mode }}
+              mode: {{ .mode | quote }}
+              {{- end }}
+              {{- if .template }}
+              template: |
+{{ .template | nindent 16 }}
               {{- end }}
               {{- if .success_label }}
               success_label: {{ .success_label | quote }}
@@ -158,8 +213,8 @@ data:
               {{- if .when }}
               when: {{ .when | quote }}
               {{- end }}
-              {{- if or (eq .type "pr_comment") (eq .type "issue_comment") }}
-              template: /etc/templates/{{ .template_configmap | default (printf "%s-templates" (include "tekton-events-relay.fullname" $)) }}/{{ .template_configmap_key | default (include "tekton-events-relay.defaultTemplateKey" (dict "type" .type "provider" "gitlab")) }}
+              {{- if .mode }}
+              mode: {{ .mode | quote }}
               {{- end }}
               {{- if .success_label }}
               success_label: {{ .success_label | quote }}
@@ -214,6 +269,9 @@ data:
               {{- if .when }}
               when: {{ .when | quote }}
               {{- end }}
+              {{- if .mode }}
+              mode: {{ .mode | quote }}
+              {{- end }}
             {{- end }}
           {{- end }}
         {{- end }}
@@ -245,6 +303,9 @@ data:
               enabled: {{ .enabled }}
               {{- if .when }}
               when: {{ .when | quote }}
+              {{- end }}
+              {{- if .mode }}
+              mode: {{ .mode | quote }}
               {{- end }}
               {{- if .success_label }}
               success_label: {{ .success_label | quote }}
@@ -290,8 +351,12 @@ data:
               {{- if .when }}
               when: {{ .when | quote }}
               {{- end }}
-              {{- if or (eq .type "pr_comment") (eq .type "issue_comment") }}
-              template: /etc/templates/{{ .template_configmap | default (printf "%s-templates" (include "tekton-events-relay.fullname" $)) }}/{{ .template_configmap_key | default (include "tekton-events-relay.defaultTemplateKey" (dict "type" .type "provider" "gitea")) }}
+              {{- if .mode }}
+              mode: {{ .mode | quote }}
+              {{- end }}
+              {{- if .template }}
+              template: |
+{{ .template | nindent 16 }}
               {{- end }}
               {{- if .success_label }}
               success_label: {{ .success_label | quote }}
@@ -333,6 +398,9 @@ data:
               {{- if .when }}
               when: {{ .when | quote }}
               {{- end }}
+              {{- if .mode }}
+              mode: {{ .mode | quote }}
+              {{- end }}
             {{- end }}
           {{- end }}
         {{- end }}
@@ -346,13 +414,13 @@ data:
         {{- range .Values.config.notifiers.slack }}
         - name: {{ .name }}
           enabled: {{ .enabled }}
-          {{- if .auth }}
+          {{- if or .secret_name .bot_token }}
           auth:
-            {{- if .auth.bot_token }}
+            {{- if .bot_token }}
             bot_token:
               token_file: "/etc/secrets/slack/{{ .name }}/token"
-              channel_id: {{ .auth.bot_token.channel_id | quote }}
-            {{- else if .auth.webhook_url_secret_name }}
+              channel_id: {{ .bot_token.channel_id | quote }}
+            {{- else }}
             webhook_url_file: "/etc/secrets/slack/{{ .name }}/webhook_url"
             {{- end }}
           {{- end }}
@@ -368,7 +436,10 @@ data:
           {{- if .when }}
           when: {{ .when | quote }}
           {{- end }}
-          template: /etc/templates/{{ .template_configmap | default (printf "%s-templates" (include "tekton-events-relay.fullname" $)) }}/{{ .template_configmap_key | default (include "tekton-events-relay.defaultTemplateKey" (dict "type" "slack" "provider" "slack")) }}
+          {{- if .template }}
+          template: |
+{{ .template | nindent 12 }}
+          {{- end }}
         {{- end }}
       {{- end }}
       {{- if .Values.config.notifiers.teams }}
@@ -376,19 +447,17 @@ data:
         {{- range .Values.config.notifiers.teams }}
         - name: {{ .name }}
           enabled: {{ .enabled }}
-          {{- if .auth }}
-          {{- if .auth.webhook_url_secret_name }}
+          {{- if .secret_name }}
           auth:
             webhook_url_file: "/etc/secrets/teams/{{ .name }}/webhook_url"
-            {{- if .auth.webhook_url_key }}
-            webhook_url_key: {{ .auth.webhook_url_key | quote }}
-            {{- end }}
-          {{- end }}
           {{- end }}
           {{- if .when }}
           when: {{ .when | quote }}
           {{- end }}
-          template: /etc/templates/{{ .template_configmap | default (printf "%s-templates" (include "tekton-events-relay.fullname" $)) }}/{{ .template_configmap_key | default (include "tekton-events-relay.defaultTemplateKey" (dict "type" "teams" "provider" "teams")) }}
+          {{- if .template }}
+          template: |
+{{ .template | nindent 12 }}
+          {{- end }}
         {{- end }}
       {{- end }}
       {{- if .Values.config.notifiers.discord }}
@@ -396,13 +465,13 @@ data:
         {{- range .Values.config.notifiers.discord }}
         - name: {{ .name }}
           enabled: {{ .enabled }}
-          {{- if .auth }}
+          {{- if or .secret_name .bot_token }}
           auth:
-            {{- if .auth.bot_token }}
+            {{- if .bot_token }}
             bot_token:
               token_file: "/etc/secrets/discord/{{ .name }}/token"
-              channel_id: {{ .auth.bot_token.channel_id | quote }}
-            {{- else if .auth.webhook_url_secret_name }}
+              channel_id: {{ .bot_token.channel_id | quote }}
+            {{- else }}
             webhook_url_file: "/etc/secrets/discord/{{ .name }}/webhook_url"
             {{- end }}
           {{- end }}
@@ -415,7 +484,10 @@ data:
           {{- if .when }}
           when: {{ .when | quote }}
           {{- end }}
-          template: /etc/templates/{{ .template_configmap | default (printf "%s-templates" (include "tekton-events-relay.fullname" $)) }}/{{ .template_configmap_key | default (include "tekton-events-relay.defaultTemplateKey" (dict "type" "discord" "provider" "discord")) }}
+          {{- if .template }}
+          template: |
+{{ .template | nindent 12 }}
+          {{- end }}
         {{- end }}
       {{- end }}
       {{- if .Values.config.notifiers.pagerduty }}
@@ -423,14 +495,9 @@ data:
         {{- range .Values.config.notifiers.pagerduty }}
         - name: {{ .name }}
           enabled: {{ .enabled }}
-          {{- if .auth }}
-          {{- if .auth.integration_key_secret_name }}
+          {{- if .secret_name }}
           auth:
             integration_key_file: "/etc/secrets/pagerduty/{{ .name }}/integration_key"
-            {{- if .auth.integration_key_key }}
-            integration_key_key: {{ .auth.integration_key_key | quote }}
-            {{- end }}
-          {{- end }}
           {{- end }}
           {{- if .severity }}
           severity: {{ .severity | quote }}
@@ -445,14 +512,9 @@ data:
         {{- range .Values.config.notifiers.datadog }}
         - name: {{ .name }}
           enabled: {{ .enabled }}
-          {{- if .auth }}
-          {{- if .auth.api_key_secret_name }}
+          {{- if .secret_name }}
           auth:
             api_key_file: "/etc/secrets/datadog/{{ .name }}/api_key"
-            {{- if .auth.api_key_key }}
-            api_key_key: {{ .auth.api_key_key | quote }}
-            {{- end }}
-          {{- end }}
           {{- end }}
           {{- if .site }}
           site: {{ .site | quote }}
@@ -508,7 +570,10 @@ data:
           headers:
             {{- .headers | toYaml | nindent 12 }}
           {{- end }}
-          template: /etc/templates/{{ .template_configmap | default (printf "%s-templates" (include "tekton-events-relay.fullname" $)) }}/{{ .template_configmap_key | default "webhook-default.tmpl" }}
+          {{- if .template }}
+          template: |
+{{ .template | nindent 12 }}
+          {{- end }}
         {{- end }}
       {{- end }}
     {{- end }}

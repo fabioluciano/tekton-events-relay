@@ -1,0 +1,27 @@
+{{- if eq .Values.config.store.backend "olric" }}
+# Headless service used by olric memberlist gossip for peer discovery.
+# publishNotReadyAddresses lets pods join the cluster before passing
+# readiness, avoiding a chicken-and-egg problem on rollout.
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    {{- include "tekton-events-relay.annotations" . | nindent 4 }}
+  labels:
+    {{- include "tekton-events-relay.labels" . | nindent 4 }}
+  name: {{ include "tekton-events-relay.fullname" . }}-gossip
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    {{- include "tekton-events-relay.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: olric
+      port: {{ .Values.config.store.olric.bind_port }}
+      targetPort: {{ .Values.config.store.olric.bind_port }}
+      protocol: TCP
+    - name: gossip
+      port: {{ .Values.config.store.olric.memberlist_port }}
+      targetPort: {{ .Values.config.store.olric.memberlist_port }}
+      protocol: TCP
+{{- end }}

@@ -35,6 +35,26 @@ spec:
         - port: 4318
           protocol: TCP
     {{- end }}
+    {{- if eq .Values.config.store.backend "valkey" }}
+    # Allow outbound to the Valkey shared state store
+    - ports:
+        - port: {{ .Values.networkPolicy.valkeyPort }}
+          protocol: TCP
+    {{- end }}
+    {{- if eq .Values.config.store.backend "olric" }}
+    # Allow pod-to-pod olric traffic (data + memberlist gossip)
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "tekton-events-relay.selectorLabels" . | nindent 14 }}
+      ports:
+        - port: {{ .Values.config.store.olric.bind_port }}
+          protocol: TCP
+        - port: {{ .Values.config.store.olric.memberlist_port }}
+          protocol: TCP
+        - port: {{ .Values.config.store.olric.memberlist_port }}
+          protocol: UDP
+    {{- end }}
   ingress:
     # Allow traffic from same namespace
     - from:
@@ -50,6 +70,20 @@ spec:
       ports:
         - port: {{ .Values.service.targetPort }}
           protocol: TCP
+    {{- if eq .Values.config.store.backend "olric" }}
+    # Allow pod-to-pod olric traffic (data + memberlist gossip)
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "tekton-events-relay.selectorLabels" . | nindent 14 }}
+      ports:
+        - port: {{ .Values.config.store.olric.bind_port }}
+          protocol: TCP
+        - port: {{ .Values.config.store.olric.memberlist_port }}
+          protocol: TCP
+        - port: {{ .Values.config.store.olric.memberlist_port }}
+          protocol: UDP
+    {{- end }}
   podSelector:
     matchLabels:
       {{- include "tekton-events-relay.selectorLabels" . | nindent 6 }}

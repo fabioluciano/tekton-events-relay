@@ -5,16 +5,35 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/fabioluciano/tekton-events-relay/internal/accumulator"
 	"github.com/fabioluciano/tekton-events-relay/internal/config"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
 )
+
+// BuildOption customizes BuildAll behavior.
+type BuildOption func(*buildOptions)
+
+type buildOptions struct {
+	accumulatorBuffer accumulator.Buffer
+}
+
+// WithAccumulatorBuffer injects a shared-state buffer (valkey/olric) into the
+// accumulator instead of the default per-pod in-memory LRU.
+func WithAccumulatorBuffer(buf accumulator.Buffer) BuildOption {
+	return func(o *buildOptions) { o.accumulatorBuffer = buf }
+}
 
 // BuildAll constructs a fully populated Registry from the application config.
 // It iterates over all configured SCM and notifier instances, delegates to
 // the appropriate factory, and registers the resulting handlers.
 // Order: SCM handlers → notifier handlers → accumulator (so the accumulator
 // can look up already-registered SCM/notifier providers by name).
-func BuildAll(cfg *config.Config, log *zap.Logger) (*notifier.Registry, error) {
+func BuildAll(cfg *config.Config, log *zap.Logger, opts ...BuildOption) (*notifier.Registry, error) {
+	var options buildOptions
+	for _, opt := range opts {
+		opt(&options)
+	}
+
 	reg := notifier.NewRegistry()
 
 	// SCM providers — registered first so the accumulator can look them up
@@ -29,7 +48,7 @@ func BuildAll(cfg *config.Config, log *zap.Logger) (*notifier.Registry, error) {
 
 	// F3 Accumulator — built last so it can find providers already in the registry
 	if cfg.Accumulator.Enabled {
-		accHandler, err := BuildAccumulator(cfg.Accumulator, reg, log)
+		accHandler, err := BuildAccumulator(cfg.Accumulator, reg, options.accumulatorBuffer, log)
 		if err != nil {
 			return nil, fmt.Errorf("build accumulator: %w", err)
 		}

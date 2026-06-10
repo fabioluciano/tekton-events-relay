@@ -1,6 +1,8 @@
 <div align="center">
 
-# Tekton Events Relay
+![Tekton Events Relay](assets/banner.png)
+
+---
 
 ### Stop manually updating CI status across platforms. Automate Tekton pipeline feedback to GitHub, GitLab, Bitbucket, and more.
 
@@ -10,9 +12,9 @@
 
 #### Build Status
 
-[![CI Go](https://img.shields.io/github/actions/workflow/status/fabioluciano/tekton-events-relay/ci-go.yaml?branch=main&style=flat-square&logo=go&label=go)](https://github.com/fabioluciano/tekton-events-relay/actions)
-[![CI Docker](https://img.shields.io/github/actions/workflow/status/fabioluciano/tekton-events-relay/ci-docker.yaml?branch=main&style=flat-square&logo=docker&label=docker)](https://github.com/fabioluciano/tekton-events-relay/actions)
-[![CI Helm](https://img.shields.io/github/actions/workflow/status/fabioluciano/tekton-events-relay/ci-helm.yaml?branch=main&style=flat-square&logo=helm&label=helm)](https://github.com/fabioluciano/tekton-events-relay/actions)
+[![CI Go](https://img.shields.io/github/actions/workflow/status/fabioluciano/tekton-events-relay/ci-go.yaml?branch=main&style=flat-square&logo=go&label=go)](https://github.com/fabioluciano/tekton-events-relay/actions/workflows/ci-go.yaml)
+[![CI Docker](https://img.shields.io/github/actions/workflow/status/fabioluciano/tekton-events-relay/ci-docker.yaml?branch=main&style=flat-square&logo=docker&label=docker)](https://github.com/fabioluciano/tekton-events-relay/actions/workflows/ci-docker.yaml)
+[![CI Helm](https://img.shields.io/github/actions/workflow/status/fabioluciano/tekton-events-relay/ci-helm.yaml?branch=main&style=flat-square&logo=helm&label=helm)](https://github.com/fabioluciano/tekton-events-relay/actions/workflows/ci-helm.yaml)
 
 #### Project Info
 

@@ -162,6 +162,9 @@ data:
               {{- if .mode }}
               mode: {{ .mode | quote }}
               {{- end }}
+              {{- if .context_per_task }}
+              context_per_task: true
+              {{- end }}
               {{- if .template }}
               template: |
 {{ .template | nindent 16 }}
@@ -171,6 +174,21 @@ data:
               {{- end }}
               {{- if .failure_label }}
               failure_label: {{ .failure_label | quote }}
+              {{- end }}
+              {{- if .labels }}
+              labels:
+                {{- if .labels.add }}
+                add:
+                  {{- range .labels.add }}
+                  - {{ . | quote }}
+                  {{- end }}
+                {{- end }}
+                {{- if .labels.remove }}
+                remove:
+                  {{- range .labels.remove }}
+                  - {{ . | quote }}
+                  {{- end }}
+                {{- end }}
               {{- end }}
             {{- end }}
           {{- end }}
@@ -216,11 +234,29 @@ data:
               {{- if .mode }}
               mode: {{ .mode | quote }}
               {{- end }}
+              {{- if .context_per_task }}
+              context_per_task: true
+              {{- end }}
               {{- if .success_label }}
               success_label: {{ .success_label | quote }}
               {{- end }}
               {{- if .failure_label }}
               failure_label: {{ .failure_label | quote }}
+              {{- end }}
+              {{- if .labels }}
+              labels:
+                {{- if .labels.add }}
+                add:
+                  {{- range .labels.add }}
+                  - {{ . | quote }}
+                  {{- end }}
+                {{- end }}
+                {{- if .labels.remove }}
+                remove:
+                  {{- range .labels.remove }}
+                  - {{ . | quote }}
+                  {{- end }}
+                {{- end }}
               {{- end }}
             {{- end }}
           {{- end }}
@@ -272,6 +308,9 @@ data:
               {{- if .mode }}
               mode: {{ .mode | quote }}
               {{- end }}
+              {{- if .context_per_task }}
+              context_per_task: true
+              {{- end }}
             {{- end }}
           {{- end }}
         {{- end }}
@@ -307,11 +346,29 @@ data:
               {{- if .mode }}
               mode: {{ .mode | quote }}
               {{- end }}
+              {{- if .context_per_task }}
+              context_per_task: true
+              {{- end }}
               {{- if .success_label }}
               success_label: {{ .success_label | quote }}
               {{- end }}
               {{- if .failure_label }}
               failure_label: {{ .failure_label | quote }}
+              {{- end }}
+              {{- if .labels }}
+              labels:
+                {{- if .labels.add }}
+                add:
+                  {{- range .labels.add }}
+                  - {{ . | quote }}
+                  {{- end }}
+                {{- end }}
+                {{- if .labels.remove }}
+                remove:
+                  {{- range .labels.remove }}
+                  - {{ . | quote }}
+                  {{- end }}
+                {{- end }}
               {{- end }}
             {{- end }}
           {{- end }}
@@ -354,6 +411,9 @@ data:
               {{- if .mode }}
               mode: {{ .mode | quote }}
               {{- end }}
+              {{- if .context_per_task }}
+              context_per_task: true
+              {{- end }}
               {{- if .template }}
               template: |
 {{ .template | nindent 16 }}
@@ -363,6 +423,21 @@ data:
               {{- end }}
               {{- if .failure_label }}
               failure_label: {{ .failure_label | quote }}
+              {{- end }}
+              {{- if .labels }}
+              labels:
+                {{- if .labels.add }}
+                add:
+                  {{- range .labels.add }}
+                  - {{ . | quote }}
+                  {{- end }}
+                {{- end }}
+                {{- if .labels.remove }}
+                remove:
+                  {{- range .labels.remove }}
+                  - {{ . | quote }}
+                  {{- end }}
+                {{- end }}
               {{- end }}
             {{- end }}
           {{- end }}
@@ -400,6 +475,9 @@ data:
               {{- end }}
               {{- if .mode }}
               mode: {{ .mode | quote }}
+              {{- end }}
+              {{- if .context_per_task }}
+              context_per_task: true
               {{- end }}
             {{- end }}
           {{- end }}
@@ -530,6 +608,57 @@ data:
           {{- end }}
         {{- end }}
       {{- end }}
+      {{- if .Values.config.notifiers.grafana }}
+      grafana:
+        {{- range .Values.config.notifiers.grafana }}
+        - name: {{ .name }}
+          enabled: {{ .enabled }}
+          url: {{ .url | quote }}
+          {{- if .secret_name }}
+          auth:
+            token_file: "/etc/secrets/grafana/{{ .name }}/token"
+          {{- end }}
+          {{- if .tags }}
+          tags:
+            {{- range .tags }}
+            - {{ . | quote }}
+            {{- end }}
+          {{- end }}
+          {{- if .when }}
+          when: {{ .when | quote }}
+          {{- end }}
+          {{- if .template }}
+          template: |
+{{ .template | nindent 12 }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+
+      {{- if .Values.config.notifiers.sentry }}
+      sentry:
+        {{- range .Values.config.notifiers.sentry }}
+        - name: {{ .name }}
+          enabled: {{ .enabled }}
+          {{- if .base_url }}
+          base_url: {{ .base_url | quote }}
+          {{- end }}
+          org: {{ .org | quote }}
+          {{- if .projects }}
+          projects:
+            {{- range .projects }}
+            - {{ . | quote }}
+            {{- end }}
+          {{- end }}
+          {{- if .secret_name }}
+          auth:
+            token_file: "/etc/secrets/sentry/{{ .name }}/token"
+          {{- end }}
+          {{- if .when }}
+          when: {{ .when | quote }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+
       {{- if .Values.config.notifiers.webhook }}
       webhook:
         {{- range .Values.config.notifiers.webhook }}

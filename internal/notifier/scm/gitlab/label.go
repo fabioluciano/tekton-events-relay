@@ -18,6 +18,7 @@ type LabelHandler struct {
 	name         string
 	successLabel string
 	failureLabel string
+	labels       scm.LabelSet
 }
 
 // LabelConfig configures the label handler.
@@ -25,8 +26,9 @@ type LabelConfig struct {
 	Token              string
 	BaseURL            string
 	Name               string
-	SuccessLabel       string
-	FailureLabel       string
+	SuccessLabel       string // Deprecated: use Labels
+	FailureLabel       string // Deprecated: use Labels
+	Labels             scm.LabelSet
 	InsecureSkipVerify bool
 	Log                *zap.Logger
 }
@@ -38,6 +40,7 @@ func NewLabelHandler(cfg LabelConfig) notifier.ActionHandler {
 		name:         cfg.Name,
 		successLabel: cfg.SuccessLabel,
 		failureLabel: cfg.FailureLabel,
+		labels:       cfg.Labels,
 	}
 }
 
@@ -56,6 +59,10 @@ func (h *LabelHandler) Handle(ctx context.Context, e domain.Event) error {
 	projectID, pErr := projectIdentifier(e)
 	if pErr != nil {
 		return nil //nolint:nilerr // intentional: drop event if project cannot be identified
+	}
+
+	if !h.labels.Empty() {
+		return h.applyLabelSet(ctx, e, projectID)
 	}
 
 	var label string
@@ -87,6 +94,44 @@ func (h *LabelHandler) Handle(ctx context.Context, e domain.Event) error {
 		return err
 	case e.PRNumber != nil:
 		opts := &gl.UpdateMergeRequestOptions{AddLabels: &labels}
+		_, _, err := h.client.gl.MergeRequests.UpdateMergeRequest(projectID, int64(*e.PRNumber), opts, gl.WithContext(ctx))
+		return err
+	default:
+		return nil
+	}
+}
+
+// applyLabelSet executes the declarative add/remove effect in a single
+// atomic update call; GitLab creates missing labels automatically and
+// ignores removals of absent labels.
+func (h *LabelHandler) applyLabelSet(ctx context.Context, e domain.Event, projectID string) error {
+	add, remove, err := h.labels.Render(e)
+	if err != nil {
+		return err
+	}
+	for _, name := range append(append([]string{}, add...), remove...) {
+		if err := scm.Validate(h.name, "label_name", name); err != nil {
+			return err
+		}
+	}
+
+	var addOpts, removeOpts *gl.LabelOptions
+	if len(add) > 0 {
+		v := gl.LabelOptions(add)
+		addOpts = &v
+	}
+	if len(remove) > 0 {
+		v := gl.LabelOptions(remove)
+		removeOpts = &v
+	}
+
+	switch {
+	case e.IssueNumber != nil:
+		opts := &gl.UpdateIssueOptions{AddLabels: addOpts, RemoveLabels: removeOpts}
+		_, _, err := h.client.gl.Issues.UpdateIssue(projectID, int64(*e.IssueNumber), opts, gl.WithContext(ctx))
+		return err
+	case e.PRNumber != nil:
+		opts := &gl.UpdateMergeRequestOptions{AddLabels: addOpts, RemoveLabels: removeOpts}
 		_, _, err := h.client.gl.MergeRequests.UpdateMergeRequest(projectID, int64(*e.PRNumber), opts, gl.WithContext(ctx))
 		return err
 	default:

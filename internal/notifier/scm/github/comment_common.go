@@ -11,6 +11,8 @@ import (
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/scm"
 )
 
+const bodyFieldKey = "body"
+
 // postIssueComment posts (or upserts) a comment on a GitHub issue or PR —
 // both share the issues comments API. action distinguishes the upsert
 // marker so PR and issue comments for the same run stay independent.
@@ -32,15 +34,15 @@ func postIssueComment(ctx context.Context, client *Client, tmpl *template.Templa
 		if id, found := findMarkedComment(ctx, client, url, marker, log); found {
 			editURL := fmt.Sprintf("%s/repos/%s/%s/issues/comments/%d",
 				client.baseURL, e.Repo.Owner, e.Repo.Name, id)
-			return client.Do(ctx, "PATCH", editURL, map[string]string{"body": body}) //nolint:goconst // API field
+			return client.Do(ctx, "PATCH", editURL, map[string]string{bodyFieldKey: body})
 		}
-		return client.Do(ctx, "POST", url, map[string]string{"body": body})
+		return client.Do(ctx, "POST", url, map[string]string{bodyFieldKey: body})
 	}
 
 	if err := scm.Validate(providerGitHub, "comment_body", body); err != nil {
 		return err
 	}
-	return client.Do(ctx, "POST", url, map[string]string{"body": body})
+	return client.Do(ctx, "POST", url, map[string]string{bodyFieldKey: body})
 }
 
 // issueComment is the subset of the GitHub comment payload used for upsert.

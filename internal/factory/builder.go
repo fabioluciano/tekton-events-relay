@@ -62,6 +62,9 @@ func buildActionsWithMiddleware(
 			return nil, err
 		}
 		wrapped = middleware.WrapWithFilter(wrapped, action.Filter)
+		if action.Type == config.ActionTypeCommitStatus {
+			wrapped = middleware.WrapWithContextPerTask(wrapped, action.ContextPerTask)
+		}
 		handlers = append(handlers, wrapped)
 	}
 	return handlers, nil

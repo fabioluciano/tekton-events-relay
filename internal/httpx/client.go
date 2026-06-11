@@ -2,9 +2,13 @@
 package httpx
 
 import (
+	"bytes"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"time"
@@ -145,4 +149,22 @@ type errClientTransport struct{ err error }
 
 func (t errClientTransport) RoundTrip(*http.Request) (*http.Response, error) {
 	return nil, t.err
+}
+
+// NewJSONRequest builds a request with a JSON-encoded body and content type.
+func NewJSONRequest(ctx context.Context, method, url string, payload any) (*http.Request, error) {
+	var body io.Reader
+	if payload != nil {
+		raw, err := json.Marshal(payload)
+		if err != nil {
+			return nil, fmt.Errorf("encode payload: %w", err)
+		}
+		body = bytes.NewReader(raw)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, url, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	return req, nil
 }

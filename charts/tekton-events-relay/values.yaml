@@ -4,9 +4,50 @@
 
 # NOTE: with the default config.store.backend "memory", deduplication and
 # event accumulation state is per-pod — running more than one replica can
-# produce duplicate or fragmented notifications. Set config.store.backend
+# produce duplicate or fragmented notifications. The chart refuses to
+# install more than 1 replica with the memory store; set config.store.backend
 # to "valkey" or "olric" before scaling beyond 1 replica.
-replicaCount: 2
+replicaCount: 1
+
+# Escape hatch for the multi-replica × memory-store safety check. The chart
+# refuses to install replicaCount > 1 (or HPA) with config.store.backend=memory
+# because per-pod state causes duplicate/fragmented notifications. Only set
+# this to true if you accept that behavior.
+unsafe:
+  # -- Allow multiple replicas with the per-pod memory store (NOT recommended)
+  allowMemoryStoreWithMultipleReplicas: false
+
+# -- Seconds allowed for graceful shutdown; keep above config.server.shutdown_timeout_sec
+terminationGracePeriodSeconds: 40
+
+# -- PriorityClass for the relay pods (empty = cluster default)
+priorityClassName: ""
+
+# -- Topology spread constraints (e.g. spread across zones)
+topologySpreadConstraints: []
+#  - maxSkew: 1
+#    topologyKey: topology.kubernetes.io/zone
+#    whenUnsatisfiable: ScheduleAnyway
+#    labelSelector:
+#      matchLabels:
+#        app.kubernetes.io/name: tekton-events-relay
+
+# -- Extra environment variables for the receiver container
+extraEnv: []
+#  - name: HTTPS_PROXY
+#    value: http://proxy.corp.example.com:3128
+
+# -- Extra volumes (e.g. TLS certificates for config.server.tls)
+extraVolumes: []
+#  - name: server-tls
+#    secret:
+#      secretName: relay-tls
+
+# -- Extra volume mounts for the receiver container
+extraVolumeMounts: []
+#  - name: server-tls
+#    mountPath: /etc/tls
+#    readOnly: true
 
 image:
   repository: ghcr.io/fabioluciano/tekton-events-relay
@@ -139,8 +180,16 @@ owner: "platform-team"
 email: "platform@example.com"
 
 # Pod Disruption Budget
+# Rendered only when replicaCount > 1 or autoscaling is enabled.
+# Set exactly one of minAvailable / maxUnavailable (maxUnavailable preferred:
+# it adapts to replica count changes without manual edits).
 podDisruptionBudget:
-  minAvailable: 1
+  # -- Create a PodDisruptionBudget
+  enabled: true
+  # -- Maximum pods that may be unavailable during voluntary disruptions
+  maxUnavailable: 1
+  # -- Alternative to maxUnavailable (leave empty to use maxUnavailable)
+  minAvailable: ""
 
 # Horizontal Pod Autoscaler
 # NOTE (Production Guidance): Enable HPA (horizontal pod autoscaling) only with metrics-server deployed and resource requests properly configured.
@@ -859,6 +908,17 @@ networkPolicy:
   enabled: true
   # -- Valkey port allowed for egress when config.store.backend=valkey
   valkeyPort: 6379
+  # -- Metrics port opened for scraping when config.server.metrics_addr is set
+  metricsPort: 9090
+  # -- Restrict who may scrape metrics (empty = any source); standard `from` peers
+  metricsFrom: []
+  #  - namespaceSelector:
+  #      matchLabels:
+  #        kubernetes.io/metadata.name: monitoring
+  # -- Additional ingress rules appended verbatim
+  extraIngress: []
+  # -- Additional egress rules appended verbatim (e.g. restrict 443 to SCM CIDRs)
+  extraEgress: []
 
 # Template configuration
 # ==========================================================================

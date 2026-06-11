@@ -1,63 +1,147 @@
 <div align="center">
 
-![Tekton Events Relay](assets/banner.png)
+<img src="assets/banner.png" alt="Tekton Events Relay" width="640"/>
 
----
+### Your pipelines run. Your platforms get updated. You write zero notification code.
 
-### Stop manually updating CI status across platforms. Automate Tekton pipeline feedback to GitHub, GitLab, Bitbucket, and more.
+A production-ready CloudEvents bridge that turns Tekton pipeline events into commit statuses, PR comments, labels, deployments and alerts — across **6 SCM platforms** and **8 notification channels** — driven by annotations and CEL expressions instead of pipeline plumbing.
 
-**Production-ready CloudEvents bridge** that connects Tekton Pipelines to 6 SCM platforms and 6 notification channels with CEL-based routing, template customization, and enterprise authentication support.
-
----
-
-#### Build Status
-
-[![CI Go](https://img.shields.io/github/actions/workflow/status/fabioluciano/tekton-events-relay/ci-go.yaml?branch=main&style=flat-square&logo=go&label=go)](https://github.com/fabioluciano/tekton-events-relay/actions/workflows/ci-go.yaml)
-[![CI Docker](https://img.shields.io/github/actions/workflow/status/fabioluciano/tekton-events-relay/ci-docker.yaml?branch=main&style=flat-square&logo=docker&label=docker)](https://github.com/fabioluciano/tekton-events-relay/actions/workflows/ci-docker.yaml)
-[![CI Helm](https://img.shields.io/github/actions/workflow/status/fabioluciano/tekton-events-relay/ci-helm.yaml?branch=main&style=flat-square&logo=helm&label=helm)](https://github.com/fabioluciano/tekton-events-relay/actions/workflows/ci-helm.yaml)
-
-#### Project Info
-
+[![Release](https://img.shields.io/github/actions/workflow/status/fabioluciano/tekton-events-relay/release.yaml?branch=main&style=flat-square&logo=githubactions&logoColor=white&label=release)](https://github.com/fabioluciano/tekton-events-relay/actions/workflows/release.yaml)
+[![CodeQL](https://img.shields.io/github/actions/workflow/status/fabioluciano/tekton-events-relay/security-codeql.yaml?style=flat-square&logo=github&label=codeql)](https://github.com/fabioluciano/tekton-events-relay/actions/workflows/security-codeql.yaml)
+[![Latest Release](https://img.shields.io/github/v/release/fabioluciano/tekton-events-relay?style=flat-square&logo=semanticrelease&logoColor=white)](https://github.com/fabioluciano/tekton-events-relay/releases)
 [![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/tekton-events-relay&style=flat-square)](https://artifacthub.io/packages/search?repo=tekton-events-relay)
-[![Latest Release](https://img.shields.io/github/v/release/fabioluciano/tekton-events-relay?style=flat-square&logo=git)](https://github.com/fabioluciano/tekton-events-relay/releases)
-[![Go Version](https://img.shields.io/badge/go-1.26+-00ADD8?style=flat-square&logo=go)](https://go.dev)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/fabioluciano/tekton-events-relay?style=flat-square&logo=go&logoColor=white)](go.mod)
+[![Go Report Card](https://goreportcard.com/badge/github.com/fabioluciano/tekton-events-relay?style=flat-square)](https://goreportcard.com/report/github.com/fabioluciano/tekton-events-relay)
 [![License](https://img.shields.io/github/license/fabioluciano/tekton-events-relay?style=flat-square)](LICENSE)
+
+**[📖 Documentation](https://github.com/fabioluciano/tekton-events-relay/wiki)** ·
+**[⚡ Quickstart](https://github.com/fabioluciano/tekton-events-relay/wiki/Quickstart)** ·
+**[🏗 Architecture](https://github.com/fabioluciano/tekton-events-relay/wiki/Architecture)** ·
+**[📦 Helm Chart](https://artifacthub.io/packages/search?repo=tekton-events-relay)**
 
 </div>
 
 ---
 
-## 📑 Table of Contents
+## The problem
 
-- [Key Features](#key-features)
-- [Security & Compliance](#-security--compliance)
-- [Supported Integrations](#supported-integrations)
-- [Why Use Tekton Events Relay?](#-why-use-tekton-events-relay)
-- [Quickstart](#quickstart)
-- [Event Flow](#-event-flow)
-- [When to Use](#-when-to-use-tekton-events-relay)
-- [Full Documentation](#full-documentation)
-- [Configuration Examples](#configuration-example)
-- [Advanced Features](#advanced-features)
-- [Architecture](#architecture)
-- [Contributing](#contributing)
+Reporting CI status from Tekton means polluting **every pipeline** with notification `Task`s, `finally` blocks, duplicated credentials and copy-pasted curl scripts. Multiply that by every repo, every provider, every chat channel — and pipeline YAML stops being about building software.
 
----
+## The fix
 
-## Key Features
+Tekton already emits a CloudEvent for every state change. The relay listens once, and your config decides what happens — **your pipelines never change**:
 
-- **Multi-provider Support**: 6 SCM platforms, 6 chat & alerting integrations
-- **Template-driven**: Go templates + CEL filtering for custom workflows
-- **Production-ready**: HTTP 503 backpressure, deduplication, accumulator pipeline
-- **Enterprise-ready**: OAuth2 client credentials, self-managed platform support
+```mermaid
+flowchart LR
+    TK[Tekton Pipelines] -- CloudEvents --> R{{Tekton Events Relay}}
+    R --> SCM[GitHub · GitLab · Gitea<br/>Bitbucket · Azure DevOps · SourceHut]
+    R --> CHAT[Slack · Teams · Discord]
+    R --> OPS[PagerDuty · Datadog · Grafana · Sentry]
+    R --> HOOK[Generic Webhooks]
+```
 
----
+Annotate the `PipelineRun` once, in your `TriggerTemplate`:
 
-## 🔐 Security & Compliance
+```yaml
+metadata:
+  annotations:
+    tekton.dev/tekton-events-relay.scm.provider: "github"
+    tekton.dev/tekton-events-relay.scm.repo-owner: "my-org"
+    tekton.dev/tekton-events-relay.scm.repo-name: "my-repo"
+    tekton.dev/tekton-events-relay.scm.commit-sha: "$(tt.params.revision)"
+    tekton.dev/tekton-events-relay.scm.pr-number: "$(tt.params.pr-number)"
+```
 
-All releases are signed with [Cosign](https://github.com/sigstore/cosign) using keyless OIDC signing. Signatures are stored in the public [Sigstore Rekor](https://rekor.sigstore.dev/) transparency log.
+…and declare outcomes in one place:
 
-**Verify Docker image signature:**
+```yaml
+scm:
+  github:
+    - name: github
+      enabled: true
+      auth: { secret_name: github-token }
+      actions:
+        - name: task-checks                # one required check per task
+          type: commit_status
+          enabled: true
+          context_per_task: true
+        - name: pr-summary                 # ONE comment that updates itself
+          type: pr_comment
+          enabled: true
+          mode: upsert
+          when: 'isPipelineRun() && stateIn("running", "success", "failure")'
+        - name: ci-labels                  # declarative label lifecycle
+          type: label
+          enabled: true
+          labels:
+            add: ["ci::{{.State}}"]
+            remove: ["ci::running", "ci::success", "ci::failure"]
+
+notifiers:
+  slack:
+    - name: prod-alerts                    # only what's worth waking up for
+      enabled: true
+      secret_name: slack-webhook
+      channel: "#prod-alerts"
+      when: 'event.Namespace == "production" && stateIn("failure", "error")'
+```
+
+## What it speaks
+
+| Action | GitHub | GitLab | Gitea | Bitbucket | Azure DevOps | SourceHut |
+|---|:-:|:-:|:-:|:-:|:-:|:-:|
+| `commit_status` (+ per-task checks) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `pr_comment` — idempotent `upsert` | ✅ | ✅ | ✅ | ✅* | ✅ | — |
+| `commit_comment` (pushes without PR) | ✅ | ✅ | — | — | — | — |
+| `issue_comment` / `discussion_comment` | ✅ / ✅ | — | ✅ / — | — | — | — |
+| `check_run` (rich markdown checks) | ✅ | — | — | — | — | — |
+| `deployment_status` (Environments) | ✅ | ✅ | — | — | — | — |
+| `label` — declarative add/remove | ✅ | ✅ | ✅ | — | ✅ | — |
+
+\* upsert on Cloud; Server falls back to create. **Plus notifiers:** Slack, Microsoft Teams, Discord, PagerDuty, Datadog, **Grafana deploy annotations**, **Sentry releases**, and generic webhooks with [gojq payload transforms](https://github.com/fabioluciano/tekton-events-relay/wiki/Notifiers#generic-webhook) (DevLake, anyone?).
+
+## Built like infrastructure, not a script
+
+| | |
+|---|---|
+| 🔁 **Self-updating comments** | `mode: upsert` embeds an invisible marker and edits the same comment as the run progresses — idempotent across retries, restarts and replicas. |
+| 🧠 **Routing as expressions** | Every action/notifier is gated by [CEL](https://github.com/fabioluciano/tekton-events-relay/wiki/CEL-Expressions): `event.Namespace == "production" && stateIn("failure")`. Macros included (`isPR()`, `stateIn(…)`). |
+| 🗃 **Multi-replica correctness** | Pluggable [state backends](https://github.com/fabioluciano/tekton-events-relay/wiki/Operations#state-backends) — in-memory, **Valkey**, or **embedded Olric** (zero extra deployments) — keep dedup and batching correct at scale. |
+| 📮 **Nothing lost** | 429/5xx → retries with jitter honoring `Retry-After`; overload → 503 back-pressure (Tekton retransmits); permanent failures → [dead letter queue with one-call replay](https://github.com/fabioluciano/tekton-events-relay/wiki/Operations#dead-letter-queue). |
+| ♻️ **Hot reload** | ConfigMap/secret changes apply without restart — validated first, swapped atomically, counted in metrics. |
+| 🔭 **Observable** | 20+ Prometheus metrics, OpenTelemetry traces per handler, and a `/readyz` that tells you *which* provider is failing and why. |
+| 🔐 **Hardened** | HMAC webhook auth with replay protection, native TLS, rate limiting, distroless non-root image, Cosign-signed releases. |
+
+## Quickstart
+
+```bash
+kubectl create secret generic github-token -n tekton-events-relay \
+  --from-literal=token="ghp_..." --dry-run=client -o yaml | kubectl apply -f -
+
+helm install tekton-events-relay \
+  oci://ghcr.io/fabioluciano/charts/tekton-events-relay \
+  --namespace tekton-events-relay --create-namespace \
+  -f values.yaml
+```
+
+Point Tekton's `default-cloud-events-sink` at the relay Service, annotate your runs, done. **[Full walkthrough → wiki/Quickstart](https://github.com/fabioluciano/tekton-events-relay/wiki/Quickstart)**
+
+## Documentation
+
+Everything lives in the **[wiki](https://github.com/fabioluciano/tekton-events-relay/wiki)**: [Installation](https://github.com/fabioluciano/tekton-events-relay/wiki/Installation) · [Annotations contract](https://github.com/fabioluciano/tekton-events-relay/wiki/Annotations) · [Configuration reference](https://github.com/fabioluciano/tekton-events-relay/wiki/Configuration-Reference) · [Actions](https://github.com/fabioluciano/tekton-events-relay/wiki/Actions) · [Templates](https://github.com/fabioluciano/tekton-events-relay/wiki/Templates) · [Operations](https://github.com/fabioluciano/tekton-events-relay/wiki/Operations) · [Observability](https://github.com/fabioluciano/tekton-events-relay/wiki/Observability) · [Troubleshooting](https://github.com/fabioluciano/tekton-events-relay/wiki/Troubleshooting) · [Examples](https://github.com/fabioluciano/tekton-events-relay/wiki/Examples)
+
+## Why not just…?
+
+| Alternative | The catch |
+|---|---|
+| Notification Tasks + `finally` in each pipeline | N× duplicated logic and credentials; pipelines stop being about building. The relay is one deployment and zero pipeline changes. |
+| Your SCM's native CI | Then you're not on Tekton. If you are, this *is* the missing feedback layer. |
+| A quick webhook script | Congratulations, you now own retries, rate limits, dedup, secrets, HA and metrics. That's this project — already tested. |
+
+## Security & supply chain
+
+All images and charts are **Cosign-signed** (keyless OIDC, recorded in [Rekor](https://rekor.sigstore.dev/)):
+
 ```bash
 cosign verify \
   --certificate-identity-regexp='https://github.com/fabioluciano/tekton-events-relay' \
@@ -65,393 +149,12 @@ cosign verify \
   ghcr.io/fabioluciano/tekton-events-relay:latest
 ```
 
-**Verify Helm chart signature:**
-```bash
-cosign verify \
-  --certificate-identity-regexp='https://github.com/fabioluciano/tekton-events-relay' \
-  --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
-  oci://ghcr.io/fabioluciano/charts/tekton-events-relay:latest
-```
-
-> 📋 **SLSA Provenance:** Build provenance attestations are planned for a future release to provide cryptographic verification of the build process. Track progress in future releases.
-
-> 🔒 **Security issues?** Please follow our [responsible disclosure policy](SECURITY.md).
-
-### Hardening options
-
-- **Webhook replay protection**: with `server.auth.validate_timestamp: true`, requests
-  must carry an `X-Webhook-Timestamp` header (unix seconds) within `timestamp_tolerance`
-  (default 5m) of the server clock, in addition to the HMAC signature.
-- **Native TLS**: set `server.tls.cert_file`/`server.tls.key_file` to serve HTTPS
-  directly instead of relying on ingress termination.
-- **Custom CA / mTLS for outbound calls**: the HTTP client supports custom CA bundles
-  and client certificates — the safe alternative to `insecure_skip_verify` for
-  self-hosted SCM instances.
-
----
-
-## Supported Integrations
-
-### SCM Providers
-
-| GitHub | GitLab | Bitbucket | Azure DevOps | Gitea | SourceHut |
-|--------|--------|-----------|--------------|-------|-----------|
-| ![GitHub](https://img.shields.io/badge/GitHub-181717?logo=github&logoColor=white&style=flat) | ![GitLab](https://img.shields.io/badge/GitLab-FCA121?logo=gitlab&logoColor=white&style=flat) | ![Bitbucket](https://img.shields.io/badge/Bitbucket-0052CC?logo=bitbucket&logoColor=white&style=flat) | ![Azure](https://img.shields.io/badge/Azure%20DevOps-0078D4?logo=azure-devops&logoColor=white&style=flat) | ![Gitea](https://img.shields.io/badge/Gitea-34495E?logo=gitea&logoColor=white&style=flat) | ![SourceHut](https://img.shields.io/badge/SourceHut-FFB4A2?logo=sourcehut&logoColor=white&style=flat) |
-
-**Enterprise Deployment Support:**
-- **GitLab**: SaaS (gitlab.com) and self-managed instances
-- **Bitbucket**: Cloud and Server variants
-- **GitHub**: GitHub.com and GitHub Enterprise Server
-- **OAuth2**: Client credentials flow for enterprise authentication
-
-### Notifiers
-
-| Slack | Microsoft Teams | Discord | PagerDuty | Datadog | Webhooks |
-|-------|-----------------|---------|-----------|---------|----------|
-| ![Slack](https://img.shields.io/badge/Slack-4A154B?logo=slack&logoColor=white&style=flat) | ![Teams](https://img.shields.io/badge/Teams-6264A7?logo=microsoftteams&logoColor=white&style=flat) | ![Discord](https://img.shields.io/badge/Discord-5865F2?logo=discord&logoColor=white&style=flat) | ![PagerDuty](https://img.shields.io/badge/PagerDuty-06AC38?logo=pagerduty&logoColor=white&style=flat) | ![Datadog](https://img.shields.io/badge/Datadog-632CA6?logo=datadog&logoColor=white&style=flat) | ![Webhooks](https://img.shields.io/badge/Generic%20Webhooks-FF6B6B?style=flat) |
-
-### SCM Actions
-
-- **commit_status**: Update commit/PR status
-- **check_run**: Create GitHub check runs (rich UI)
-- **pr_comment**: Comment on pull requests
-- **issue_comment**: Comment on issues
-- **discussion_comment**: Comment on discussions
-- **deployment_status**: Track environment deployments
-- **label**: Automatically label PRs and issues
-
-#### Idempotent comments (`mode: upsert`)
-
-Comment actions support `mode: upsert`: the relay embeds an invisible HTML marker
-in the comment and, on subsequent events for the same run, edits the existing
-comment instead of posting a new one. This makes comment actions idempotent across
-Tekton retries, pod restarts and multiple replicas — the deduplication state lives
-in the PR itself. Supported by GitHub, Gitea and Bitbucket Cloud (`pr_comment`,
-`issue_comment`); other providers fall back to `create` with a startup warning.
-
-```yaml
-actions:
-  - name: pr-comment
-    type: pr_comment
-    mode: upsert
-```
-
----
-
-## 💡 Why Use Tekton Events Relay?
-
-### Use Case 1: Multi-Platform CI Visibility
-**Problem:** Your team uses GitHub for code but stakeholders check Jira/Azure DevOps for pipeline status.  
-**Solution:** Relay updates commit status to GitHub *and* posts to Azure DevOps work items simultaneously, giving everyone visibility in their preferred tool.
-
-### Use Case 2: Smart Failure Notifications
-**Problem:** Developers ignore Slack spam from all pipeline runs.  
-**Solution:** Use CEL expressions to send Slack alerts only for production failures: `event.Namespace == "production" && event.State == "failure"`. Development runs stay silent.
-
-### Use Case 3: Automated PR Labeling
-**Problem:** Reviewers waste time checking whether PR pipelines passed.  
-**Solution:** Automatically apply `pipeline::success` or `pipeline::failed` labels to PRs across GitHub, GitLab, and Bitbucket based on pipeline state.
-
----
-
-## Quickstart
-
-> 📋 **Prerequisites:** Ensure you have Kubernetes 1.24+, Tekton Pipelines v0.40+, and Helm 3.8+ installed before proceeding.
-
-### 1. Install Tekton Pipelines (if not already installed)
-
-```bash
-kubectl apply -f https://storage.googleapis.com/tekton-releases/pipeline/latest/release.yaml
-```
-
-### 2. Create SCM Provider Secrets
-
-**For GitHub:**
-```bash
-kubectl create secret generic github-token \
-  --namespace tekton-events-relay \
-  --from-literal=token="ghp_your_personal_access_token"
-```
-
-**For GitLab (Personal Access Token):**
-```bash
-kubectl create secret generic gitlab-token \
-  --namespace tekton-events-relay \
-  --from-literal=token="glpat-your_token"
-```
-
-**For GitLab (OAuth2 Client Credentials - Enterprise):**
-```bash
-kubectl create secret generic gitlab-oauth2 \
-  --namespace tekton-events-relay \
-  --from-literal=client_id="your_client_id" \
-  --from-literal=client_secret="your_client_secret"
-```
-
-### 3. Install tekton-events-relay via Helm
-
-**GitHub example:**
-```bash
-helm install tekton-events-relay \
-  oci://ghcr.io/fabioluciano/charts/tekton-events-relay \
-  --namespace tekton-events-relay --create-namespace \
-  --set config.scm.github[0].enabled=true \
-  --set config.scm.github[0].auth.secretName=github-token
-```
-
-**GitLab SaaS example:**
-```bash
-helm install tekton-events-relay \
-  oci://ghcr.io/fabioluciano/charts/tekton-events-relay \
-  --namespace tekton-events-relay --create-namespace \
-  --set config.scm.gitlab[0].enabled=true \
-  --set config.scm.gitlab[0].variant=saas \
-  --set config.scm.gitlab[0].base_url=https://gitlab.com/api/v4 \
-  --set config.scm.gitlab[0].auth.secretName=gitlab-token
-```
-
-**GitLab self-managed with OAuth2:**
-```bash
-helm install tekton-events-relay \
-  oci://ghcr.io/fabioluciano/charts/tekton-events-relay \
-  --namespace tekton-events-relay --create-namespace \
-  --set config.scm.gitlab[0].enabled=true \
-  --set config.scm.gitlab[0].variant=self-managed \
-  --set config.scm.gitlab[0].base_url=https://gitlab.company.example.com/api/v4 \
-  --set config.scm.gitlab[0].auth.oauth2.secretName=gitlab-oauth2 \
-  --set config.scm.gitlab[0].auth.oauth2.tokenURL=https://gitlab.company.example.com/oauth/token
-```
-
-For full configuration options, see the [Installation Guide](https://github.com/fabioluciano/tekton-events-relay/wiki/Installation).
-
-> 💡 **Tip:** Start with a single SCM provider and add more as needed. All providers can coexist in the same deployment.
-
----
-
-## 📊 Event Flow
-
-```mermaid
-graph LR
-    A[Tekton Pipeline] -->|TaskRun/PipelineRun CloudEvent| B[Tekton Events Relay]
-    B -->|Parse & Filter| C[CEL Expressions]
-    C -->|Route to Handlers| D[SCM Providers]
-    C -->|Route to Handlers| E[Chat Notifiers]
-
-    D -->|commit_status| F[GitHub]
-    D -->|pr_comment| G[GitLab MR]
-    D -->|issue_comment| H[Azure DevOps]
-
-    E -->|Slack| I["💬 Chat"]
-    E -->|Teams| I
-    E -->|Discord| I
-    E -->|PagerDuty| J["🚨 Alerts"]
-    E -->|Datadog| J
-    E -->|Webhook| K["🔗 Custom"]
-```
-
----
-
-## 🎯 When to Use Tekton Events Relay
-
-### ✅ Use When:
-- **Multi-platform teams**: Need to update GitHub, GitLab, Bitbucket, and chat tools simultaneously
-- **Smart filtering**: Want CEL-based conditional routing (e.g., only notify production failures)
-- **Template customization**: Need Go templates for custom notification formats
-- **Event batching**: Want to accumulate multiple TaskRun events into a single PR comment
-- **Enterprise auth**: Require OAuth2 client credentials or self-managed platform support
-
-### ❌ Don't Use When:
-- **Single platform**: Only use GitHub and GitHub Actions already handles CI status
-- **Native integrations exist**: Your SCM has built-in Tekton integration that meets your needs
-- **No filtering needed**: All events should trigger the same action
-
-### 💭 Why Not Just Add Tasks to Your Pipeline?
-
-**Without Tekton Events Relay**, updating commit status requires:
-- Adding dedicated status-update Tasks to every pipeline
-- Using `finally` blocks to ensure status updates even on failure
-- Duplicating notification logic across all pipelines
-- Managing credentials and API calls in every pipeline definition
-
-**Result:** Pipeline pollution. Every pipeline becomes bloated with notification Tasks instead of focusing on build/test/deploy logic.
-
-**With Tekton Events Relay:**
-- Pipelines stay clean — no notification Tasks needed
-- One centralized config handles all status updates
-- CEL expressions route events without touching pipeline code
-- Add/remove integrations without redeploying pipelines
-
-### 🔥 Unique Capabilities vs Alternatives
-| Feature | Tekton Events Relay | Native Tekton Features | Custom Scripts |
-|---------|---------------------|------------------------|----------------|
-| Multi-SCM simultaneous updates | ✅ Built-in | ❌ Manual per-platform | ⚠️ Must implement |
-| CEL-based event filtering | ✅ Built-in | ⚠️ Limited | ⚠️ Must implement |
-| Event accumulator (batching) | ✅ Built-in | ❌ Not available | ⚠️ Complex to build |
-| Template-driven messages | ✅ Go templates | ❌ Not available | ⚠️ Must implement |
-| OAuth2 enterprise auth | ✅ Built-in | ❌ Not available | ⚠️ Must implement |
-| Production-ready backpressure | ✅ HTTP 503 handling | ❌ Not available | ⚠️ Must implement |
-
----
-
-## Full Documentation
-
-> **[ Read the Complete Documentation](https://github.com/fabioluciano/tekton-events-relay/wiki)**
-
-- [Installation Guide](https://github.com/fabioluciano/tekton-events-relay/wiki/Installation) — Deploy to Kubernetes
-- [Configuration Reference](https://github.com/fabioluciano/tekton-events-relay/wiki/Configuration) — All configuration options
-- [Complete Configuration Example](docs/examples/config.yaml) — Comprehensive example showing all available fields
-- [Examples](https://github.com/fabioluciano/tekton-events-relay/wiki/Examples) — Real-world use cases
-- [CEL Expressions](https://github.com/fabioluciano/tekton-events-relay/wiki/CEL-Expressions) — Event filtering and routing
-- [Troubleshooting](https://github.com/fabioluciano/tekton-events-relay/wiki/Troubleshooting) — Common issues & solutions
-
----
-
-## Configuration Example
-
-### GitHub Commit Status with CEL Filtering
-
-> 💡 **Tip:** CEL expressions support powerful filtering with `startsWith()`, `endsWith()`, `contains()`, and `matches()` functions to precisely control when actions trigger.
-
-```yaml
-scm:
-  github:
-    - name: main-instance
-      enabled: true
-      auth:
-        secret_file: /etc/secrets/github-token
-      actions:
-        - name: commit-status
-          type: commit_status
-          enabled: true
-          when: 'event.Resource == "pipelinerun" && event.Repo.Owner == "myorg"'
-          filter:
-            pipelines:
-              allow: ["ci-pipeline", "release-pipeline"]
-```
-
-### Slack Notifications for Production Failures
-
-```yaml
-notifiers:
-  slack:
-    - name: production-alerts
-      enabled: true
-      webhook_url_file: /etc/secrets/slack-webhook
-      channel: "#production-alerts"
-      when: 'event.Namespace == "production" && event.State == "failure"'
-      template: |
-        :rotating_light: *PRODUCTION FAILURE*
-        *Pipeline:* {{.PipelineName}}
-        *Task:* {{.TaskName}}
-        *Commit:* `{{.CommitSHA}}`
-        {{if .TargetURL}}<{{.TargetURL}}|View Logs>{{end}}
-```
-
----
-
-## Advanced Features
-
-### Pipeline Summary Accumulator
-
-> ⚡ **Performance:** Batch multiple TaskRun events into a single PR comment when the PipelineRun completes, reducing notification noise and API rate limit pressure.
-
-```yaml
-accumulator:
-  enabled: true
-  ttl: 5s
-  max_size: 100
-```
-
-### CloudEvents Processing
-
-> ⚠️ **Important:** When the internal event queue reaches capacity, the service returns HTTP 503 (Service Unavailable) to implement backpressure. Configure queue size based on your expected event volume.
-
-All events are processed as CloudEvents, enabling:
-
-- **Deduplication**: Built-in LRU cache (10,000 events default)
-- **CEL Expressions**: Rich event filtering with `startsWith()`, `endsWith()`, `contains()`, `matches()`
-- **Backpressure**: HTTP 503 responses when queue is full
-- **OpenTelemetry**: Optional distributed tracing integration
-
-### Shared State Backends (multi-replica)
-
-By default, deduplication and accumulator state live in each pod's memory, which is
-only fully reliable with a single replica. To run multiple replicas (or autoscaling),
-configure a shared state backend:
-
-```yaml
-store:
-  backend: valkey      # or: olric (embedded, no extra deployment)
-  ttl: 1h
-  valkey:
-    address: valkey.tekton-events-relay.svc:6379
-```
-
-- **valkey**: any RESP-compatible server (Valkey, KeyDB). A tiny instance without
-  persistence is enough — losing the cache only risks a rare duplicate notification.
-- **olric**: relay pods form an embedded distributed cache between themselves via
-  gossip. No additional deployment; the Helm chart wires the headless discovery
-  service and NetworkPolicy rules automatically.
-
-Backend failures fail open: events are processed without deduplication rather than
-dropped, and failures are visible in the `tekton_events_relay_store_errors_total` metric.
-
-### Configuration Hot-Reload
-
-The relay reloads its configuration without restart when the config file changes
-(including Kubernetes ConfigMap updates) or on `SIGHUP`. The new configuration is
-validated first — an invalid config is rejected and the current one stays active.
-SCM/notifier instances, actions, filters and the accumulator are rebuilt atomically;
-in-flight events finish on the old configuration. Reload outcomes are exposed via
-the `tekton_events_relay_config_reloads_total{result}` metric.
-
-> Sections that require a restart: `server`, `store`, `dlq`, `logging`, `tracing`
-> (a warning is logged if they change on reload).
-
-### Template-driven Customization
-
-> 📋 **Note:** Go template variables provide access to all event metadata. Use `{{.FieldName}}` syntax to reference pipeline, run, commit, and repository information in custom messages.
-
-Use Go templates to customize notification messages:
-
-```go
-{{.PipelineName}}    // Pipeline name
-{{.RunName}}         // Run identifier
-{{.State}}           // success, failure, error, running
-{{.CommitSHA}}       // Git commit SHA
-{{.Namespace}}       // Kubernetes namespace
-{{.TargetURL}}       // Link to Tekton Dashboard
-{{.Repo.Owner}}      // Repository owner
-{{.Repo.Name}}       // Repository name
-```
-
----
-
-## Architecture
-
-- **Event Listener**: CloudEvents webhook endpoint (`/`)
-- **Event Filter**: CEL-based conditional routing
-- **Action Handlers**: Pluggable SCM and notifier implementations
-- **Deduplication**: LRU cache to prevent duplicate notifications
-- **Accumulator**: Optional event batching pipeline
-- **Metrics**: Prometheus-compatible `/metrics` endpoint
-
----
+Found a vulnerability? Please follow the [responsible disclosure policy](SECURITY.md).
 
 ## Contributing
 
-Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
----
+PRs welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) and the [release flow](https://github.com/fabioluciano/tekton-events-relay/wiki/Contributing-Release-Flow). Releases are fully automated with semantic-release; Conventional Commits required.
 
 ## License
 
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
-
----
-
-## Support
-
-- **Issues**: [GitHub Issues](https://github.com/fabioluciano/tekton-events-relay/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/fabioluciano/tekton-events-relay/discussions)
-- **Security**: [SECURITY.md](SECURITY.md)
+[MIT](LICENSE)

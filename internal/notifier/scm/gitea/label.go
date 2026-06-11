@@ -17,24 +17,33 @@ type LabelHandler struct {
 	client       *Client
 	successLabel string
 	failureLabel string
+	labels       scm.LabelSet
+	log          *zap.Logger
 }
 
 // LabelConfig configures the label handler.
 type LabelConfig struct {
 	Token              string
 	BaseURL            string
-	SuccessLabel       string
-	FailureLabel       string
+	SuccessLabel       string // Deprecated: use Labels
+	FailureLabel       string // Deprecated: use Labels
+	Labels             scm.LabelSet
 	InsecureSkipVerify bool
 	Log                *zap.Logger
 }
 
 // NewLabelHandler creates a new Gitea label handler.
 func NewLabelHandler(cfg LabelConfig) notifier.ActionHandler {
+	log := cfg.Log
+	if log == nil {
+		log = zap.NewNop()
+	}
 	return &LabelHandler{
 		client:       NewClient(cfg.Token, cfg.BaseURL, cfg.InsecureSkipVerify, false, cfg.Log),
 		successLabel: cfg.SuccessLabel,
 		failureLabel: cfg.FailureLabel,
+		labels:       cfg.Labels,
+		log:          log,
 	}
 }
 
@@ -62,6 +71,10 @@ func (h *LabelHandler) Handle(_ context.Context, e domain.Event) error {
 		issueNumber = *e.PRNumber
 	default:
 		return nil
+	}
+
+	if !h.labels.Empty() {
+		return h.applyLabelSet(e, int64(issueNumber))
 	}
 
 	var label string
@@ -104,5 +117,61 @@ func (h *LabelHandler) Handle(_ context.Context, e domain.Event) error {
 	_, _, err = h.client.sdk.AddIssueLabels(e.Repo.Owner, e.Repo.Name, int64(issueNumber), giteaSDK.IssueLabelsOption{
 		Labels: []int64{labelID},
 	})
+	return err
+}
+
+// applyLabelSet executes the declarative add/remove effect. Gitea labels
+// are referenced by ID: missing labels are created on add (default color)
+// and silently skipped on remove.
+func (h *LabelHandler) applyLabelSet(e domain.Event, issueNumber int64) error {
+	add, remove, err := h.labels.Render(e)
+	if err != nil {
+		return err
+	}
+
+	repoLabels, _, err := h.client.sdk.ListRepoLabels(e.Repo.Owner, e.Repo.Name, giteaSDK.ListLabelsOptions{})
+	if err != nil {
+		return fmt.Errorf("list repo labels: %w", err)
+	}
+	byName := make(map[string]int64, len(repoLabels))
+	for _, l := range repoLabels {
+		byName[l.Name] = l.ID
+	}
+
+	for _, name := range remove {
+		if err := scm.Validate(providerGitea, "label_name", name); err != nil {
+			return err
+		}
+		id, ok := byName[name]
+		if !ok {
+			continue // label absent: removal already satisfied
+		}
+		if _, err := h.client.sdk.DeleteIssueLabel(e.Repo.Owner, e.Repo.Name, issueNumber, id); err != nil {
+			h.log.Warn("gitea label removal failed", zap.String("label", name), zap.Error(err))
+		}
+	}
+
+	ids := make([]int64, 0, len(add))
+	for _, name := range add {
+		if err := scm.Validate(providerGitea, "label_name", name); err != nil {
+			return err
+		}
+		id, ok := byName[name]
+		if !ok {
+			created, _, err := h.client.sdk.CreateLabel(e.Repo.Owner, e.Repo.Name, giteaSDK.CreateLabelOption{
+				Name:  name,
+				Color: "#ededed",
+			})
+			if err != nil {
+				return fmt.Errorf("create label %q: %w", name, err)
+			}
+			id = created.ID
+		}
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	_, _, err = h.client.sdk.AddIssueLabels(e.Repo.Owner, e.Repo.Name, issueNumber, giteaSDK.IssueLabelsOption{Labels: ids})
 	return err
 }

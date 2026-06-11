@@ -17,6 +17,7 @@ type ActionType string
 // Action types supported across SCM providers.
 const (
 	ActionCommitStatus      ActionType = "commit_status"
+	ActionCommitComment     ActionType = "commit_comment"
 	ActionIssueComment      ActionType = "issue_comment"
 	ActionPRComment         ActionType = "pr_comment"
 	ActionLabel             ActionType = "label"

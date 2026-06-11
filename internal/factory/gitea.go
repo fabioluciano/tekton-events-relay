@@ -68,6 +68,7 @@ func (f *GiteaFactory) buildHandler(inst config.GiteaInstance, action config.Act
 			BaseURL:            inst.BaseURL,
 			SuccessLabel:       action.SuccessLabel,
 			FailureLabel:       action.FailureLabel,
+			Labels:             labelSet(action),
 			InsecureSkipVerify: inst.InsecureSkipVerify,
 			Log:                log,
 		}), nil

@@ -55,6 +55,7 @@ func (f *AzureFactory) buildHandler(inst config.AzureInstance, action config.Act
 			Genre:              inst.Genre,
 			SuccessLabel:       action.SuccessLabel,
 			FailureLabel:       action.FailureLabel,
+			Labels:             labelSet(action),
 			InsecureSkipVerify: inst.InsecureSkipVerify,
 			Log:                log,
 		}), nil

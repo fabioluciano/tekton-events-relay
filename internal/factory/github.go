@@ -54,6 +54,13 @@ func (f *GitHubFactory) buildHandler(inst config.GitHubInstance, action config.A
 	switch action.Type {
 	case config.ActionTypeCommitStatus:
 		return github.NewStatusReporter(client, log), nil
+	case config.ActionTypeCommitComment:
+		return github.NewCommitCommentHandler(github.CommitCommentConfig{
+			Token:              client.Token(),
+			BaseURL:            client.BaseURL(),
+			Template:           action.Template,
+			InsecureSkipVerify: inst.InsecureSkipVerify,
+		}, log)
 	case config.ActionTypePRComment:
 		return github.NewPRCommentHandler(github.PRCommentConfig{
 			Token:              client.Token(),
@@ -83,6 +90,7 @@ func (f *GitHubFactory) buildHandler(inst config.GitHubInstance, action config.A
 			BaseURL:            client.BaseURL(),
 			SuccessLabel:       action.SuccessLabel,
 			FailureLabel:       action.FailureLabel,
+			Labels:             labelSet(action),
 			InsecureSkipVerify: inst.InsecureSkipVerify,
 		}, log), nil
 	case config.ActionTypeCheckRun:

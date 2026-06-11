@@ -287,7 +287,7 @@
                   "type": "string",
                   "description": "Accepted clock skew for replay protection (Go duration format)",
                   "default": "5m",
-                  "pattern": "^[0-9]+(ns|us|µs|ms|s|m|h)$"
+                  "pattern": "^[0-9]+(ns|us|\u00b5s|ms|s|m|h)$"
                 }
               }
             },
@@ -325,7 +325,7 @@
           "type": "string",
           "description": "Per-handler execution deadline (Go duration format)",
           "default": "10s",
-          "pattern": "^[0-9]+(ns|us|µs|ms|s|m|h)$"
+          "pattern": "^[0-9]+(ns|us|\u00b5s|ms|s|m|h)$"
         },
         "retry": {
           "type": "object",
@@ -342,13 +342,13 @@
               "type": "string",
               "description": "First backoff delay (Go duration format)",
               "default": "250ms",
-              "pattern": "^[0-9]+(ns|us|µs|ms|s|m|h)$"
+              "pattern": "^[0-9]+(ns|us|\u00b5s|ms|s|m|h)$"
             },
             "max_backoff": {
               "type": "string",
               "description": "Backoff ceiling (Go duration format)",
               "default": "30s",
-              "pattern": "^[0-9]+(ns|us|µs|ms|s|m|h)$"
+              "pattern": "^[0-9]+(ns|us|\u00b5s|ms|s|m|h)$"
             }
           }
         },
@@ -361,13 +361,17 @@
               "type": "string",
               "description": "State backend: memory (per-pod), valkey (external RESP server) or olric (embedded distributed cache)",
               "default": "memory",
-              "enum": ["memory", "valkey", "olric"]
+              "enum": [
+                "memory",
+                "valkey",
+                "olric"
+              ]
             },
             "ttl": {
               "type": "string",
               "description": "Entry lifetime on remote backends (Go duration format)",
               "default": "1h",
-              "pattern": "^[0-9]+(ns|us|µs|ms|s|m|h)$"
+              "pattern": "^[0-9]+(ns|us|\u00b5s|ms|s|m|h)$"
             },
             "valkey": {
               "type": "object",
@@ -412,7 +416,9 @@
                 },
                 "peers": {
                   "type": "array",
-                  "items": { "type": "string" },
+                  "items": {
+                    "type": "string"
+                  },
                   "description": "Peer list override; defaults to the chart's headless gossip service"
                 }
               }
@@ -839,6 +845,96 @@
                 ]
               }
             },
+            "grafana": {
+              "type": "array",
+              "description": "Grafana annotation notifiers: post deployment markers to the Grafana Annotations API",
+              "default": [],
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "Unique identifier for this Grafana instance"
+                  },
+                  "enabled": {
+                    "type": "boolean",
+                    "description": "Enable this notifier",
+                    "default": false
+                  },
+                  "url": {
+                    "type": "string",
+                    "description": "Grafana base URL"
+                  },
+                  "secret_name": {
+                    "type": "string",
+                    "description": "Kubernetes Secret containing the service account token (token key)"
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Extra tags applied to every annotation"
+                  },
+                  "when": {
+                    "type": "string",
+                    "description": "CEL expression to filter events"
+                  },
+                  "template": {
+                    "type": "string",
+                    "description": "Go template for the annotation text"
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            },
+            "sentry": {
+              "type": "array",
+              "description": "Sentry release notifiers: create releases and deploy markers for successful runs (version = CommitSHA)",
+              "default": [],
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "Unique identifier for this Sentry instance"
+                  },
+                  "enabled": {
+                    "type": "boolean",
+                    "description": "Enable this notifier",
+                    "default": false
+                  },
+                  "base_url": {
+                    "type": "string",
+                    "description": "Sentry base URL (empty = sentry.io)"
+                  },
+                  "org": {
+                    "type": "string",
+                    "description": "Sentry organization slug"
+                  },
+                  "projects": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Project slugs the release belongs to"
+                  },
+                  "secret_name": {
+                    "type": "string",
+                    "description": "Kubernetes Secret containing the auth token (token key)"
+                  },
+                  "when": {
+                    "type": "string",
+                    "description": "CEL expression to filter events"
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            },
             "webhook": {
               "type": "array",
               "description": "Generic webhook endpoints configuration. Supports multiple webhooks with custom headers and payloads.",
@@ -902,7 +998,9 @@
                         "description": "Custom header name for apikey auth (e.g., X-API-Key)"
                       }
                     },
-                    "required": ["type"]
+                    "required": [
+                      "type"
+                    ]
                   },
                   "headers": {
                     "type": "object",
@@ -1421,6 +1519,31 @@
       "title": "Pod Affinity Configuration",
       "description": "Pod anti-affinity and node affinity configuration",
       "properties": {
+        "context_per_task": {
+          "type": "boolean",
+          "description": "commit_status only: TaskRun events post their status under <context>/<task>, yielding one independent check per task",
+          "default": false
+        },
+        "labels": {
+          "type": "object",
+          "description": "Declarative label effect for label actions: lists of labels to add and remove (Go-templated, e.g. \"ci::{{.State}}\"). The action's when expression is the only execution gate; replaces success_label/failure_label.",
+          "properties": {
+            "add": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Labels to add"
+            },
+            "remove": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Labels to remove (absent labels are ignored)"
+            }
+          }
+        },
         "mode": {
           "type": "string",
           "description": "Affinity mode: 'soft' (preferred) or 'hard' (required)",
@@ -1456,15 +1579,41 @@
     "podDisruptionBudget": {
       "type": "object",
       "title": "Pod Disruption Budget",
-      "description": "Configuration for pod disruption budget to ensure availability during voluntary disruptions",
+      "description": "PDB for voluntary disruptions; rendered only when enabled and running more than one replica (or HPA)",
       "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Create a PodDisruptionBudget when running multiple replicas",
+          "default": true
+        },
+        "maxUnavailable": {
+          "description": "Maximum pods that may be unavailable during disruptions (integer or percentage string). Ignored when minAvailable is set.",
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": 1
+        },
         "minAvailable": {
-          "type": "integer",
-          "description": "Minimum number of pods that must be available during disruptions",
-          "default": 1,
-          "minimum": 1
+          "description": "Minimum pods that must remain available (integer or percentage string). Takes precedence over maxUnavailable when set.",
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "default": ""
         }
-      }
+      },
+      "additionalProperties": false
     },
     "autoscaling": {
       "type": "object",
@@ -1594,6 +1743,37 @@
           "type": "integer",
           "description": "Valkey port allowed for egress when config.store.backend=valkey",
           "default": 6379
+        },
+        "metricsPort": {
+          "type": "integer",
+          "description": "Port allowed for Prometheus scraping when config.server.metrics_addr is set",
+          "default": 9090,
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "metricsFrom": {
+          "type": "array",
+          "description": "NetworkPolicyPeer list allowed to scrape metrics (empty = any source)",
+          "items": {
+            "type": "object"
+          },
+          "default": []
+        },
+        "extraIngress": {
+          "type": "array",
+          "description": "Additional raw ingress rules appended to the NetworkPolicy",
+          "items": {
+            "type": "object"
+          },
+          "default": []
+        },
+        "extraEgress": {
+          "type": "array",
+          "description": "Additional raw egress rules appended to the NetworkPolicy",
+          "items": {
+            "type": "object"
+          },
+          "default": []
         }
       },
       "required": [
@@ -1614,6 +1794,90 @@
       "required": [
         "enabled"
       ]
+    },
+    "unsafe": {
+      "type": "object",
+      "title": "Unsafe overrides",
+      "description": "Escape hatches for chart safety checks",
+      "properties": {
+        "allowMemoryStoreWithMultipleReplicas": {
+          "type": "boolean",
+          "description": "Allow replicaCount > 1 (or HPA) with the per-pod memory store. Causes duplicate/fragmented notifications; not recommended.",
+          "default": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "terminationGracePeriodSeconds": {
+      "type": "integer",
+      "description": "Seconds allowed for graceful shutdown; keep above config.server.shutdown_timeout_sec",
+      "default": 40,
+      "minimum": 1
+    },
+    "priorityClassName": {
+      "type": "string",
+      "description": "PriorityClass for the relay pods (empty = cluster default)",
+      "default": ""
+    },
+    "topologySpreadConstraints": {
+      "type": "array",
+      "description": "Topology spread constraints for the relay pods (raw Kubernetes topologySpreadConstraints entries)",
+      "items": {
+        "type": "object"
+      },
+      "default": []
+    },
+    "extraEnv": {
+      "type": "array",
+      "description": "Extra environment variables for the receiver container (raw EnvVar entries)",
+      "items": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "default": []
+    },
+    "extraVolumes": {
+      "type": "array",
+      "description": "Extra pod volumes (e.g. TLS certificates for config.server.tls)",
+      "items": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "default": []
+    },
+    "extraVolumeMounts": {
+      "type": "array",
+      "description": "Extra volume mounts for the receiver container",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "mountPath"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "mountPath": {
+            "type": "string"
+          }
+        }
+      },
+      "default": []
     }
   },
   "$defs": {
@@ -1630,6 +1894,7 @@
           "description": "Action type determining what notification is sent",
           "enum": [
             "commit_status",
+            "commit_comment",
             "check_run",
             "pr_comment",
             "issue_comment",
@@ -1655,7 +1920,10 @@
         "mode": {
           "type": "string",
           "description": "Comment posting mode: 'create' posts a new comment per event; 'upsert' embeds an invisible marker and edits the existing comment for the same run (idempotent). Supported by GitHub, Gitea and Bitbucket Cloud comment actions.",
-          "enum": ["create", "upsert"],
+          "enum": [
+            "create",
+            "upsert"
+          ],
           "default": "create"
         },
         "filter": {
@@ -1666,32 +1934,80 @@
               "type": "object",
               "description": "Filter by TaskRun name",
               "properties": {
-                "allow": { "type": "array", "items": { "type": "string" }, "description": "Allow list of TaskRun names" },
-                "deny": { "type": "array", "items": { "type": "string" }, "description": "Deny list of TaskRun names" }
+                "allow": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Allow list of TaskRun names"
+                },
+                "deny": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Deny list of TaskRun names"
+                }
               }
             },
             "pipelines": {
               "type": "object",
               "description": "Filter by PipelineRun name",
               "properties": {
-                "allow": { "type": "array", "items": { "type": "string" }, "description": "Allow list of PipelineRun names" },
-                "deny": { "type": "array", "items": { "type": "string" }, "description": "Deny list of PipelineRun names" }
+                "allow": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Allow list of PipelineRun names"
+                },
+                "deny": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Deny list of PipelineRun names"
+                }
               }
             },
             "custom_runs": {
               "type": "object",
               "description": "Filter by CustomRun name",
               "properties": {
-                "allow": { "type": "array", "items": { "type": "string" }, "description": "Allow list of CustomRun names" },
-                "deny": { "type": "array", "items": { "type": "string" }, "description": "Deny list of CustomRun names" }
+                "allow": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Allow list of CustomRun names"
+                },
+                "deny": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Deny list of CustomRun names"
+                }
               }
             },
             "event_listeners": {
               "type": "object",
               "description": "Filter by EventListener name",
               "properties": {
-                "allow": { "type": "array", "items": { "type": "string" }, "description": "Allow list of EventListener names" },
-                "deny": { "type": "array", "items": { "type": "string" }, "description": "Deny list of EventListener names" }
+                "allow": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Allow list of EventListener names"
+                },
+                "deny": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Deny list of EventListener names"
+                }
               }
             }
           }
@@ -1787,7 +2103,7 @@
         },
         "auth": {
           "type": "object",
-          "description": "Authentication configuration for the GitHub instance — use secret_name (token auth) or app_id/installation_id (GitHub App auth)",
+          "description": "Authentication configuration for the GitHub instance \u2014 use secret_name (token auth) or app_id/installation_id (GitHub App auth)",
           "properties": {
             "secret_name": {
               "type": "string",
@@ -1835,7 +2151,10 @@
         },
         "variant": {
           "type": "string",
-          "enum": ["saas", "self-managed"],
+          "enum": [
+            "saas",
+            "self-managed"
+          ],
           "description": "Deployment model: 'saas' for gitlab.com, 'self-managed' for self-hosted"
         },
         "enabled": {
@@ -1855,7 +2174,7 @@
         },
         "auth": {
           "type": "object",
-          "description": "Authentication configuration for the GitLab instance — use secret_name (Personal Access Token) or oauth2 (OAuth2 client_credentials)",
+          "description": "Authentication configuration for the GitLab instance \u2014 use secret_name (Personal Access Token) or oauth2 (OAuth2 client_credentials)",
           "properties": {
             "secret_name": {
               "type": "string",
@@ -2083,7 +2402,7 @@
         },
         "auth": {
           "type": "object",
-          "description": "Authentication configuration for the Gitea instance — use secret_name (Personal Access Token) or oauth2 (OAuth2 client_credentials)",
+          "description": "Authentication configuration for the Gitea instance \u2014 use secret_name (Personal Access Token) or oauth2 (OAuth2 client_credentials)",
           "properties": {
             "secret_name": {
               "type": "string",

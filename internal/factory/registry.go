@@ -130,5 +130,15 @@ func buildNotifierHandlers(cfg *config.Config, log *zap.Logger, reg *notifier.Re
 		return err
 	}
 
+	// Grafana
+	if err := BuildAndRegister(cfg.Notifiers.Grafana, &GrafanaFactory{}, log, reg); err != nil {
+		return err
+	}
+
+	// Sentry
+	if err := BuildAndRegister(cfg.Notifiers.Sentry, &SentryFactory{}, log, reg); err != nil {
+		return err
+	}
+
 	return nil
 }

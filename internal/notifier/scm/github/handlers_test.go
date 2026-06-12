@@ -377,7 +377,7 @@ func TestLabelHandler_Handle_AddLabelOnPR(t *testing.T) {
 	h := NewLabelHandler(LabelConfig{
 		Token:   testHandlerToken,
 		BaseURL: server.URL,
-		Labels:  scm.LabelSet{Add: []string{"ci-passed"}},
+		Labels:  scm.LabelSet{Add: []scm.Label{{Name: "ci-passed"}}},
 	}, zap.NewNop())
 
 	err := h.Handle(context.Background(), domain.Event{
@@ -401,7 +401,7 @@ func TestLabelHandler_Handle_AddLabelOnIssue(t *testing.T) {
 	h := NewLabelHandler(LabelConfig{
 		Token:   testHandlerToken,
 		BaseURL: server.URL,
-		Labels:  scm.LabelSet{Add: []string{"ci-passed"}},
+		Labels:  scm.LabelSet{Add: []scm.Label{{Name: "ci-passed"}}},
 	}, zap.NewNop())
 
 	err := h.Handle(context.Background(), domain.Event{

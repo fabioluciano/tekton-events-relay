@@ -456,13 +456,18 @@ config:
             type: label
             # -- Enable or disable this SCM provider instance
             enabled: false
-            when: ""
-            # -- Declarative label effect: add/remove lists, Go-templated against the event
+            when: 'event.Resource == "pipelinerun"'
+            # -- Declarative label effect: add/remove lists with optional colors (hex without #)
+            # Supports both old string format and new object format with color field
             labels:
               add:
-                - '{{ if eq .State "success" }}ci:passed{{ else }}ci:failed{{ end }}'
+                - name: "ci:passed"
+                  color: "0e8a16"  # green - optional, omit for provider default
+                - name: "ready-to-merge"
+                  # color field omitted = provider uses default/random color
               remove:
-                - '{{ if eq .State "success" }}ci:failed{{ else }}ci:passed{{ end }}'
+                - name: "ci:failed"
+                  # color field ignored on remove operations
 
     # -- GitLab SCM provider configuration
     gitlab:

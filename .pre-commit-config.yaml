@@ -178,15 +178,6 @@ repos:
         files: ^charts/
         pass_filenames: false
 
-  - repo: local
-    hooks:
-      - id: helm-docs-mise
-        name: Helm Docs (via mise)
-        entry: mise run helm-docs
-        language: system
-        files: ^charts/.*/
-        pass_filenames: false
-
   - repo: https://github.com/igorshubovych/markdownlint-cli
     rev: v0.48.0
     hooks:
@@ -216,5 +207,4 @@ ci:
     - helm-kubesec-mise
     - helm-kubelinter-mise
     - helm-trivy-mise
-    - helm-docs-mise
   submodules: false

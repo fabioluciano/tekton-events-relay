@@ -21,7 +21,7 @@ func newLabelTestHandler(t *testing.T, baseURL string) notifier.ActionHandler {
 	return NewLabelHandler(LabelConfig{
 		Token:   "token",
 		BaseURL: baseURL,
-		Labels:  scm.LabelSet{Add: []string{"ci:passed"}, Remove: []string{"ci:failed"}},
+		Labels:  scm.LabelSet{Add: []scm.Label{{Name: "ci:passed"}}, Remove: []scm.Label{{Name: "ci:failed"}}},
 		Log:     zap.NewNop(),
 	})
 }

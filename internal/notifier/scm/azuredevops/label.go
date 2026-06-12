@@ -79,11 +79,11 @@ func (h *LabelHandler) applyLabelSet(ctx context.Context, e domain.Event) error 
 	}
 	prID := *e.PRNumber
 
-	for _, name := range remove {
-		if err := scm.Validate(providerAzure, "label_name", name); err != nil {
+	for _, label := range remove {
+		if err := scm.Validate(providerAzure, "label_name", label.Name); err != nil {
 			return err
 		}
-		labelName := name
+		labelName := label.Name
 		if err := gitClient.DeletePullRequestLabels(ctx, git.DeletePullRequestLabelsArgs{
 			RepositoryId:  &e.Repo.Name,
 			PullRequestId: &prID,
@@ -91,22 +91,23 @@ func (h *LabelHandler) applyLabelSet(ctx context.Context, e domain.Event) error 
 			LabelIdOrName: &labelName,
 		}); err != nil {
 			h.log.Warn("azure label removal failed (label may be absent)",
-				zap.String("label", name), zap.Error(err))
+				zap.String("label", label.Name), zap.Error(err))
 		}
 	}
 
-	for _, name := range add {
-		if err := scm.Validate(providerAzure, "label_name", name); err != nil {
+	// Azure DevOps tags don't support colors; color field is ignored
+	for _, label := range add {
+		if err := scm.Validate(providerAzure, "label_name", label.Name); err != nil {
 			return err
 		}
-		labelName := name
+		labelName := label.Name
 		if _, err := gitClient.CreatePullRequestLabel(ctx, git.CreatePullRequestLabelArgs{
 			Label:         &core.WebApiCreateTagRequestData{Name: &labelName},
 			RepositoryId:  &e.Repo.Name,
 			PullRequestId: &prID,
 			Project:       &e.Repo.Project,
 		}); err != nil {
-			return fmt.Errorf("add label %q: %w", name, err)
+			return fmt.Errorf("add label %q: %w", label.Name, err)
 		}
 	}
 	return nil

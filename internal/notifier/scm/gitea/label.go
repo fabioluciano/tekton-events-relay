@@ -91,32 +91,37 @@ func (h *LabelHandler) applyLabelSet(e domain.Event, issueNumber int64) error {
 		byName[l.Name] = l.ID
 	}
 
-	for _, name := range remove {
-		if err := scm.Validate(providerGitea, "label_name", name); err != nil {
+	for _, label := range remove {
+		if err := scm.Validate(providerGitea, "label_name", label.Name); err != nil {
 			return err
 		}
-		id, ok := byName[name]
+		id, ok := byName[label.Name]
 		if !ok {
 			continue // label absent: removal already satisfied
 		}
 		if _, err := h.client.sdk.DeleteIssueLabel(e.Repo.Owner, e.Repo.Name, issueNumber, id); err != nil {
-			h.log.Warn("gitea label removal failed", zap.String("label", name), zap.Error(err))
+			h.log.Warn("gitea label removal failed", zap.String("label", label.Name), zap.Error(err))
 		}
 	}
 
 	ids := make([]int64, 0, len(add))
-	for _, name := range add {
-		if err := scm.Validate(providerGitea, "label_name", name); err != nil {
+	for _, label := range add {
+		if err := scm.Validate(providerGitea, "label_name", label.Name); err != nil {
 			return err
 		}
-		id, ok := byName[name]
+		id, ok := byName[label.Name]
 		if !ok {
+			// Use custom color or default to gray
+			color := label.Color
+			if color == "" {
+				color = "ededed" // Gitea default gray
+			}
 			created, _, err := h.client.sdk.CreateLabel(e.Repo.Owner, e.Repo.Name, giteaSDK.CreateLabelOption{
-				Name:  name,
-				Color: "#ededed",
+				Name:  label.Name,
+				Color: color,
 			})
 			if err != nil {
-				return fmt.Errorf("create label %q: %w", name, err)
+				return fmt.Errorf("create label %q: %w", label.Name, err)
 			}
 			id = created.ID
 		}

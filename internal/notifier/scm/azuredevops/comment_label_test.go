@@ -86,7 +86,7 @@ func TestCommentHandler_InvalidTemplateRejected(t *testing.T) {
 func TestLabelHandler_NameAndType(t *testing.T) {
 	h := NewLabelHandler(LabelConfig{
 		Token: testToken, BaseURL: testBaseURL,
-		Labels: scm.LabelSet{Add: []string{"ok"}, Remove: []string{"bad"}}, Log: zap.NewNop(),
+		Labels: scm.LabelSet{Add: []scm.Label{{Name: "ok"}}, Remove: []scm.Label{{Name: "bad"}}}, Log: zap.NewNop(),
 	})
 	if h.Name() != "azure-devops" {
 		t.Errorf("Name = %q, want azure-devops", h.Name())
@@ -99,7 +99,7 @@ func TestLabelHandler_NameAndType(t *testing.T) {
 func TestLabelHandler_SkipsWrongProviderAndMissingFields(t *testing.T) {
 	h := NewLabelHandler(LabelConfig{
 		Token: testToken, BaseURL: testBaseURL,
-		Labels: scm.LabelSet{Add: []string{"ok"}, Remove: []string{"bad"}}, Log: zap.NewNop(),
+		Labels: scm.LabelSet{Add: []scm.Label{{Name: "ok"}}, Remove: []scm.Label{{Name: "bad"}}}, Log: zap.NewNop(),
 	})
 	pr := 7
 

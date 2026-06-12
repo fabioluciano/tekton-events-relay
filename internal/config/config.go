@@ -248,9 +248,41 @@ type Action struct {
 
 // ActionLabels declares labels to add and remove when a label action fires.
 // Entries support Go templates evaluated against the event.
+// Supports both old string format and new object format with optional color.
 type ActionLabels struct {
-	Add    []string `yaml:"add,omitempty"`
-	Remove []string `yaml:"remove,omitempty"`
+	Add    []LabelEntry `yaml:"add,omitempty"`
+	Remove []LabelEntry `yaml:"remove,omitempty"`
+}
+
+// LabelEntry represents a label with optional color.
+// UnmarshalYAML allows both string (backward compat) and object format.
+type LabelEntry struct {
+	Name  string
+	Color string
+}
+
+// UnmarshalYAML implements yaml.Unmarshaler for backward compatibility.
+// Accepts both "labelname" (string) and {name: "labelname", color: "hex"} (object).
+func (l *LabelEntry) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	// Try object format first
+	var obj struct {
+		Name  string `yaml:"name"`
+		Color string `yaml:"color,omitempty"`
+	}
+	if err := unmarshal(&obj); err == nil && obj.Name != "" {
+		l.Name = obj.Name
+		l.Color = obj.Color
+		return nil
+	}
+
+	// Fall back to string format (backward compat)
+	var str string
+	if err := unmarshal(&str); err != nil {
+		return err
+	}
+	l.Name = str
+	l.Color = ""
+	return nil
 }
 
 // ActionFilterConfig configures action-level filtering with allow/deny lists.

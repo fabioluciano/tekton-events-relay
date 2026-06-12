@@ -2,88 +2,109 @@
 
 {{ template "chart.badgesSection" . }}
 
-{{ template "chart.description" . }}
+**Your pipelines run. Your platforms get updated. You write zero notification code.**
+
+Tekton Events Relay turns the CloudEvents your Tekton pipelines already emit into commit statuses, PR comments, labels, deployments and alerts — across **6 SCM platforms** (GitHub, GitLab, Gitea, Bitbucket, Azure DevOps, SourceHut) and **8 notification channels** (Slack, Teams, Discord, PagerDuty, Datadog, Grafana, Sentry, webhooks). Routing is declared with CEL expressions and a one-time set of annotations on your `PipelineRun`s — **your pipelines never change**.
 
 {{ template "chart.homepageLine" . }}
+
+📖 **[Full documentation](https://github.com/fabioluciano/tekton-events-relay/wiki)** — [Quickstart](https://github.com/fabioluciano/tekton-events-relay/wiki/Quickstart) · [Annotations contract](https://github.com/fabioluciano/tekton-events-relay/wiki/Annotations) · [Configuration reference](https://github.com/fabioluciano/tekton-events-relay/wiki/Configuration-Reference) · [Operations](https://github.com/fabioluciano/tekton-events-relay/wiki/Operations)
+
+## Highlights
+
+- **Self-updating PR comments** (`mode: upsert`) — one comment per run, edited in place; idempotent across retries, restarts and replicas.
+- **Granular required checks** (`context_per_task`) — one commit status per Tekton task, ready for branch protection rules.
+- **Declarative labels** — add/remove lists with Go templates, gated by a CEL `when`.
+- **Deployment tracking** — GitHub/GitLab Environments pages, Grafana deploy markers, Sentry releases.
+- **Reliability built in** — backoff+jitter retries honoring `Retry-After`, HTTP 503 back-pressure, dead letter queue with replay API, per-handler timeouts.
+- **Multi-replica correctness** — pluggable state backends: in-memory, **Valkey**, or **embedded Olric** (no extra deployment; this chart wires the gossip Service and NetworkPolicy automatically).
+- **Operations friendly** — hot config reload (ConfigMap edits apply without restart), 20+ Prometheus metrics + ServiceMonitor, OpenTelemetry tracing, diagnostic `/readyz`.
 
 ## Installation
 
 ```bash
 helm install tekton-events-relay \
   oci://ghcr.io/fabioluciano/charts/tekton-events-relay \
-  --version {{ template "chart.version" . }}
+  --version {{ template "chart.version" . }} \
+  --namespace tekton-events-relay --create-namespace \
+  -f values.yaml
 ```
 
-### Signature Verification
+### Minimal working example
 
-Docker images and Helm charts are signed with [Cosign](https://github.com/sigstore/cosign) using keyless OIDC signing.
+```yaml
+# values.yaml
+replicaCount: 1        # >1 requires config.store.backend: valkey|olric — see the wiki
 
-**Verify Docker image:**
+config:
+  scm:
+    github:
+      - name: github                       # matched by the scm.provider annotation
+        enabled: true
+        auth:
+          secret_name: github-token        # Secret with key "token"
+        actions:
+          - name: ci-status
+            type: commit_status
+            enabled: true
+          - name: pr-summary
+            type: pr_comment
+            enabled: true
+            mode: upsert
+            when: 'isPipelineRun() && stateIn("success", "failure")'
+
+  notifiers:
+    slack:
+      - name: prod-alerts
+        enabled: true
+        secret_name: slack-webhook         # Secret with key "webhook_url"
+        channel: "#prod-alerts"
+        when: 'event.Namespace == "production" && stateIn("failure", "error")'
+```
+
+```bash
+kubectl create secret generic github-token -n tekton-events-relay \
+  --from-literal=token="ghp_..."
+```
+
+Then point Tekton at the relay (ConfigMap `config-defaults` in `tekton-pipelines`):
+
+```yaml
+data:
+  default-cloud-events-sink: http://tekton-events-relay.tekton-events-relay.svc.cluster.local
+```
+
+…and [annotate your PipelineRuns](https://github.com/fabioluciano/tekton-events-relay/wiki/Annotations) in your TriggerTemplate. That's the whole integration.
+
+## Prerequisites
+
+- Kubernetes **1.24+**, Helm **3.8+**
+- Tekton Pipelines **v0.40+** with CloudEvents enabled
+
+## Signature verification
+
+Images and charts are signed with [Cosign](https://github.com/sigstore/cosign) (keyless OIDC; signatures in the [Rekor](https://rekor.sigstore.dev/) transparency log):
+
 ```bash
 cosign verify \
   --certificate-identity-regexp='https://github.com/fabioluciano/tekton-events-relay' \
   --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
-  ghcr.io/fabioluciano/tekton-events-relay:{{ template "chart.version" . }}
-```
+  ghcr.io/fabioluciano/tekton-events-relay:{{ template "chart.appVersion" . }}
 
-**Verify Helm chart:**
-```bash
 cosign verify \
   --certificate-identity-regexp='https://github.com/fabioluciano/tekton-events-relay' \
   --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
   oci://ghcr.io/fabioluciano/charts/tekton-events-relay:{{ template "chart.version" . }}
 ```
 
-Signatures are stored in the [Sigstore Rekor transparency log](https://rekor.sigstore.dev/).
+## Scaling note
 
-## Configuration
-
-The chart supports multiple SCM providers and notification channels. Enable and configure them through the `config` section in your values.yaml:
-
-### Supported SCM Providers
-- GitHub (commit status, check runs, PR comments, issue comments, discussion comments, labels, deployments)
-- GitLab (commit status, MR notes, issue comments, labels)
-- Bitbucket (Cloud and Server variants, commit status)
-- Azure DevOps (commit status, PR labels)
-- Gitea (commit status, PR comments, issue comments, labels)
-- SourceHut (commit status)
-
-### Supported Notifiers
-- Slack
-- Discord
-- Microsoft Teams
-- Datadog
-- PagerDuty
-- Generic Webhooks
-
-### Quick Start Example
-
-```yaml
-config:
-  dashboard_url: "https://tekton.your-domain.com"
-
-  scm:
-    github:
-      - name: default
-        enabled: true
-        base_url: "https://api.github.com"
-        actions:
-          - name: commit-status
-            type: commit_status
-            enabled: true
-            when: 'event.Resource == "pipelinerun"'
-
-  notifiers:
-    slack:
-      - name: main-channel
-        enabled: true
-        channel: "#ci-notifications"
-        username: "Tekton CI"
-        when: 'event.State == "failure" || event.State == "error"'
-```
+The default in-memory state backend is per-pod: run **one replica**, or set `config.store.backend` to `valkey`/`olric` before scaling out or enabling the HPA — details in [Operations → State backends](https://github.com/fabioluciano/tekton-events-relay/wiki/Operations#state-backends).
 
 {{ template "chart.maintainersSection" . }}
 
 {{ template "chart.sourcesSection" . }}
+
+{{ template "chart.requirementsSection" . }}
 
 {{ template "chart.valuesSection" . }}

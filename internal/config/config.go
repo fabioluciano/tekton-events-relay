@@ -196,6 +196,8 @@ type NotifiersConfig struct {
 	PagerDuty []PagerDutyInstance `yaml:"pagerduty,omitempty" validate:"omitempty,dive"`
 	Datadog   []DatadogInstance   `yaml:"datadog,omitempty" validate:"omitempty,dive"`
 	Webhook   []WebhookInstance   `yaml:"webhook,omitempty" validate:"omitempty,dive"`
+	Grafana   []GrafanaInstance   `yaml:"grafana,omitempty" validate:"omitempty,dive"`
+	Sentry    []SentryInstance    `yaml:"sentry,omitempty" validate:"omitempty,dive"`
 }
 
 // ActionType identifies the type of action in the configuration.
@@ -204,6 +206,7 @@ type ActionType string
 // Action type constants matching notifier.ActionType values.
 const (
 	ActionTypeCommitStatus      ActionType = "commit_status"
+	ActionTypeCommitComment     ActionType = "commit_comment"
 	ActionTypePRComment         ActionType = "pr_comment"
 	ActionTypeIssueComment      ActionType = "issue_comment"
 	ActionTypeLabel             ActionType = "label"
@@ -230,12 +233,24 @@ type Action struct {
 	// For large templates, consider storing the template content in a ConfigMap and mounting it as a volume.
 	Template string `yaml:"template,omitempty"`
 
-	// Label action fields
-	SuccessLabel string `yaml:"success_label,omitempty"`
-	FailureLabel string `yaml:"failure_label,omitempty"`
+	// ContextPerTask (commit_status only): TaskRun events post their status
+	// under "<context>/<task>" instead of the shared context, yielding one
+	// independent check per task.
+	ContextPerTask bool `yaml:"context_per_task,omitempty"`
+
+	// Labels declares the label effect (add/remove lists, Go-templated).
+	// The action's `when` expression is the only execution gate.
+	Labels *ActionLabels `yaml:"labels,omitempty"`
 
 	// Filter
 	Filter *ActionFilterConfig `yaml:"filter,omitempty"`
+}
+
+// ActionLabels declares labels to add and remove when a label action fires.
+// Entries support Go templates evaluated against the event.
+type ActionLabels struct {
+	Add    []string `yaml:"add,omitempty"`
+	Remove []string `yaml:"remove,omitempty"`
 }
 
 // ActionFilterConfig configures action-level filtering with allow/deny lists.
@@ -565,6 +580,45 @@ type WebhookAuthConfig struct {
 	Header       string `yaml:"header,omitempty"`        // for apikey (e.g., "X-API-Key")
 	SecretFile   string `yaml:"secret_file,omitempty"`   // for hmac
 }
+
+// GrafanaAuth holds authentication configuration for Grafana notifiers.
+type GrafanaAuth struct {
+	TokenFile string `yaml:"token_file"`
+	TokenKey  string `yaml:"token_key,omitempty"`
+}
+
+// GrafanaInstance posts deployment markers to the Grafana Annotations API.
+type GrafanaInstance struct {
+	Name     string       `yaml:"name" validate:"required"`
+	Enabled  bool         `yaml:"enabled"`
+	URL      string       `yaml:"url"`
+	Auth     *GrafanaAuth `yaml:"auth,omitempty"`
+	Tags     []string     `yaml:"tags,omitempty"`
+	When     string       `yaml:"when"`
+	Template string       `yaml:"template,omitempty"`
+}
+
+func (g GrafanaInstance) isEnabled() bool { return g.Enabled }
+
+// SentryAuth holds authentication configuration for Sentry notifiers.
+type SentryAuth struct {
+	TokenFile string `yaml:"token_file"`
+	TokenKey  string `yaml:"token_key,omitempty"`
+}
+
+// SentryInstance creates Sentry releases and deploy markers for successful
+// runs (version = CommitSHA).
+type SentryInstance struct {
+	Name     string      `yaml:"name" validate:"required"`
+	Enabled  bool        `yaml:"enabled"`
+	BaseURL  string      `yaml:"base_url,omitempty"` // empty = sentry.io
+	Org      string      `yaml:"org"`
+	Projects []string    `yaml:"projects,omitempty"`
+	Auth     *SentryAuth `yaml:"auth,omitempty"`
+	When     string      `yaml:"when"`
+}
+
+func (s SentryInstance) isEnabled() bool { return s.Enabled }
 
 // LoggingConfig contains logging configuration.
 type LoggingConfig struct {

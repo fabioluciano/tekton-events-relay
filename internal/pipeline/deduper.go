@@ -5,7 +5,6 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/fabioluciano/tekton-events-relay/internal/config"
 	"github.com/fabioluciano/tekton-events-relay/internal/event"
 	"github.com/fabioluciano/tekton-events-relay/internal/metrics"
 	"github.com/fabioluciano/tekton-events-relay/internal/store"
@@ -19,14 +18,6 @@ type Deduper struct {
 	backend    string
 	collectors *metrics.Collectors
 	log        *zap.Logger
-}
-
-// NewDeduper creates a Deduper backed by an in-memory LRU with the
-// specified capacity. Kept for compatibility; prefer NewDeduperWithStore.
-func NewDeduper(capacity int, collectors *metrics.Collectors) *Deduper {
-	mem, _ := store.New(config.StoreConfig{Backend: store.BackendMemory},
-		store.Options{DedupeCapacity: capacity})
-	return NewDeduperWithStore(mem.Dedupe(), store.BackendMemory, collectors, nil)
 }
 
 // NewDeduperWithStore creates a Deduper backed by the given store.

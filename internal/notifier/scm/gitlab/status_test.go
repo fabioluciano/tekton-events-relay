@@ -8,6 +8,7 @@ import (
 
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
+	"github.com/fabioluciano/tekton-events-relay/internal/notifier/scm"
 )
 
 const (
@@ -219,11 +220,10 @@ func TestLabelHandler_Handle_FailureLabel(t *testing.T) {
 
 	issueNum := 3
 	h := NewLabelHandler(LabelConfig{
-		Token:        testStatusToken,
-		BaseURL:      server.URL,
-		Name:         testStatusName,
-		SuccessLabel: "ci-passed",
-		FailureLabel: "ci-failed",
+		Token:   testStatusToken,
+		BaseURL: server.URL,
+		Name:    testStatusName,
+		Labels:  scm.LabelSet{Add: []string{"ci-passed"}},
 	})
 
 	event := domain.Event{
@@ -255,11 +255,10 @@ func TestLabelHandler_Handle_Success(t *testing.T) {
 
 	prNum := 7
 	h := NewLabelHandler(LabelConfig{
-		Token:        testStatusToken,
-		BaseURL:      server.URL,
-		Name:         testStatusName,
-		SuccessLabel: "ci-passed",
-		FailureLabel: "ci-failed",
+		Token:   testStatusToken,
+		BaseURL: server.URL,
+		Name:    testStatusName,
+		Labels:  scm.LabelSet{Add: []string{"ci-passed"}},
 	})
 
 	event := domain.Event{

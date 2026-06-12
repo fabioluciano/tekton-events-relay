@@ -74,13 +74,39 @@ func (f *GitLabFactory) buildHandler(inst config.GitLabInstance, action config.A
 	switch action.Type {
 	case config.ActionTypeCommitStatus:
 		return gitlab.NewStatusReporter(token, inst.BaseURL, inst.Name, inst.InsecureSkipVerify, log), nil
+	case config.ActionTypeCommitComment:
+		return gitlab.NewCommitCommentHandler(gitlab.CommitCommentConfig{
+			Token:              token,
+			BaseURL:            inst.BaseURL,
+			Name:               inst.Name,
+			Template:           action.Template,
+			InsecureSkipVerify: inst.InsecureSkipVerify,
+			Log:                log,
+		})
+	case config.ActionTypePRComment:
+		return gitlab.NewMRCommentHandler(gitlab.MRCommentConfig{
+			Token:              token,
+			BaseURL:            inst.BaseURL,
+			Name:               inst.Name,
+			Template:           action.Template,
+			Mode:               action.Mode,
+			InsecureSkipVerify: inst.InsecureSkipVerify,
+			Log:                log,
+		})
+	case config.ActionTypeDeploymentStatus:
+		return gitlab.NewDeploymentHandler(gitlab.DeploymentConfig{
+			Token:              token,
+			BaseURL:            inst.BaseURL,
+			Name:               inst.Name,
+			InsecureSkipVerify: inst.InsecureSkipVerify,
+			Log:                log,
+		}), nil
 	case config.ActionTypeLabel:
 		return gitlab.NewLabelHandler(gitlab.LabelConfig{
 			Token:              token,
 			BaseURL:            inst.BaseURL,
 			Name:               inst.Name,
-			SuccessLabel:       action.SuccessLabel,
-			FailureLabel:       action.FailureLabel,
+			Labels:             labelSet(action),
 			InsecureSkipVerify: inst.InsecureSkipVerify,
 			Log:                log,
 		}), nil

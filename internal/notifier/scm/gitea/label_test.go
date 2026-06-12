@@ -13,16 +13,16 @@ import (
 
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
+	"github.com/fabioluciano/tekton-events-relay/internal/notifier/scm"
 )
 
 func newLabelTestHandler(t *testing.T, baseURL string) notifier.ActionHandler {
 	t.Helper()
 	return NewLabelHandler(LabelConfig{
-		Token:        "token",
-		BaseURL:      baseURL,
-		SuccessLabel: "ci:passed",
-		FailureLabel: "ci:failed",
-		Log:          zap.NewNop(),
+		Token:   "token",
+		BaseURL: baseURL,
+		Labels:  scm.LabelSet{Add: []string{"ci:passed"}, Remove: []string{"ci:failed"}},
+		Log:     zap.NewNop(),
 	})
 }
 

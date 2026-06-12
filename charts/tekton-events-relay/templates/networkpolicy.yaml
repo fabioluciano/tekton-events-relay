@@ -9,6 +9,9 @@ metadata:
   name: {{ include "tekton-events-relay.fullname" . }}
 spec:
   egress:
+    {{- with .Values.networkPolicy.extraEgress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
     # Allow DNS
     - ports:
         - port: 53
@@ -56,6 +59,19 @@ spec:
           protocol: UDP
     {{- end }}
   ingress:
+    {{- if .Values.config.server.metrics_addr }}
+    # Allow Prometheus scraping of the dedicated metrics port
+    - ports:
+        - port: {{ .Values.networkPolicy.metricsPort }}
+          protocol: TCP
+      {{- with .Values.networkPolicy.metricsFrom }}
+      from:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- end }}
+    {{- with .Values.networkPolicy.extraIngress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
     # Allow traffic from same namespace
     - from:
         - podSelector: {}

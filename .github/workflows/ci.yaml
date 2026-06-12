@@ -10,6 +10,11 @@ on:
       - "rc/**"
       - "rc-*"
 
+# Cancel superseded runs of the same PR on force-push
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   security-events: write

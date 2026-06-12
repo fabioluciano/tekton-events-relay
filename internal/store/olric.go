@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/olric-data/olric"
@@ -176,12 +178,35 @@ func (s *olricStore) getTasks(ctx context.Context, uid string) (map[string]*doma
 	return tasks, nil
 }
 
-// zapLogWriter adapts olric's std log output to the relay's zap logger.
+var olricLogPattern = regexp.MustCompile(`^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2} \[(DEBUG|INFO|WARN|ERROR)\] (.*)$`)
+
+// zapLogWriter adapts olric's std log output to structured zap logging.
 type zapLogWriter struct {
 	log *zap.Logger
 }
 
 func (w *zapLogWriter) Write(p []byte) (int, error) {
-	w.log.Debug(string(p))
+	msg := strings.TrimSuffix(string(p), "\n")
+
+	matches := olricLogPattern.FindStringSubmatch(msg)
+	if len(matches) == 3 {
+		level := matches[1]
+		text := matches[2]
+
+		switch level {
+		case "DEBUG":
+			w.log.Debug(text)
+		case "INFO":
+			w.log.Info(text)
+		case "WARN":
+			w.log.Warn(text)
+		case "ERROR":
+			w.log.Error(text)
+		}
+	} else {
+		// Fallback for non-standard format
+		w.log.Info(msg)
+	}
+
 	return len(p), nil
 }

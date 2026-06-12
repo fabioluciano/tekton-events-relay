@@ -112,8 +112,3 @@ func (rl *RateLimiter) Middleware() func(http.Handler) http.Handler {
 		})
 	}
 }
-
-// RateLimitMiddleware creates rate limiting middleware.
-func RateLimitMiddleware(requestsPerSecond float64, burst int) func(http.Handler) http.Handler {
-	return NewRateLimiter(requestsPerSecond, burst).Middleware()
-}

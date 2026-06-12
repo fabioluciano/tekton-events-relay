@@ -1,86 +1,105 @@
 # tekton-events-relay
 
-![Version: 0.3.0](https://img.shields.io/badge/Version-0.3.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.3.0](https://img.shields.io/badge/AppVersion-0.3.0-informational?style=flat-square)
+![Version: 0.4.0-rc.1](https://img.shields.io/badge/Version-0.4.0--rc.1-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.4.0-rc.1](https://img.shields.io/badge/AppVersion-0.4.0--rc.1-informational?style=flat-square)
 
-CloudEvents receiver that reports pipeline execution status to multiple SCM providers
+**Your pipelines run. Your platforms get updated. You write zero notification code.**
+
+Tekton Events Relay turns the CloudEvents your Tekton pipelines already emit into commit statuses, PR comments, labels, deployments and alerts — across **6 SCM platforms** (GitHub, GitLab, Gitea, Bitbucket, Azure DevOps, SourceHut) and **8 notification channels** (Slack, Teams, Discord, PagerDuty, Datadog, Grafana, Sentry, webhooks). Routing is declared with CEL expressions and a one-time set of annotations on your `PipelineRun`s — **your pipelines never change**.
 
 **Homepage:** <https://github.com/fabioluciano/tekton-events-relay>
+
+📖 **[Full documentation](https://github.com/fabioluciano/tekton-events-relay/wiki)** — [Quickstart](https://github.com/fabioluciano/tekton-events-relay/wiki/Quickstart) · [Annotations contract](https://github.com/fabioluciano/tekton-events-relay/wiki/Annotations) · [Configuration reference](https://github.com/fabioluciano/tekton-events-relay/wiki/Configuration-Reference) · [Operations](https://github.com/fabioluciano/tekton-events-relay/wiki/Operations)
+
+## Highlights
+
+- **Self-updating PR comments** (`mode: upsert`) — one comment per run, edited in place; idempotent across retries, restarts and replicas.
+- **Granular required checks** (`context_per_task`) — one commit status per Tekton task, ready for branch protection rules.
+- **Declarative labels** — add/remove lists with Go templates, gated by a CEL `when`.
+- **Deployment tracking** — GitHub/GitLab Environments pages, Grafana deploy markers, Sentry releases.
+- **Reliability built in** — backoff+jitter retries honoring `Retry-After`, HTTP 503 back-pressure, dead letter queue with replay API, per-handler timeouts.
+- **Multi-replica correctness** — pluggable state backends: in-memory, **Valkey**, or **embedded Olric** (no extra deployment; this chart wires the gossip Service and NetworkPolicy automatically).
+- **Operations friendly** — hot config reload (ConfigMap edits apply without restart), 20+ Prometheus metrics + ServiceMonitor, OpenTelemetry tracing, diagnostic `/readyz`.
 
 ## Installation
 
 ```bash
 helm install tekton-events-relay \
   oci://ghcr.io/fabioluciano/charts/tekton-events-relay \
-  --version 0.3.0
+  --version 0.4.0-rc.1 \
+  --namespace tekton-events-relay --create-namespace \
+  -f values.yaml
 ```
 
-### Signature Verification
-
-Docker images and Helm charts are signed with [Cosign](https://github.com/sigstore/cosign) using keyless OIDC signing.
-
-**Verify Docker image:**
-```bash
-cosign verify \
-  --certificate-identity-regexp='https://github.com/fabioluciano/tekton-events-relay' \
-  --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
-  ghcr.io/fabioluciano/tekton-events-relay:0.3.0
-```
-
-**Verify Helm chart:**
-```bash
-cosign verify \
-  --certificate-identity-regexp='https://github.com/fabioluciano/tekton-events-relay' \
-  --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
-  oci://ghcr.io/fabioluciano/charts/tekton-events-relay:0.3.0
-```
-
-Signatures are stored in the [Sigstore Rekor transparency log](https://rekor.sigstore.dev/).
-
-## Configuration
-
-The chart supports multiple SCM providers and notification channels. Enable and configure them through the `config` section in your values.yaml:
-
-### Supported SCM Providers
-- GitHub (commit status, check runs, PR comments, issue comments, discussion comments, labels, deployments)
-- GitLab (commit status, MR notes, issue comments, labels)
-- Bitbucket (Cloud and Server variants, commit status)
-- Azure DevOps (commit status, PR labels)
-- Gitea (commit status, PR comments, issue comments, labels)
-- SourceHut (commit status)
-
-### Supported Notifiers
-- Slack
-- Discord
-- Microsoft Teams
-- Datadog
-- PagerDuty
-- Generic Webhooks
-
-### Quick Start Example
+### Minimal working example
 
 ```yaml
-config:
-  dashboard_url: "https://tekton.your-domain.com"
+# values.yaml
+replicaCount: 1        # >1 requires config.store.backend: valkey|olric — see the wiki
 
+config:
   scm:
     github:
-      - name: default
+      - name: github                       # matched by the scm.provider annotation
         enabled: true
-        base_url: "https://api.github.com"
+        auth:
+          secret_name: github-token        # Secret with key "token"
         actions:
-          - name: commit-status
+          - name: ci-status
             type: commit_status
             enabled: true
-            when: 'event.Resource == "pipelinerun"'
+          - name: pr-summary
+            type: pr_comment
+            enabled: true
+            mode: upsert
+            when: 'isPipelineRun() && stateIn("success", "failure")'
 
   notifiers:
     slack:
-      - name: main-channel
+      - name: prod-alerts
         enabled: true
-        channel: "#ci-notifications"
-        username: "Tekton CI"
-        when: 'event.State == "failure" || event.State == "error"'
+        secret_name: slack-webhook         # Secret with key "webhook_url"
+        channel: "#prod-alerts"
+        when: 'event.Namespace == "production" && stateIn("failure", "error")'
 ```
+
+```bash
+kubectl create secret generic github-token -n tekton-events-relay \
+  --from-literal=token="ghp_..."
+```
+
+Then point Tekton at the relay (ConfigMap `config-defaults` in `tekton-pipelines`):
+
+```yaml
+data:
+  default-cloud-events-sink: http://tekton-events-relay.tekton-events-relay.svc.cluster.local
+```
+
+…and [annotate your PipelineRuns](https://github.com/fabioluciano/tekton-events-relay/wiki/Annotations) in your TriggerTemplate. That's the whole integration.
+
+## Prerequisites
+
+- Kubernetes **1.24+**, Helm **3.8+**
+- Tekton Pipelines **v0.40+** with CloudEvents enabled
+
+## Signature verification
+
+Images and charts are signed with [Cosign](https://github.com/sigstore/cosign) (keyless OIDC; signatures in the [Rekor](https://rekor.sigstore.dev/) transparency log):
+
+```bash
+cosign verify \
+  --certificate-identity-regexp='https://github.com/fabioluciano/tekton-events-relay' \
+  --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
+  ghcr.io/fabioluciano/tekton-events-relay:0.4.0-rc.1
+
+cosign verify \
+  --certificate-identity-regexp='https://github.com/fabioluciano/tekton-events-relay' \
+  --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
+  oci://ghcr.io/fabioluciano/charts/tekton-events-relay:0.4.0-rc.1
+```
+
+## Scaling note
+
+The default in-memory state backend is per-pod: run **one replica**, or set `config.store.backend` to `valkey`/`olric` before scaling out or enabling the HPA — details in [Operations → State backends](https://github.com/fabioluciano/tekton-events-relay/wiki/Operations#state-backends).
 
 ## Maintainers
 
@@ -175,13 +194,12 @@ config:
 | config.retry.initial_backoff | string | `"250ms"` | First backoff delay (Go duration format) |
 | config.retry.max_attempts | int | `4` | Total attempts including the first request |
 | config.retry.max_backoff | string | `"30s"` | Backoff ceiling (Go duration format) |
-| config.scm.azure_devops | list | `[{"actions":[{"enabled":false,"name":"commit-status","type":"commit_status","when":""},{"enabled":false,"failure_label":"build-failed","name":"label","success_label":"build-passed","type":"label","when":""}],"base_url":"https://dev.azure.com","enabled":false,"genre":"tekton-ci","insecure_skip_verify":false,"name":"default"}]` | Azure DevOps SCM provider configuration |
-| config.scm.azure_devops[0].actions | list | `[{"enabled":false,"name":"commit-status","type":"commit_status","when":""},{"enabled":false,"failure_label":"build-failed","name":"label","success_label":"build-passed","type":"label","when":""}]` | Actions to perform when events are received |
+| config.scm.azure_devops | list | `[{"actions":[{"enabled":false,"name":"commit-status","type":"commit_status","when":""},{"enabled":false,"labels":{"add":["{{ if eq .State \"success\" }}build-passed{{ else }}build-failed{{ end }}"],"remove":["{{ if eq .State \"success\" }}build-failed{{ else }}build-passed{{ end }}"]},"name":"label","type":"label","when":""}],"base_url":"https://dev.azure.com","enabled":false,"genre":"tekton-ci","insecure_skip_verify":false,"name":"default"}]` | Azure DevOps SCM provider configuration |
+| config.scm.azure_devops[0].actions | list | `[{"enabled":false,"name":"commit-status","type":"commit_status","when":""},{"enabled":false,"labels":{"add":["{{ if eq .State \"success\" }}build-passed{{ else }}build-failed{{ end }}"],"remove":["{{ if eq .State \"success\" }}build-failed{{ else }}build-passed{{ end }}"]},"name":"label","type":"label","when":""}]` | Actions to perform when events are received |
 | config.scm.azure_devops[0].actions[0].enabled | bool | `false` | Enable or disable this SCM provider instance |
 | config.scm.azure_devops[0].actions[0].type | string | `"commit_status"` | Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status) |
 | config.scm.azure_devops[0].actions[1].enabled | bool | `false` | Enable or disable this SCM provider instance |
-| config.scm.azure_devops[0].actions[1].failure_label | string | `"build-failed"` | Label to add when pipeline fails |
-| config.scm.azure_devops[0].actions[1].success_label | string | `"build-passed"` | Label to add when pipeline succeeds |
+| config.scm.azure_devops[0].actions[1].labels | object | `{"add":["{{ if eq .State \"success\" }}build-passed{{ else }}build-failed{{ end }}"],"remove":["{{ if eq .State \"success\" }}build-failed{{ else }}build-passed{{ end }}"]}` | Declarative label effect: add/remove lists, Go-templated against the event |
 | config.scm.azure_devops[0].actions[1].type | string | `"label"` | Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status) |
 | config.scm.azure_devops[0].base_url | string | `"https://dev.azure.com"` | API base URL for Azure DevOps |
 | config.scm.azure_devops[0].enabled | bool | `false` | Enable or disable this SCM provider instance |
@@ -199,8 +217,8 @@ config:
 | config.scm.bitbucket[1].base_url | string | `"https://bitbucket.company.example.com"` | API base URL for the SCM provider |
 | config.scm.bitbucket[1].enabled | bool | `false` | Enable or disable this SCM provider instance |
 | config.scm.bitbucket[1].variant | string | `"server"` | SCM variant (cloud or server) |
-| config.scm.gitea | list | `[{"actions":[{"enabled":false,"name":"commit-status","type":"commit_status","when":""},{"enabled":false,"name":"pr-comment","template":"## Pipeline {{.State}}\n**Run:** {{.RunName}}\n**Commit:** {{.CommitSHA}}\n{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}\n","type":"pr_comment","when":"stateIn(\"success\", \"failure\")"},{"enabled":false,"name":"issue-comment","template":"Pipeline {{.Context}} finished: **{{.State}}**\n{{if .TargetURL}}[Results]({{.TargetURL}}){{end}}\n","type":"issue_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"failure_label":"ci:failed","name":"label","success_label":"ci:passed","type":"label","when":""}],"base_url":"https://gitea.company.example.com","enabled":false,"name":"default"}]` | Gitea SCM provider configuration |
-| config.scm.gitea[0].actions | list | `[{"enabled":false,"name":"commit-status","type":"commit_status","when":""},{"enabled":false,"name":"pr-comment","template":"## Pipeline {{.State}}\n**Run:** {{.RunName}}\n**Commit:** {{.CommitSHA}}\n{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}\n","type":"pr_comment","when":"stateIn(\"success\", \"failure\")"},{"enabled":false,"name":"issue-comment","template":"Pipeline {{.Context}} finished: **{{.State}}**\n{{if .TargetURL}}[Results]({{.TargetURL}}){{end}}\n","type":"issue_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"failure_label":"ci:failed","name":"label","success_label":"ci:passed","type":"label","when":""}]` | Actions to perform when events are received |
+| config.scm.gitea | list | `[{"actions":[{"enabled":false,"name":"commit-status","type":"commit_status","when":""},{"enabled":false,"name":"pr-comment","template":"## Pipeline {{.State}}\n**Run:** {{.RunName}}\n**Commit:** {{.CommitSHA}}\n{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}\n","type":"pr_comment","when":"stateIn(\"success\", \"failure\")"},{"enabled":false,"name":"issue-comment","template":"Pipeline {{.Context}} finished: **{{.State}}**\n{{if .TargetURL}}[Results]({{.TargetURL}}){{end}}\n","type":"issue_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"labels":{"add":["{{ if eq .State \"success\" }}ci:passed{{ else }}ci:failed{{ end }}"],"remove":["{{ if eq .State \"success\" }}ci:failed{{ else }}ci:passed{{ end }}"]},"name":"label","type":"label","when":""}],"base_url":"https://gitea.company.example.com","enabled":false,"name":"default"}]` | Gitea SCM provider configuration |
+| config.scm.gitea[0].actions | list | `[{"enabled":false,"name":"commit-status","type":"commit_status","when":""},{"enabled":false,"name":"pr-comment","template":"## Pipeline {{.State}}\n**Run:** {{.RunName}}\n**Commit:** {{.CommitSHA}}\n{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}\n","type":"pr_comment","when":"stateIn(\"success\", \"failure\")"},{"enabled":false,"name":"issue-comment","template":"Pipeline {{.Context}} finished: **{{.State}}**\n{{if .TargetURL}}[Results]({{.TargetURL}}){{end}}\n","type":"issue_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"labels":{"add":["{{ if eq .State \"success\" }}ci:passed{{ else }}ci:failed{{ end }}"],"remove":["{{ if eq .State \"success\" }}ci:failed{{ else }}ci:passed{{ end }}"]},"name":"label","type":"label","when":""}]` | Actions to perform when events are received |
 | config.scm.gitea[0].actions[0].enabled | bool | `false` | Enable or disable this SCM provider instance |
 | config.scm.gitea[0].actions[0].type | string | `"commit_status"` | Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status) |
 | config.scm.gitea[0].actions[1].enabled | bool | `false` | Enable or disable this SCM provider instance |
@@ -208,12 +226,11 @@ config:
 | config.scm.gitea[0].actions[2].enabled | bool | `false` | Enable or disable this SCM provider instance |
 | config.scm.gitea[0].actions[2].type | string | `"issue_comment"` | Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status) |
 | config.scm.gitea[0].actions[3].enabled | bool | `false` | Enable or disable this SCM provider instance |
-| config.scm.gitea[0].actions[3].failure_label | string | `"ci:failed"` | Label to add when pipeline fails |
-| config.scm.gitea[0].actions[3].success_label | string | `"ci:passed"` | Label to add when pipeline succeeds |
+| config.scm.gitea[0].actions[3].labels | object | `{"add":["{{ if eq .State \"success\" }}ci:passed{{ else }}ci:failed{{ end }}"],"remove":["{{ if eq .State \"success\" }}ci:failed{{ else }}ci:passed{{ end }}"]}` | Declarative label effect: add/remove lists, Go-templated against the event |
 | config.scm.gitea[0].actions[3].type | string | `"label"` | Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status) |
 | config.scm.gitea[0].base_url | string | `"https://gitea.company.example.com"` | API base URL for the SCM provider |
 | config.scm.gitea[0].enabled | bool | `false` | Enable or disable this SCM provider instance |
-| config.scm.github | list | `[{"actions":[{"enabled":false,"name":"commit-status","type":"commit_status","when":"event.Resource == \"pipelinerun\""},{"enabled":false,"name":"check-run","template":"## Build Result: {{.State}}\n**Run:** {{.RunName}}\n**Namespace:** {{.Namespace}}\n{{if .TargetURL}}[View Logs]({{.TargetURL}}){{end}}\n","type":"check_run","when":"stateIn(\"success\", \"failure\", \"error\")"},{"enabled":false,"name":"deployment-status","type":"deployment_status","when":"stateIn(\"success\", \"failure\")"},{"enabled":false,"mode":"create","name":"pr-comment","template":"## Pipeline {{.State}}\n**Run:** {{.RunName}}\n**Commit:** {{.CommitSHA}}\n{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}\n","type":"pr_comment","when":"stateIn(\"success\", \"failure\")"},{"enabled":false,"name":"issue-comment","template":"Pipeline {{.Context}} finished with state: **{{.State}}**\n{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}\n","type":"issue_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"name":"discussion-comment","template":"## Pipeline {{.State}}\n**Run:** {{.RunName}}\n**Commit:** {{.CommitSHA}}\n{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}\n","type":"discussion_comment","when":"stateIn(\"success\", \"failure\")"},{"enabled":false,"failure_label":"ci:failed","name":"label","success_label":"ci:passed","type":"label","when":""}],"auth":{"secret_name":"github-default-token"},"base_url":"https://api.github.com","enabled":false,"name":"default"}]` | GitHub SCM provider configuration |
+| config.scm.github | list | `[{"actions":[{"enabled":false,"name":"commit-status","type":"commit_status","when":"event.Resource == \"pipelinerun\""},{"enabled":false,"name":"check-run","template":"## Build Result: {{.State}}\n**Run:** {{.RunName}}\n**Namespace:** {{.Namespace}}\n{{if .TargetURL}}[View Logs]({{.TargetURL}}){{end}}\n","type":"check_run","when":"stateIn(\"success\", \"failure\", \"error\")"},{"enabled":false,"name":"deployment-status","type":"deployment_status","when":"stateIn(\"success\", \"failure\")"},{"enabled":false,"mode":"create","name":"pr-comment","template":"## Pipeline {{.State}}\n**Run:** {{.RunName}}\n**Commit:** {{.CommitSHA}}\n{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}\n","type":"pr_comment","when":"stateIn(\"success\", \"failure\")"},{"enabled":false,"name":"issue-comment","template":"Pipeline {{.Context}} finished with state: **{{.State}}**\n{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}\n","type":"issue_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"name":"discussion-comment","template":"## Pipeline {{.State}}\n**Run:** {{.RunName}}\n**Commit:** {{.CommitSHA}}\n{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}\n","type":"discussion_comment","when":"stateIn(\"success\", \"failure\")"},{"enabled":false,"labels":{"add":["{{ if eq .State \"success\" }}ci:passed{{ else }}ci:failed{{ end }}"],"remove":["{{ if eq .State \"success\" }}ci:failed{{ else }}ci:passed{{ end }}"]},"name":"label","type":"label","when":""}],"auth":{"secret_name":"github-default-token"},"base_url":"https://api.github.com","enabled":false,"name":"default"}]` | GitHub SCM provider configuration |
 | config.scm.github[0].actions[0].enabled | bool | `false` | Enable or disable this SCM provider instance |
 | config.scm.github[0].actions[0].type | string | `"commit_status"` | Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status) |
 | config.scm.github[0].actions[1].enabled | bool | `false` | Enable or disable this SCM provider instance |
@@ -228,15 +245,14 @@ config:
 | config.scm.github[0].actions[5].enabled | bool | `false` | Enable or disable this SCM provider instance |
 | config.scm.github[0].actions[5].type | string | `"discussion_comment"` | Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status) |
 | config.scm.github[0].actions[6].enabled | bool | `false` | Enable or disable this SCM provider instance |
-| config.scm.github[0].actions[6].failure_label | string | `"ci:failed"` | Label to add when pipeline fails |
-| config.scm.github[0].actions[6].success_label | string | `"ci:passed"` | Label to add when pipeline succeeds |
+| config.scm.github[0].actions[6].labels | object | `{"add":["{{ if eq .State \"success\" }}ci:passed{{ else }}ci:failed{{ end }}"],"remove":["{{ if eq .State \"success\" }}ci:failed{{ else }}ci:passed{{ end }}"]}` | Declarative label effect: add/remove lists, Go-templated against the event |
 | config.scm.github[0].actions[6].type | string | `"label"` | Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status) |
 | config.scm.github[0].auth | object | `{"secret_name":"github-default-token"}` | Webhook authentication configuration |
 | config.scm.github[0].auth.secret_name | string | `"github-default-token"` | Kubernetes Secret containing credentials |
 | config.scm.github[0].base_url | string | `"https://api.github.com"` | API base URL for the SCM provider |
 | config.scm.github[0].enabled | bool | `false` | Enable or disable this SCM provider instance |
-| config.scm.gitlab | list | `[{"actions":[{"enabled":false,"name":"commit-status","type":"commit_status","when":""},{"enabled":false,"name":"pr-comment","template":"## Pipeline {{.State}}\n**Run:** {{.RunName}}\n**Commit:** {{.CommitSHA}}\n{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}\n","type":"pr_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"name":"issue-comment","template":"Pipeline {{.Context}} finished with state: **{{.State}}**\n{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}\n","type":"issue_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"failure_label":"pipeline::failed","name":"label","success_label":"pipeline::success","type":"label","when":""}],"base_url":"https://gitlab.com/api/v4","enabled":false,"name":"cloud","variant":"saas"},{"actions":[{"enabled":false,"name":"commit-status","type":"commit_status","when":""},{"enabled":false,"name":"pr-comment","template":"## Pipeline {{.State}}\n**Run:** {{.RunName}}\n**Commit:** {{.CommitSHA}}\n{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}\n","type":"pr_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"name":"issue-comment","template":"Pipeline {{.Context}} finished with state: **{{.State}}**\n{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}\n","type":"issue_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"failure_label":"pipeline::failed","name":"label","success_label":"pipeline::success","type":"label","when":""}],"base_url":"https://gitlab.company.example.com/api/v4","enabled":false,"name":"server","variant":"self-managed"}]` | GitLab SCM provider configuration |
-| config.scm.gitlab[0].actions | list | `[{"enabled":false,"name":"commit-status","type":"commit_status","when":""},{"enabled":false,"name":"pr-comment","template":"## Pipeline {{.State}}\n**Run:** {{.RunName}}\n**Commit:** {{.CommitSHA}}\n{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}\n","type":"pr_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"name":"issue-comment","template":"Pipeline {{.Context}} finished with state: **{{.State}}**\n{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}\n","type":"issue_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"failure_label":"pipeline::failed","name":"label","success_label":"pipeline::success","type":"label","when":""}]` | Actions to perform when events are received |
+| config.scm.gitlab | list | `[{"actions":[{"enabled":false,"name":"commit-status","type":"commit_status","when":""},{"enabled":false,"name":"pr-comment","template":"## Pipeline {{.State}}\n**Run:** {{.RunName}}\n**Commit:** {{.CommitSHA}}\n{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}\n","type":"pr_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"name":"issue-comment","template":"Pipeline {{.Context}} finished with state: **{{.State}}**\n{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}\n","type":"issue_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"labels":{"add":["{{ if eq .State \"success\" }}pipeline::success{{ else }}pipeline::failed{{ end }}"],"remove":["{{ if eq .State \"success\" }}pipeline::failed{{ else }}pipeline::success{{ end }}"]},"name":"label","type":"label","when":""}],"base_url":"https://gitlab.com/api/v4","enabled":false,"name":"cloud","variant":"saas"},{"actions":[{"enabled":false,"name":"commit-status","type":"commit_status","when":""},{"enabled":false,"name":"pr-comment","template":"## Pipeline {{.State}}\n**Run:** {{.RunName}}\n**Commit:** {{.CommitSHA}}\n{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}\n","type":"pr_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"name":"issue-comment","template":"Pipeline {{.Context}} finished with state: **{{.State}}**\n{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}\n","type":"issue_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"labels":{"add":["{{ if eq .State \"success\" }}pipeline::success{{ else }}pipeline::failed{{ end }}"],"remove":["{{ if eq .State \"success\" }}pipeline::failed{{ else }}pipeline::success{{ end }}"]},"name":"label","type":"label","when":""}],"base_url":"https://gitlab.company.example.com/api/v4","enabled":false,"name":"server","variant":"self-managed"}]` | GitLab SCM provider configuration |
+| config.scm.gitlab[0].actions | list | `[{"enabled":false,"name":"commit-status","type":"commit_status","when":""},{"enabled":false,"name":"pr-comment","template":"## Pipeline {{.State}}\n**Run:** {{.RunName}}\n**Commit:** {{.CommitSHA}}\n{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}\n","type":"pr_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"name":"issue-comment","template":"Pipeline {{.Context}} finished with state: **{{.State}}**\n{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}\n","type":"issue_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"labels":{"add":["{{ if eq .State \"success\" }}pipeline::success{{ else }}pipeline::failed{{ end }}"],"remove":["{{ if eq .State \"success\" }}pipeline::failed{{ else }}pipeline::success{{ end }}"]},"name":"label","type":"label","when":""}]` | Actions to perform when events are received |
 | config.scm.gitlab[0].actions[0].enabled | bool | `false` | Enable or disable this SCM provider instance |
 | config.scm.gitlab[0].actions[0].type | string | `"commit_status"` | Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status) |
 | config.scm.gitlab[0].actions[1].enabled | bool | `false` | Enable or disable this SCM provider instance |
@@ -244,13 +260,12 @@ config:
 | config.scm.gitlab[0].actions[2].enabled | bool | `false` | Enable or disable this SCM provider instance |
 | config.scm.gitlab[0].actions[2].type | string | `"issue_comment"` | Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status) |
 | config.scm.gitlab[0].actions[3].enabled | bool | `false` | Enable or disable this SCM provider instance |
-| config.scm.gitlab[0].actions[3].failure_label | string | `"pipeline::failed"` | Label to add when pipeline fails |
-| config.scm.gitlab[0].actions[3].success_label | string | `"pipeline::success"` | Label to add when pipeline succeeds |
+| config.scm.gitlab[0].actions[3].labels | object | `{"add":["{{ if eq .State \"success\" }}pipeline::success{{ else }}pipeline::failed{{ end }}"],"remove":["{{ if eq .State \"success\" }}pipeline::failed{{ else }}pipeline::success{{ end }}"]}` | Declarative label effect: add/remove lists, Go-templated against the event |
 | config.scm.gitlab[0].actions[3].type | string | `"label"` | Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status) |
 | config.scm.gitlab[0].base_url | string | `"https://gitlab.com/api/v4"` | API base URL for the SCM provider |
 | config.scm.gitlab[0].enabled | bool | `false` | Enable or disable this SCM provider instance |
 | config.scm.gitlab[0].variant | string | `"saas"` | Deployment model: 'saas' for gitlab.com, 'self-managed' for self-hosted. This field is required when instance is enabled. Currently metadata-only but enables future SaaS-specific behaviors (rate limiting, feature detection). |
-| config.scm.gitlab[1].actions | list | `[{"enabled":false,"name":"commit-status","type":"commit_status","when":""},{"enabled":false,"name":"pr-comment","template":"## Pipeline {{.State}}\n**Run:** {{.RunName}}\n**Commit:** {{.CommitSHA}}\n{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}\n","type":"pr_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"name":"issue-comment","template":"Pipeline {{.Context}} finished with state: **{{.State}}**\n{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}\n","type":"issue_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"failure_label":"pipeline::failed","name":"label","success_label":"pipeline::success","type":"label","when":""}]` | Actions to perform when events are received |
+| config.scm.gitlab[1].actions | list | `[{"enabled":false,"name":"commit-status","type":"commit_status","when":""},{"enabled":false,"name":"pr-comment","template":"## Pipeline {{.State}}\n**Run:** {{.RunName}}\n**Commit:** {{.CommitSHA}}\n{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}\n","type":"pr_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"name":"issue-comment","template":"Pipeline {{.Context}} finished with state: **{{.State}}**\n{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}\n","type":"issue_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"labels":{"add":["{{ if eq .State \"success\" }}pipeline::success{{ else }}pipeline::failed{{ end }}"],"remove":["{{ if eq .State \"success\" }}pipeline::failed{{ else }}pipeline::success{{ end }}"]},"name":"label","type":"label","when":""}]` | Actions to perform when events are received |
 | config.scm.gitlab[1].actions[0].enabled | bool | `false` | Enable or disable this SCM provider instance |
 | config.scm.gitlab[1].actions[0].type | string | `"commit_status"` | Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status) |
 | config.scm.gitlab[1].actions[1].enabled | bool | `false` | Enable or disable this SCM provider instance |
@@ -258,8 +273,7 @@ config:
 | config.scm.gitlab[1].actions[2].enabled | bool | `false` | Enable or disable this SCM provider instance |
 | config.scm.gitlab[1].actions[2].type | string | `"issue_comment"` | Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status) |
 | config.scm.gitlab[1].actions[3].enabled | bool | `false` | Enable or disable this SCM provider instance |
-| config.scm.gitlab[1].actions[3].failure_label | string | `"pipeline::failed"` | Label to add when pipeline fails |
-| config.scm.gitlab[1].actions[3].success_label | string | `"pipeline::success"` | Label to add when pipeline succeeds |
+| config.scm.gitlab[1].actions[3].labels | object | `{"add":["{{ if eq .State \"success\" }}pipeline::success{{ else }}pipeline::failed{{ end }}"],"remove":["{{ if eq .State \"success\" }}pipeline::failed{{ else }}pipeline::success{{ end }}"]}` | Declarative label effect: add/remove lists, Go-templated against the event |
 | config.scm.gitlab[1].actions[3].type | string | `"label"` | Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status) |
 | config.scm.gitlab[1].base_url | string | `"https://gitlab.company.example.com/api/v4"` | API base URL for the SCM provider |
 | config.scm.gitlab[1].enabled | bool | `false` | Enable or disable this SCM provider instance |
@@ -305,6 +319,9 @@ config:
 | dnsConfig.options[0].value | string | `"2"` |  |
 | dnsPolicy | string | `"ClusterFirst"` |  |
 | email | string | `"platform@example.com"` |  |
+| extraEnv | list | `[]` | Extra environment variables for the receiver container |
+| extraVolumeMounts | list | `[]` | Extra volume mounts for the receiver container |
+| extraVolumes | list | `[]` | Extra volumes (e.g. TLS certificates for config.server.tls) |
 | fullnameOverride | string | `""` |  |
 | image.pullPolicy | string | `"IfNotPresent"` |  |
 | image.repository | string | `"ghcr.io/fabioluciano/tekton-events-relay"` |  |
@@ -321,21 +338,28 @@ config:
 | monitoring.serviceMonitor.scrapeTimeout | string | `"10s"` |  |
 | nameOverride | string | `""` |  |
 | networkPolicy.enabled | bool | `true` |  |
+| networkPolicy.extraEgress | list | `[]` | Additional egress rules appended verbatim (e.g. restrict 443 to SCM CIDRs) |
+| networkPolicy.extraIngress | list | `[]` | Additional ingress rules appended verbatim |
+| networkPolicy.metricsFrom | list | `[]` | Restrict who may scrape metrics (empty = any source); standard `from` peers |
+| networkPolicy.metricsPort | int | `9090` | Metrics port opened for scraping when config.server.metrics_addr is set |
 | networkPolicy.valkeyPort | int | `6379` | Valkey port allowed for egress when config.store.backend=valkey |
 | nodeSelector | object | `{}` |  |
 | owner | string | `"platform-team"` |  |
 | podAnnotations | object | `{}` |  |
-| podDisruptionBudget.minAvailable | int | `1` |  |
+| podDisruptionBudget.enabled | bool | `true` | Create a PodDisruptionBudget |
+| podDisruptionBudget.maxUnavailable | int | `1` | Maximum pods that may be unavailable during voluntary disruptions |
+| podDisruptionBudget.minAvailable | string | `""` | Alternative to maxUnavailable (leave empty to use maxUnavailable) |
 | podSecurityContext.appArmorProfile.type | string | `"RuntimeDefault"` |  |
 | podSecurityContext.fsGroup | int | `65532` |  |
 | podSecurityContext.runAsGroup | int | `65532` |  |
 | podSecurityContext.runAsNonRoot | bool | `true` |  |
 | podSecurityContext.runAsUser | int | `65532` |  |
 | podSecurityContext.seccompProfile.type | string | `"RuntimeDefault"` |  |
+| priorityClassName | string | `""` | PriorityClass for the relay pods (empty = cluster default) |
 | readinessProbe.httpGet.path | string | `"/readyz"` |  |
 | readinessProbe.httpGet.port | string | `"http"` |  |
 | readinessProbe.periodSeconds | int | `5` |  |
-| replicaCount | int | `2` |  |
+| replicaCount | int | `1` |  |
 | resources.limits.cpu | string | `"500m"` |  |
 | resources.limits.ephemeral-storage | string | `"256Mi"` |  |
 | resources.limits.memory | string | `"256Mi"` |  |
@@ -364,4 +388,7 @@ config:
 | startupProbe.initialDelaySeconds | int | `0` |  |
 | startupProbe.periodSeconds | int | `5` |  |
 | templates.enabled | bool | `false` |  |
+| terminationGracePeriodSeconds | int | `40` | Seconds allowed for graceful shutdown; keep above config.server.shutdown_timeout_sec |
 | tolerations | list | `[]` |  |
+| topologySpreadConstraints | list | `[]` | Topology spread constraints (e.g. spread across zones) |
+| unsafe.allowMemoryStoreWithMultipleReplicas | bool | `false` | Allow multiple replicas with the per-pod memory store (NOT recommended) |

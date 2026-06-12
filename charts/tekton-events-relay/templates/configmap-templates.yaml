@@ -1,416 +1,510 @@
+# Default notification templates, mounted at /etc/templates when
+# templates.enabled=true and referenced from actions via
+#   template_file: /etc/templates/<name>.tmpl
+#
+# Renderer capabilities differ per notifier:
+#   - SCM comment/checkrun handlers, grafana and the accumulator compile with
+#     sprig + domain helpers (Truncate, IssueRef, PRRef, UserMention).
+#   - slack, discord and teams compile with plain Go text/template only —
+#     no sprig. Use builtin printf for truncation in those templates.
+#   - datadog and pagerduty do NOT support templates (events are built
+#     natively by the notifier), so no defaults exist for them here.
 apiVersion: v1
 data:
+  # Accumulator summary (sprig available). Destination is the provider the
+  # accumulator dispatches to, so keep formatting markdown-light.
   accumulator-default.tmpl: |
-    Pipeline {{ "{{.State}}" }}
+    {{ "{{- if eq .State \"success\" }}" }}✅{{ "{{- else if eq .State \"failure\" }}" }}❌{{ "{{- else if eq .State \"error\" }}" }}⚠️{{ "{{- else if eq .State \"canceled\" }}" }}🚫{{ "{{- else }}" }}⏳{{ "{{- end }}" }} Pipeline {{ "{{ .State }}" }} — {{ "{{ .PipelineName | default .RunName }}" }}
 
-    Run: {{ "{{.RunName}}" }}
-    {{ "{{- if .PipelineName }}" }}
-    Pipeline: {{ "{{.PipelineName}}" }}
-    {{ "{{- end }}" }}
-    Namespace: {{ "{{.Namespace}}" }}
+    Run: {{ "{{ .RunName }}" }}
+    Namespace: {{ "{{ .Namespace }}" }}
     {{ "{{- if .CommitSHA }}" }}
-    Commit: {{ "{{.CommitSHA}}" }}
+    Commit: {{ "{{ .CommitSHA | trunc 8 }}" }}
     {{ "{{- end }}" }}
     {{ "{{- if .Context }}" }}
-    Context: {{ "{{.Context}}" }}
+    Context: {{ "{{ .Context }}" }}
+    {{ "{{- end }}" }}
+    {{ "{{- if .TaskCount }}" }}
+    Tasks: {{ "{{ .TaskCount }}" }}
+    {{ "{{- end }}" }}
+    {{ "{{- if and (not .StartedAt.IsZero) (not .FinishedAt.IsZero) }}" }}
+    Duration: {{ "{{ regexReplaceAll \"[.][0-9]+s\" (toString (.FinishedAt.Sub .StartedAt)) \"s\" }}" }}
     {{ "{{- end }}" }}
     {{ "{{- if .Description }}" }}
-    Description: {{ "{{.Description}}" }}
+    {{ "{{ Truncate .Description 300 }}" }}
     {{ "{{- end }}" }}
     {{ "{{- if .Results }}" }}
     Results:
     {{ "{{- range .Results }}" }}
-    - {{ "{{.Name}}" }}: {{ "{{.Value}}" }}
+    - {{ "{{ .Name }}" }}: {{ "{{ Truncate .Value 120 }}" }}
     {{ "{{- end }}" }}
     {{ "{{- end }}" }}
     {{ "{{- if .TargetURL }}" }}
-    URL: {{ "{{.TargetURL}}" }}
+    URL: {{ "{{ .TargetURL }}" }}
     {{ "{{- end }}" }}
 
+  # Azure DevOps PR thread comment (sprig available; AzDO renders GFM tables,
+  # but not <details>).
   azuredevops-comment.tmpl: |
-    ## Pipeline {{ "{{.State}}" }}
-
-    {{ "{{- if eq .State \"success\" }}" }}
-    ✅ Build succeeded
-    {{ "{{- else if eq .State \"failure\" }}" }}
-    ❌ Build failed
-    {{ "{{- else if eq .State \"error\" }}" }}
-    ⚠️ Build error
-    {{ "{{- else }}" }}
-    Build status: **{{ "{{.State}}" }}**
+    {{ "{{- $icon := \"⏳\" }}" }}
+    {{ "{{- if eq .State \"success\" }}" }}{{ "{{- $icon = \"✅\" }}" }}
+    {{ "{{- else if eq .State \"failure\" }}" }}{{ "{{- $icon = \"❌\" }}" }}
+    {{ "{{- else if eq .State \"error\" }}" }}{{ "{{- $icon = \"⚠️\" }}" }}
+    {{ "{{- else if eq .State \"canceled\" }}" }}{{ "{{- $icon = \"🚫\" }}" }}
     {{ "{{- end }}" }}
+    ## {{ "{{ $icon }}" }} Pipeline `{{ "{{ .PipelineName | default .RunName }}" }}` — **{{ "{{ .State }}" }}**
 
-    **Run:** {{ "{{ .RunName }}" }}
-    {{ "{{- if .PipelineName }}" }}
-    **Pipeline:** {{ "{{ .PipelineName }}" }}
-    {{ "{{- end }}" }}
-    {{ "{{- if .Namespace }}" }}
-    **Namespace:** {{ "{{ .Namespace }}" }}
-    {{ "{{- end }}" }}
-
-    {{ "{{- if .Description }}" }}
-
-    {{ "{{ .Description }}" }}
-    {{ "{{- end }}" }}
-
-    {{ "{{- if .Results }}" }}
-
-    **Results:**
-    {{ "{{- range .Results }}" }}
-    - {{ "{{ .Name }}" }}: {{ "{{ .Value }}" }}
-    {{ "{{- end }}" }}
-    {{ "{{- end }}" }}
-
-    {{ "{{- if .TargetURL }}" }}
-
-    [View Pipeline]({{ "{{ .TargetURL }}" }})
-    {{ "{{- end }}" }}
-
-  bitbucket-comment.tmpl: |
-    ## Pipeline {{ "{{.State}}" }}
-
-    {{ "{{- if eq .State \"success\" }}" }}
-    ✅ Pipeline completed successfully
-    {{ "{{- else if eq .State \"failure\" }}" }}
-    ❌ Pipeline failed
-    {{ "{{- else if eq .State \"error\" }}" }}
-    ⚠️ Pipeline error
-    {{ "{{- else }}" }}
-    Pipeline status: **{{ "{{.State}}" }}**
-    {{ "{{- end }}" }}
-
-    **Run:** {{ "{{ .RunName }}" }}
-    {{ "{{- if .PipelineName }}" }}
-    **Pipeline:** {{ "{{ .PipelineName }}" }}
-    {{ "{{- end }}" }}
+    | | |
+    |---|---|
+    | **Run** | `{{ "{{ .RunName }}" }}` |
+    | **Namespace** | `{{ "{{ .Namespace }}" }}` |
     {{ "{{- if .CommitSHA }}" }}
-    **Commit:** {{ "{{ .CommitSHA }}" }}
+    | **Commit** | `{{ "{{ .CommitSHA | trunc 8 }}" }}` |
     {{ "{{- end }}" }}
-
-    {{ "{{- if .Description }}" }}
-
-    {{ "{{ .Description }}" }}
-    {{ "{{- end }}" }}
-
-    {{ "{{- if .TargetURL }}" }}
-
-    [View Details]({{ "{{ .TargetURL }}" }})
-    {{ "{{- end }}" }}
-
-  datadog-default.tmpl: |
-    Pipeline {{ "{{.State}}" }} - {{ "{{.RunName}}" }}
-    {{ "{{- if .PipelineName }}" }}
-    Pipeline: {{ "{{.PipelineName}}" }}
-    {{ "{{- end }}" }}
-    Namespace: {{ "{{.Namespace}}" }}
-    {{ "{{- if .CommitSHA }}" }}
-    Commit: {{ "{{.CommitSHA}}" }}
-    {{ "{{- end }}" }}
-    {{ "{{- if .Context }}" }}
-    Context: {{ "{{.Context}}" }}
-    {{ "{{- end }}" }}
-    {{ "{{- if .Description }}" }}
-    Description: {{ "{{.Description}}" }}
-    {{ "{{- end }}" }}
-    {{ "{{- if .TargetURL }}" }}
-    URL: {{ "{{.TargetURL}}" }}
-    {{ "{{- end }}" }}
-
-  discord-default.tmpl: |
-    **Pipeline {{ "{{.State}}" }}** in {{ "`" }}{{ "{{.Namespace}}" }}{{ "`" }}
-    {{ "```" }}
-    Run:      {{ "{{.RunName}}" }}
-    {{ "{{- if .PipelineName }}" }}
-    Pipeline: {{ "{{.PipelineName}}" }}
-    {{ "{{- end }}" }}
-    {{ "{{- if .CommitSHA }}" }}
-    Commit:   {{ "{{.CommitSHA}}" }}
-    {{ "{{- end }}" }}
-    {{ "{{- if .Context }}" }}
-    Context:  {{ "{{.Context}}" }}
-    {{ "{{- end }}" }}
-    {{ "```" }}
-    {{ "{{- if .Description }}" }}
-    {{ "{{.Description}}" }}
-    {{ "{{- end }}" }}
-    {{ "{{- if .TargetURL }}" }}
-    [View in Dashboard]({{ "{{.TargetURL}}" }})
-    {{ "{{- end }}" }}
-
-  gitea-issue-comment.tmpl: |
-    ## Pipeline {{ "{{.State}}" }}
-
-    {{ "{{- if eq .State \"success\" }}" }}
-    ✅ Pipeline completed successfully
-    {{ "{{- else if eq .State \"failure\" }}" }}
-    ❌ Pipeline failed
-    {{ "{{- else if eq .State \"error\" }}" }}
-    ⚠️ Pipeline error
-    {{ "{{- else }}" }}
-    Pipeline finished: **{{ "{{.State}}" }}**
-    {{ "{{- end }}" }}
-
-    **Run:** {{ "{{ .RunName }}" }}
-    {{ "{{- if .Context }}" }}
-    **Context:** {{ "{{ .Context }}" }}
-    {{ "{{- end }}" }}
-
-    {{ "{{- if .Description }}" }}
-
-    {{ "{{ .Description }}" }}
-    {{ "{{- end }}" }}
-
-    {{ "{{- if .TargetURL }}" }}
-
-    [View Results]({{ "{{ .TargetURL }}" }})
-    {{ "{{- end }}" }}
-
-  gitea-pr-comment.tmpl: |
-    ## Pipeline {{ "{{.State}}" }}
-
-    {{ "{{- if eq .State \"success\" }}" }}
-    ✅ Pipeline completed successfully
-    {{ "{{- else if eq .State \"failure\" }}" }}
-    ❌ Pipeline failed
-    {{ "{{- else if eq .State \"error\" }}" }}
-    ⚠️ Pipeline error
-    {{ "{{- else }}" }}
-    Pipeline status: **{{ "{{.State}}" }}**
-    {{ "{{- end }}" }}
-
-    **Run:** {{ "{{ .RunName }}" }}
-    {{ "{{- if .PipelineName }}" }}
-    **Pipeline:** {{ "{{ .PipelineName }}" }}
-    {{ "{{- end }}" }}
-    {{ "{{- if .CommitSHA }}" }}
-    **Commit:** {{ "{{ .CommitSHA }}" }}
-    {{ "{{- end }}" }}
-
-    {{ "{{- if .Description }}" }}
-
-    {{ "{{ .Description }}" }}
-    {{ "{{- end }}" }}
-
-    {{ "{{- if .Results }}" }}
-
-    **Results:**
-    {{ "{{- range .Results }}" }}
-    - **{{ "{{ .Name }}" }}:** {{ "{{ .Value }}" }}
-    {{ "{{- end }}" }}
-    {{ "{{- end }}" }}
-
-    {{ "{{- if .TargetURL }}" }}
-
-    [View Results]({{ "{{ .TargetURL }}" }})
-    {{ "{{- end }}" }}
-
-  github-checkrun.tmpl: |
-    ## Build Result: {{ "{{.State}}" }}
-
-    **Run:** {{ "{{.RunName}}" }}
-    {{ "{{- if .PipelineName }}" }}
-    **Pipeline:** {{ "{{.PipelineName}}" }}
-    {{ "{{- end }}" }}
-    **Namespace:** {{ "{{.Namespace}}" }}
-
     {{ "{{- if .TaskCount }}" }}
-    **Tasks Executed:** {{ "{{.TaskCount}}" }}
+    | **Tasks** | {{ "{{ .TaskCount }}" }} |
+    {{ "{{- end }}" }}
+    {{ "{{- if and (not .StartedAt.IsZero) (not .FinishedAt.IsZero) }}" }}
+    | **Duration** | {{ "{{ regexReplaceAll \"[.][0-9]+s\" (toString (.FinishedAt.Sub .StartedAt)) \"s\" }}" }} |
+    {{ "{{- end }}" }}
+    {{ "{{- if .Description }}" }}
+
+    > {{ "{{ Truncate .Description 300 }}" }}
+    {{ "{{- end }}" }}
+    {{ "{{- if .Results }}" }}
+
+    **Results**
+
+    | Name | Value |
+    |---|---|
+    {{ "{{- range .Results }}" }}
+    | `{{ "{{ .Name }}" }}` | `{{ "{{ Truncate .Value 120 }}" }}` |
+    {{ "{{- end }}" }}
+    {{ "{{- end }}" }}
+    {{ "{{- if .TargetURL }}" }}
+
+    🔗 [View logs in Tekton Dashboard]({{ "{{ .TargetURL }}" }})
     {{ "{{- end }}" }}
 
+  # Bitbucket PR comment (sprig available; Bitbucket Cloud comment markdown
+  # is limited — no <details>, tables unreliable, so use bold lists).
+  bitbucket-comment.tmpl: |
+    {{ "{{- $icon := \"⏳\" }}" }}
+    {{ "{{- if eq .State \"success\" }}" }}{{ "{{- $icon = \"✅\" }}" }}
+    {{ "{{- else if eq .State \"failure\" }}" }}{{ "{{- $icon = \"❌\" }}" }}
+    {{ "{{- else if eq .State \"error\" }}" }}{{ "{{- $icon = \"⚠️\" }}" }}
+    {{ "{{- else if eq .State \"canceled\" }}" }}{{ "{{- $icon = \"🚫\" }}" }}
+    {{ "{{- end }}" }}
+    ## {{ "{{ $icon }}" }} Pipeline `{{ "{{ .PipelineName | default .RunName }}" }}` — **{{ "{{ .State }}" }}**
+
+    - **Run:** `{{ "{{ .RunName }}" }}`
+    - **Namespace:** `{{ "{{ .Namespace }}" }}`
+    {{ "{{- if .CommitSHA }}" }}
+    - **Commit:** `{{ "{{ .CommitSHA | trunc 8 }}" }}`
+    {{ "{{- end }}" }}
+    {{ "{{- if and (not .StartedAt.IsZero) (not .FinishedAt.IsZero) }}" }}
+    - **Duration:** {{ "{{ regexReplaceAll \"[.][0-9]+s\" (toString (.FinishedAt.Sub .StartedAt)) \"s\" }}" }}
+    {{ "{{- end }}" }}
+    {{ "{{- if .Description }}" }}
+
+    > {{ "{{ Truncate .Description 300 }}" }}
+    {{ "{{- end }}" }}
+    {{ "{{- if .Results }}" }}
+
+    **Results**
+    {{ "{{- range .Results }}" }}
+    - `{{ "{{ .Name }}" }}`: {{ "{{ Truncate .Value 120 }}" }}
+    {{ "{{- end }}" }}
+    {{ "{{- end }}" }}
+    {{ "{{- if .TargetURL }}" }}
+
+    [View logs in Tekton Dashboard]({{ "{{ .TargetURL }}" }})
+    {{ "{{- end }}" }}
+
+  # Grafana annotation text (sprig available) — short one-line deploy marker
+  # correlatable with dashboards.
+  deploy-marker.tmpl: |
+    {{ "{{ .PipelineName | default .RunName }}" }} {{ "{{ .State }}" }} ({{ "{{ .RunName }}" }}){{ "{{ if .CommitSHA }}" }} — {{ "{{ .CommitSHA | trunc 8 }}" }}{{ "{{ end }}" }}
+
+  # Discord message content (plain Go template — NO sprig; full Discord markdown).
+  discord-default.tmpl: |
+    {{ "{{- if eq .State \"success\" }}" }}✅{{ "{{- else if eq .State \"failure\" }}" }}❌{{ "{{- else if eq .State \"error\" }}" }}⚠️{{ "{{- else if eq .State \"canceled\" }}" }}🚫{{ "{{- else }}" }}⏳{{ "{{- end }}" }} **Pipeline {{ "{{ .State }}" }}** in {{ "`" }}{{ "{{ .Namespace }}" }}{{ "`" }}
+    {{ "```" }}
+    Run:      {{ "{{ .RunName }}" }}
+    {{ "{{- if .PipelineName }}" }}
+    Pipeline: {{ "{{ .PipelineName }}" }}
+    {{ "{{- end }}" }}
+    {{ "{{- if .CommitSHA }}" }}
+    Commit:   {{ "{{ printf \"%.8s\" .CommitSHA }}" }}
+    {{ "{{- end }}" }}
+    {{ "{{- if .Context }}" }}
+    Context:  {{ "{{ .Context }}" }}
+    {{ "{{- end }}" }}
+    {{ "{{- if and (not .StartedAt.IsZero) (not .FinishedAt.IsZero) }}" }}
+    Duration: {{ "{{ printf \"%.0fs\" (.FinishedAt.Sub .StartedAt).Seconds }}" }}
+    {{ "{{- end }}" }}
+    {{ "```" }}
+    {{ "{{- if .Description }}" }}
+    > {{ "{{ printf \"%.200s\" .Description }}" }}
+    {{ "{{- end }}" }}
+    {{ "{{- if .TargetURL }}" }}
+    🔗 [View in Dashboard]({{ "{{ .TargetURL }}" }})
+    {{ "{{- end }}" }}
+
+  # Gitea issue comment (sprig available; Gitea renders GFM incl. <details>).
+  gitea-issue-comment.tmpl: |
+    {{ "{{- $icon := \"⏳\" }}" }}
+    {{ "{{- if eq .State \"success\" }}" }}{{ "{{- $icon = \"✅\" }}" }}
+    {{ "{{- else if eq .State \"failure\" }}" }}{{ "{{- $icon = \"❌\" }}" }}
+    {{ "{{- else if eq .State \"error\" }}" }}{{ "{{- $icon = \"⚠️\" }}" }}
+    {{ "{{- else if eq .State \"canceled\" }}" }}{{ "{{- $icon = \"🚫\" }}" }}
+    {{ "{{- end }}" }}
+    ## {{ "{{ $icon }}" }} Pipeline `{{ "{{ .PipelineName | default .RunName }}" }}` — **{{ "{{ .State }}" }}**
+
+    | | |
+    |---|---|
+    | **Run** | `{{ "{{ .RunName }}" }}` |
+    | **Namespace** | `{{ "{{ .Namespace }}" }}` |
+    {{ "{{- if .Context }}" }}
+    | **Context** | `{{ "{{ .Context }}" }}` |
+    {{ "{{- end }}" }}
+    {{ "{{- if and (not .StartedAt.IsZero) (not .FinishedAt.IsZero) }}" }}
+    | **Duration** | {{ "{{ regexReplaceAll \"[.][0-9]+s\" (toString (.FinishedAt.Sub .StartedAt)) \"s\" }}" }} |
+    {{ "{{- end }}" }}
+    {{ "{{- if .Description }}" }}
+
+    > {{ "{{ Truncate .Description 300 }}" }}
+    {{ "{{- end }}" }}
+    {{ "{{- if .TargetURL }}" }}
+
+    🔗 [View logs in Tekton Dashboard]({{ "{{ .TargetURL }}" }})
+    {{ "{{- end }}" }}
+
+  # Gitea PR comment (sprig available; GFM incl. <details>).
+  gitea-pr-comment.tmpl: |
+    {{ "{{- $icon := \"⏳\" }}" }}
+    {{ "{{- if eq .State \"success\" }}" }}{{ "{{- $icon = \"✅\" }}" }}
+    {{ "{{- else if eq .State \"failure\" }}" }}{{ "{{- $icon = \"❌\" }}" }}
+    {{ "{{- else if eq .State \"error\" }}" }}{{ "{{- $icon = \"⚠️\" }}" }}
+    {{ "{{- else if eq .State \"canceled\" }}" }}{{ "{{- $icon = \"🚫\" }}" }}
+    {{ "{{- end }}" }}
+    ## {{ "{{ $icon }}" }} Pipeline `{{ "{{ .PipelineName | default .RunName }}" }}` — **{{ "{{ .State }}" }}**
+
+    | | |
+    |---|---|
+    | **Run** | `{{ "{{ .RunName }}" }}` |
+    | **Namespace** | `{{ "{{ .Namespace }}" }}` |
+    {{ "{{- if .CommitSHA }}" }}
+    | **Commit** | `{{ "{{ .CommitSHA | trunc 8 }}" }}` |
+    {{ "{{- end }}" }}
+    {{ "{{- if .TaskCount }}" }}
+    | **Tasks** | {{ "{{ .TaskCount }}" }} |
+    {{ "{{- end }}" }}
+    {{ "{{- if and (not .StartedAt.IsZero) (not .FinishedAt.IsZero) }}" }}
+    | **Duration** | {{ "{{ regexReplaceAll \"[.][0-9]+s\" (toString (.FinishedAt.Sub .StartedAt)) \"s\" }}" }} |
+    {{ "{{- end }}" }}
+    {{ "{{- if .Description }}" }}
+
+    > {{ "{{ Truncate .Description 300 }}" }}
+    {{ "{{- end }}" }}
+    {{ "{{- if .Results }}" }}
+
+    <details><summary>📦 Results ({{ "{{ len .Results }}" }})</summary>
+
+    | Name | Value |
+    |---|---|
+    {{ "{{- range .Results }}" }}
+    | `{{ "{{ .Name }}" }}` | `{{ "{{ Truncate .Value 120 }}" }}` |
+    {{ "{{- end }}" }}
+
+    </details>
+    {{ "{{- end }}" }}
+    {{ "{{- if .TargetURL }}" }}
+
+    🔗 [View logs in Tekton Dashboard]({{ "{{ .TargetURL }}" }})
+    {{ "{{- end }}" }}
+
+  # GitHub check run body (sprig available) — shown in the Checks tab, so
+  # results stay expanded instead of collapsed.
+  github-checkrun.tmpl: |
+    {{ "{{- $icon := \"⏳\" }}" }}
+    {{ "{{- if eq .State \"success\" }}" }}{{ "{{- $icon = \"✅\" }}" }}
+    {{ "{{- else if eq .State \"failure\" }}" }}{{ "{{- $icon = \"❌\" }}" }}
+    {{ "{{- else if eq .State \"error\" }}" }}{{ "{{- $icon = \"⚠️\" }}" }}
+    {{ "{{- else if eq .State \"canceled\" }}" }}{{ "{{- $icon = \"🚫\" }}" }}
+    {{ "{{- end }}" }}
+    ## {{ "{{ $icon }}" }} Build result: **{{ "{{ .State }}" }}**
+
+    | | |
+    |---|---|
+    | **Run** | `{{ "{{ .RunName }}" }}` |
+    {{ "{{- if .PipelineName }}" }}
+    | **Pipeline** | `{{ "{{ .PipelineName }}" }}` |
+    {{ "{{- end }}" }}
+    | **Namespace** | `{{ "{{ .Namespace }}" }}` |
+    {{ "{{- if .TaskCount }}" }}
+    | **Tasks executed** | {{ "{{ .TaskCount }}" }} |
+    {{ "{{- end }}" }}
+    {{ "{{- if and (not .StartedAt.IsZero) (not .FinishedAt.IsZero) }}" }}
+    | **Duration** | {{ "{{ regexReplaceAll \"[.][0-9]+s\" (toString (.FinishedAt.Sub .StartedAt)) \"s\" }}" }} |
+    {{ "{{- end }}" }}
     {{ "{{- if .Description }}" }}
 
     ### Summary
-    {{ "{{.Description}}" }}
-    {{ "{{- end }}" }}
 
+    {{ "{{ Truncate .Description 500 }}" }}
+    {{ "{{- end }}" }}
     {{ "{{- if .Results }}" }}
 
     ### Results
+
+    | Name | Value |
+    |---|---|
     {{ "{{- range .Results }}" }}
-    - **{{ "{{ .Name }}" }}:** {{ "{{ .Value }}" }}
+    | `{{ "{{ .Name }}" }}` | `{{ "{{ Truncate .Value 200 }}" }}` |
     {{ "{{- end }}" }}
     {{ "{{- end }}" }}
-
     {{ "{{- if .TargetURL }}" }}
 
-    [View Logs]({{ "{{.TargetURL}}" }})
+    🔗 [View logs in Tekton Dashboard]({{ "{{ .TargetURL }}" }})
     {{ "{{- end }}" }}
 
+  # GitHub discussion comment (sprig available; full GFM).
   github-discussion-comment.tmpl: |
-    ## Pipeline {{ "{{.State}}" }}
-
-    {{ "{{- if eq .State \"success\" }}" }}
-    :white_check_mark: Your pipeline completed successfully!
-    {{ "{{- else if eq .State \"failure\" }}" }}
-    :x: Pipeline failed
-    {{ "{{- else if eq .State \"error\" }}" }}
-    :warning: Pipeline encountered an error
-    {{ "{{- else }}" }}
-    Pipeline is currently: **{{ "{{.State}}" }}**
+    {{ "{{- $icon := \"⏳\" }}" }}
+    {{ "{{- if eq .State \"success\" }}" }}{{ "{{- $icon = \"✅\" }}" }}
+    {{ "{{- else if eq .State \"failure\" }}" }}{{ "{{- $icon = \"❌\" }}" }}
+    {{ "{{- else if eq .State \"error\" }}" }}{{ "{{- $icon = \"⚠️\" }}" }}
+    {{ "{{- else if eq .State \"canceled\" }}" }}{{ "{{- $icon = \"🚫\" }}" }}
     {{ "{{- end }}" }}
+    ## {{ "{{ $icon }}" }} Pipeline `{{ "{{ .PipelineName | default .RunName }}" }}` — **{{ "{{ .State }}" }}**
 
-    **Run:** {{ "{{ .RunName }}" }}
-    {{ "{{- if .PipelineName }}" }}
-    **Pipeline:** {{ "{{ .PipelineName }}" }}
-    {{ "{{- end }}" }}
+    | | |
+    |---|---|
+    | **Run** | `{{ "{{ .RunName }}" }}` |
+    | **Namespace** | `{{ "{{ .Namespace }}" }}` |
     {{ "{{- if .CommitSHA }}" }}
-    **Commit:** {{ "{{ .CommitSHA }}" }}
+    | **Commit** | `{{ "{{ .CommitSHA | trunc 8 }}" }}` |
     {{ "{{- end }}" }}
-
+    {{ "{{- if and (not .StartedAt.IsZero) (not .FinishedAt.IsZero) }}" }}
+    | **Duration** | {{ "{{ regexReplaceAll \"[.][0-9]+s\" (toString (.FinishedAt.Sub .StartedAt)) \"s\" }}" }} |
+    {{ "{{- end }}" }}
     {{ "{{- if .Description }}" }}
 
-    {{ "{{ .Description }}" }}
+    > {{ "{{ Truncate .Description 300 }}" }}
     {{ "{{- end }}" }}
-
     {{ "{{- if .TargetURL }}" }}
 
-    [View Full Details]({{ "{{ .TargetURL }}" }})
+    🔗 [View logs in Tekton Dashboard]({{ "{{ .TargetURL }}" }})
     {{ "{{- end }}" }}
 
+  # GitHub issue comment (sprig available; full GFM).
   github-issue-comment.tmpl: |
-    ## Pipeline {{ "{{.State}}" }}
-
-    {{ "{{- if eq .State \"success\" }}" }}
-    :white_check_mark: Pipeline completed successfully
-    {{ "{{- else if eq .State \"failure\" }}" }}
-    :x: Pipeline failed
-    {{ "{{- else if eq .State \"error\" }}" }}
-    :warning: Pipeline encountered an error
-    {{ "{{- else }}" }}
-    Pipeline status: **{{ "{{.State}}" }}**
+    {{ "{{- $icon := \"⏳\" }}" }}
+    {{ "{{- if eq .State \"success\" }}" }}{{ "{{- $icon = \"✅\" }}" }}
+    {{ "{{- else if eq .State \"failure\" }}" }}{{ "{{- $icon = \"❌\" }}" }}
+    {{ "{{- else if eq .State \"error\" }}" }}{{ "{{- $icon = \"⚠️\" }}" }}
+    {{ "{{- else if eq .State \"canceled\" }}" }}{{ "{{- $icon = \"🚫\" }}" }}
     {{ "{{- end }}" }}
+    ## {{ "{{ $icon }}" }} Pipeline `{{ "{{ .PipelineName | default .RunName }}" }}` — **{{ "{{ .State }}" }}**
 
-    **Run:** {{ "{{ .RunName }}" }}
+    | | |
+    |---|---|
+    | **Run** | `{{ "{{ .RunName }}" }}` |
+    | **Namespace** | `{{ "{{ .Namespace }}" }}` |
     {{ "{{- if .Context }}" }}
-    **Context:** {{ "{{ .Context }}" }}
+    | **Context** | `{{ "{{ .Context }}" }}` |
     {{ "{{- end }}" }}
-    {{ "{{- if .Namespace }}" }}
-    **Namespace:** {{ "{{ .Namespace }}" }}
+    {{ "{{- if and (not .StartedAt.IsZero) (not .FinishedAt.IsZero) }}" }}
+    | **Duration** | {{ "{{ regexReplaceAll \"[.][0-9]+s\" (toString (.FinishedAt.Sub .StartedAt)) \"s\" }}" }} |
     {{ "{{- end }}" }}
-
     {{ "{{- if .Description }}" }}
 
-    {{ "{{ .Description }}" }}
+    > {{ "{{ Truncate .Description 300 }}" }}
+    {{ "{{- end }}" }}
+    {{ "{{- if .TargetURL }}" }}
+
+    🔗 [View logs in Tekton Dashboard]({{ "{{ .TargetURL }}" }})
+    {{ "{{- end }}" }}
+
+  # GitHub PR comment (sprig available; full GFM incl. <details>). Pairs well
+  # with mode: upsert for a single live-updating comment per run.
+  github-pr-comment.tmpl: |
+    {{ "{{- $icon := \"⏳\" }}" }}
+    {{ "{{- if eq .State \"success\" }}" }}{{ "{{- $icon = \"✅\" }}" }}
+    {{ "{{- else if eq .State \"failure\" }}" }}{{ "{{- $icon = \"❌\" }}" }}
+    {{ "{{- else if eq .State \"error\" }}" }}{{ "{{- $icon = \"⚠️\" }}" }}
+    {{ "{{- else if eq .State \"canceled\" }}" }}{{ "{{- $icon = \"🚫\" }}" }}
+    {{ "{{- else if eq .State \"running\" }}" }}{{ "{{- $icon = \"🔄\" }}" }}
+    {{ "{{- end }}" }}
+    ## {{ "{{ $icon }}" }} Pipeline `{{ "{{ .PipelineName | default .RunName }}" }}` — **{{ "{{ .State }}" }}**
+
+    | | |
+    |---|---|
+    | **Run** | `{{ "{{ .RunName }}" }}` |
+    | **Namespace** | `{{ "{{ .Namespace }}" }}` |
+    {{ "{{- if .CommitSHA }}" }}
+    | **Commit** | `{{ "{{ .CommitSHA | trunc 8 }}" }}` |
+    {{ "{{- end }}" }}
+    {{ "{{- if .Context }}" }}
+    | **Context** | `{{ "{{ .Context }}" }}` |
+    {{ "{{- end }}" }}
+    {{ "{{- if .TaskCount }}" }}
+    | **Tasks** | {{ "{{ .TaskCount }}" }} |
+    {{ "{{- end }}" }}
+    {{ "{{- if and (not .StartedAt.IsZero) (not .FinishedAt.IsZero) }}" }}
+    | **Duration** | {{ "{{ regexReplaceAll \"[.][0-9]+s\" (toString (.FinishedAt.Sub .StartedAt)) \"s\" }}" }} |
+    {{ "{{- end }}" }}
+    {{ "{{- if .Description }}" }}
+
+    > {{ "{{ Truncate .Description 300 }}" }}
+    {{ "{{- end }}" }}
+    {{ "{{- if .Results }}" }}
+
+    <details><summary>📦 Results ({{ "{{ len .Results }}" }})</summary>
+
+    | Name | Value |
+    |---|---|
+    {{ "{{- range .Results }}" }}
+    | `{{ "{{ .Name }}" }}` | `{{ "{{ Truncate .Value 120 }}" }}` |
+    {{ "{{- end }}" }}
+
+    </details>
+    {{ "{{- end }}" }}
+    {{ "{{- if .TargetURL }}" }}
+
+    🔗 [View logs in Tekton Dashboard]({{ "{{ .TargetURL }}" }})
+    {{ "{{- end }}" }}
+
+  # GitLab MR/issue note (sprig available; GitLab Flavored Markdown incl.
+  # tables and <details>).
+  gitlab-note.tmpl: |
+    {{ "{{- $icon := \"⏳\" }}" }}
+    {{ "{{- if eq .State \"success\" }}" }}{{ "{{- $icon = \"✅\" }}" }}
+    {{ "{{- else if eq .State \"failure\" }}" }}{{ "{{- $icon = \"❌\" }}" }}
+    {{ "{{- else if eq .State \"error\" }}" }}{{ "{{- $icon = \"⚠️\" }}" }}
+    {{ "{{- else if eq .State \"canceled\" }}" }}{{ "{{- $icon = \"🚫\" }}" }}
+    {{ "{{- end }}" }}
+    ## {{ "{{ $icon }}" }} Pipeline `{{ "{{ .PipelineName | default .RunName }}" }}` — **{{ "{{ .State }}" }}**
+
+    | | |
+    |---|---|
+    | **Run** | `{{ "{{ .RunName }}" }}` |
+    | **Namespace** | `{{ "{{ .Namespace }}" }}` |
+    {{ "{{- if .CommitSHA }}" }}
+    | **Commit** | `{{ "{{ .CommitSHA | trunc 8 }}" }}` |
+    {{ "{{- end }}" }}
+    {{ "{{- if .Context }}" }}
+    | **Context** | `{{ "{{ .Context }}" }}` |
+    {{ "{{- end }}" }}
+    {{ "{{- if and (not .StartedAt.IsZero) (not .FinishedAt.IsZero) }}" }}
+    | **Duration** | {{ "{{ regexReplaceAll \"[.][0-9]+s\" (toString (.FinishedAt.Sub .StartedAt)) \"s\" }}" }} |
+    {{ "{{- end }}" }}
+    {{ "{{- if .Description }}" }}
+
+    > {{ "{{ Truncate .Description 300 }}" }}
+    {{ "{{- end }}" }}
+    {{ "{{- if .Results }}" }}
+
+    <details><summary>📦 Results ({{ "{{ len .Results }}" }})</summary>
+
+    | Name | Value |
+    |---|---|
+    {{ "{{- range .Results }}" }}
+    | `{{ "{{ .Name }}" }}` | `{{ "{{ Truncate .Value 120 }}" }}` |
+    {{ "{{- end }}" }}
+
+    </details>
+    {{ "{{- end }}" }}
+    {{ "{{- if .TargetURL }}" }}
+
+    🔗 [View logs in Tekton Dashboard]({{ "{{ .TargetURL }}" }})
+    {{ "{{- end }}" }}
+
+  # Provider-agnostic rich PR summary (sprig available) — designed for
+  # mode: upsert so a single comment is updated as the run progresses.
+  pr-summary-rich.tmpl: |
+    {{ "{{- $ok := eq .State \"success\" }}" }}
+    ## {{ "{{ if $ok }}" }}✅{{ "{{ else if eq .State \"running\" }}" }}🔄{{ "{{ else }}" }}❌{{ "{{ end }}" }} Pipeline `{{ "{{ .PipelineName }}" }}` — **{{ "{{ .State }}" }}**
+
+    | | |
+    |---|---|
+    | **Run** | `{{ "{{ .RunName }}" }}` |
+    | **Commit** | `{{ "{{ .CommitSHA | trunc 8 }}" }}` |
+    | **Namespace** | `{{ "{{ .Namespace }}" }}` |
+    {{ "{{- if .StartedAt }}" }}
+    | **Started** | {{ "{{ .StartedAt.Format \"2006-01-02 15:04:05 MST\" }}" }} |
+    {{ "{{- end }}" }}
+
+    {{ "{{- if .Results }}" }}
+
+    <details><summary>📦 Pipeline results</summary>
+
+    | Name | Value |
+    |---|---|
+    {{ "{{- range .Results }}" }}
+    | `{{ "{{ .Name }}" }}` | `{{ "{{ Truncate .Value 120 }}" }}` |
+    {{ "{{- end }}" }}
+
+    </details>
     {{ "{{- end }}" }}
 
     {{ "{{- if .TargetURL }}" }}
 
-    [View Details]({{ "{{ .TargetURL }}" }})
+    🔗 [View logs in Tekton Dashboard]({{ "{{ .TargetURL }}" }})
     {{ "{{- end }}" }}
 
-  github-pr-comment.tmpl: |
-    ## Pipeline {{ "{{.State}}" }}
-
-    {{ "{{- if eq .State \"success\" }}" }}
-    :white_check_mark: Pipeline completed successfully
-    {{ "{{- else if eq .State \"failure\" }}" }}
-    :x: Pipeline failed
-    {{ "{{- else if eq .State \"error\" }}" }}
-    :warning: Pipeline encountered an error
-    {{ "{{- else }}" }}
-    :hourglass_flowing_sand: Pipeline {{ "{{.State}}" }}
+  # Slack message (plain Go template — NO sprig; Slack mrkdwn syntax).
+  slack-default.tmpl: |
+    {{ "{{- if eq .State \"success\" }}" }}:white_check_mark:{{ "{{- else if eq .State \"failure\" }}" }}:x:{{ "{{- else if eq .State \"error\" }}" }}:warning:{{ "{{- else if eq .State \"canceled\" }}" }}:no_entry_sign:{{ "{{- else }}" }}:hourglass_flowing_sand:{{ "{{- end }}" }} *{{ "{{ if .PipelineName }}" }}{{ "{{ .PipelineName }}" }}{{ "{{ else }}" }}{{ "{{ .RunName }}" }}{{ "{{ end }}" }}* — *{{ "{{ .State }}" }}*
+    > *Run:* `{{ "{{ .RunName }}" }}`  *Namespace:* `{{ "{{ .Namespace }}" }}`
+    {{ "{{- if .CommitSHA }}" }}
+    > *Commit:* `{{ "{{ printf \"%.8s\" .CommitSHA }}" }}`
+    {{ "{{- end }}" }}
+    {{ "{{- if and (not .StartedAt.IsZero) (not .FinishedAt.IsZero) }}" }}
+    > *Duration:* {{ "{{ printf \"%.0fs\" (.FinishedAt.Sub .StartedAt).Seconds }}" }}
+    {{ "{{- end }}" }}
+    {{ "{{- if .Description }}" }}
+    > {{ "{{ printf \"%.200s\" .Description }}" }}
+    {{ "{{- end }}" }}
+    {{ "{{- if .TargetURL }}" }}
+    <{{ "{{ .TargetURL }}" }}|:mag: View logs>
     {{ "{{- end }}" }}
 
-    **Details:**
+  # Slack failure alert (plain Go template — NO sprig; Slack mrkdwn syntax).
+  slack-failure-rich.tmpl: |
+    :rotating_light: *{{ "{{ if .PipelineName }}" }}{{ "{{ .PipelineName }}" }}{{ "{{ else }}" }}{{ "{{ .RunName }}" }}{{ "{{ end }}" }}* failed in *{{ "{{ .Namespace }}" }}*
+    > *Run:* `{{ "{{ .RunName }}" }}`  *Commit:* `{{ "{{ printf \"%.8s\" .CommitSHA }}" }}`
+    {{ "{{- if and (not .StartedAt.IsZero) (not .FinishedAt.IsZero) }}" }}
+    > *Duration:* {{ "{{ printf \"%.0fs\" (.FinishedAt.Sub .StartedAt).Seconds }}" }}
+    {{ "{{- end }}" }}
+    {{ "{{- if .Description }}" }}
+    > {{ "{{ printf \"%.200s\" .Description }}" }}
+    {{ "{{- end }}" }}
+    {{ "{{- if .TargetURL }}" }}
+    <{{ "{{ .TargetURL }}" }}|:mag: View logs>
+    {{ "{{- end }}" }}
+
+  # Microsoft Teams Adaptive Card TextBlock (plain Go template — NO sprig;
+  # TextBlock markdown subset: bold, italic, lists, links only).
+  teams-default.tmpl: |
+    {{ "{{- if eq .State \"success\" }}" }}✅{{ "{{- else if eq .State \"failure\" }}" }}❌{{ "{{- else if eq .State \"error\" }}" }}⚠️{{ "{{- else if eq .State \"canceled\" }}" }}🚫{{ "{{- else }}" }}⏳{{ "{{- end }}" }} **{{ "{{ if .PipelineName }}" }}{{ "{{ .PipelineName }}" }}{{ "{{ else }}" }}{{ "{{ .RunName }}" }}{{ "{{ end }}" }}** — **{{ "{{ .State }}" }}**
+
     - **Run:** {{ "{{ .RunName }}" }}
-    {{ "{{- if .PipelineName }}" }}
-    - **Pipeline:** {{ "{{ .PipelineName }}" }}
-    {{ "{{- end }}" }}
     - **Namespace:** {{ "{{ .Namespace }}" }}
     {{ "{{- if .CommitSHA }}" }}
-    - **Commit:** {{ "{{ .CommitSHA }}" }}
+    - **Commit:** {{ "{{ printf \"%.8s\" .CommitSHA }}" }}
     {{ "{{- end }}" }}
-    {{ "{{- if .Context }}" }}
-    - **Context:** {{ "{{ .Context }}" }}
-    {{ "{{- end }}" }}
-
-    {{ "{{- if .Description }}" }}
-
-    {{ "{{ .Description }}" }}
-    {{ "{{- end }}" }}
-
-    {{ "{{- if .Results }}" }}
-
-    **Results:**
-    {{ "{{- range .Results }}" }}
-    - **{{ "{{ .Name }}" }}:** {{ "{{ .Value }}" }}
-    {{ "{{- end }}" }}
-    {{ "{{- end }}" }}
-
-    {{ "{{- if .TargetURL }}" }}
-
-    [View Full Logs]({{ "{{ .TargetURL }}" }})
-    {{ "{{- end }}" }}
-
-  gitlab-note.tmpl: |
-    ## Pipeline {{ "{{.State}}" }}
-
-    {{ "{{- if eq .State \"success\" }}" }}
-    :white_check_mark: Pipeline completed successfully
-    {{ "{{- else if eq .State \"failure\" }}" }}
-    :x: Pipeline failed
-    {{ "{{- else if eq .State \"error\" }}" }}
-    :warning: Pipeline error
-    {{ "{{- else }}" }}
-    Pipeline status: **{{ "{{.State}}" }}**
-    {{ "{{- end }}" }}
-
-    **Run:** {{ "{{ .RunName }}" }}
-    {{ "{{- if .PipelineName }}" }}
-    **Pipeline:** {{ "{{ .PipelineName }}" }}
-    {{ "{{- end }}" }}
-    {{ "{{- if .CommitSHA }}" }}
-    **Commit:** {{ "{{ .CommitSHA }}" }}
-    {{ "{{- end }}" }}
-    {{ "{{- if .Context }}" }}
-    **Context:** {{ "{{ .Context }}" }}
-    {{ "{{- end }}" }}
-
-    {{ "{{- if .Description }}" }}
-
-    {{ "{{ .Description }}" }}
-    {{ "{{- end }}" }}
-
-    {{ "{{- if .Results }}" }}
-
-    **Results:**
-    {{ "{{- range .Results }}" }}
-    - **{{ "{{ .Name }}" }}:** {{ "{{ .Value }}" }}
-    {{ "{{- end }}" }}
-    {{ "{{- end }}" }}
-
-    {{ "{{- if .TargetURL }}" }}
-
-    [View Details]({{ "{{ .TargetURL }}" }})
-    {{ "{{- end }}" }}
-
-  pagerduty-default.tmpl: |
-    {{ "{{- if eq .State \"success\" -}}" }}
-    Pipeline Success
-    {{ "{{- else if eq .State \"failure\" -}}" }}
-    Pipeline Failed
-    {{ "{{- else if eq .State \"error\" -}}" }}
-    Pipeline Error
-    {{ "{{- else -}}" }}
-    Pipeline {{ "{{.State}}" }}
-    {{ "{{- end }}" }}
-
-    Run: {{ "{{.RunName}}" }}
-    {{ "{{- if .PipelineName }}" }}
-    Pipeline: {{ "{{.PipelineName}}" }}
-    {{ "{{- end }}" }}
-    Namespace: {{ "{{.Namespace}}" }}
-    {{ "{{- if .CommitSHA }}" }}
-    Commit: {{ "{{.CommitSHA}}" }}
-    {{ "{{- end }}" }}
-    {{ "{{- if .Context }}" }}
-    Context: {{ "{{.Context}}" }}
+    {{ "{{- if and (not .StartedAt.IsZero) (not .FinishedAt.IsZero) }}" }}
+    - **Duration:** {{ "{{ printf \"%.0fs\" (.FinishedAt.Sub .StartedAt).Seconds }}" }}
     {{ "{{- end }}" }}
     {{ "{{- if .Description }}" }}
-    Description: {{ "{{.Description}}" }}
+
+    {{ "{{ printf \"%.200s\" .Description }}" }}
     {{ "{{- end }}" }}
     {{ "{{- if .TargetURL }}" }}
-    URL: {{ "{{.TargetURL}}" }}
+
+    [View logs]({{ "{{ .TargetURL }}" }})
     {{ "{{- end }}" }}
 kind: ConfigMap
 metadata:

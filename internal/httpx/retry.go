@@ -83,16 +83,6 @@ func (p RetryPolicy) normalized() RetryPolicy {
 	return p
 }
 
-// DoWithRetry executes req with exponential backoff.
-// Retained for compatibility; the explicit attempts/delay map onto a RetryPolicy.
-func DoWithRetry(c *http.Client, req *http.Request, maxAttempts int, baseDelay time.Duration) (*http.Response, error) {
-	return DoWithRetryPolicy(c, req, RetryPolicy{
-		MaxAttempts:    maxAttempts,
-		InitialBackoff: baseDelay,
-		MaxBackoff:     baseDelay * time.Duration(1<<uint(maxAttempts)),
-	})
-}
-
 // DoWithRetryPolicy executes req honoring the given RetryPolicy.
 // Retries on 408, 429, 5xx, and network errors with exponential backoff
 // plus jitter. 429/503 responses with a Retry-After header are honored

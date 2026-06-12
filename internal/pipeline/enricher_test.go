@@ -63,7 +63,7 @@ func TestEnricher_EventListenerHasNoDashboardLink(t *testing.T) {
 
 func TestDeduper_UpdatesCacheSizeGauge(t *testing.T) {
 	collectors := metrics.NewCollectors(prometheus.NewRegistry())
-	d := NewDeduper(100, collectors)
+	d := newMemDeduper(100, collectors)
 	Build(d, &terminal{})
 
 	for _, id := range []string{testEventID1, testEventID2} {

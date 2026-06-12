@@ -4,8 +4,11 @@ import (
 	"context"
 	"testing"
 
+	"github.com/fabioluciano/tekton-events-relay/internal/config"
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
 	"github.com/fabioluciano/tekton-events-relay/internal/event"
+	"github.com/fabioluciano/tekton-events-relay/internal/metrics"
+	"github.com/fabioluciano/tekton-events-relay/internal/store"
 )
 
 const (
@@ -43,6 +46,14 @@ func sample(id string) *event.Envelope {
 			State:     domain.StateSuccess,
 		},
 	}
+}
+
+// newMemDeduper builds a Deduper over an in-memory store, mirroring what
+// the removed NewDeduper convenience constructor did.
+func newMemDeduper(capacity int, collectors *metrics.Collectors) *Deduper {
+	mem, _ := store.New(config.StoreConfig{Backend: store.BackendMemory},
+		store.Options{DedupeCapacity: capacity})
+	return NewDeduperWithStore(mem.Dedupe(), store.BackendMemory, collectors, nil)
 }
 
 func TestValidator_OK(t *testing.T) {
@@ -222,7 +233,7 @@ func TestEventFilter_PassesEventListenerWhenEnabled(t *testing.T) {
 }
 
 func TestDeduper_RejectsRepeats(t *testing.T) {
-	d := NewDeduper(100, nil)
+	d := newMemDeduper(100, nil)
 	term := &terminal{}
 	Build(d, term)
 
@@ -236,7 +247,7 @@ func TestDeduper_RejectsRepeats(t *testing.T) {
 }
 
 func TestDeduper_LRUEviction(t *testing.T) {
-	d := NewDeduper(2, nil) // capacity=2
+	d := newMemDeduper(2, nil) // capacity=2
 	term := &terminal{}
 	Build(d, term)
 
@@ -269,7 +280,7 @@ func TestDeduper_LRUEviction(t *testing.T) {
 }
 
 func TestDeduper_DefaultCapacity(t *testing.T) {
-	d := NewDeduper(0, nil) // capacity <= 0 defaults to 10000
+	d := newMemDeduper(0, nil) // capacity <= 0 defaults to 10000
 	term := &terminal{}
 	Build(d, term)
 
@@ -283,7 +294,7 @@ func TestDeduper_DefaultCapacity(t *testing.T) {
 }
 
 func TestDeduper_NegativeCapacity(t *testing.T) {
-	d := NewDeduper(-5, nil) // negative capacity defaults to 10000
+	d := newMemDeduper(-5, nil) // negative capacity defaults to 10000
 	term := &terminal{}
 	Build(d, term)
 
@@ -323,7 +334,7 @@ func TestEnricher_KeepsExistingTargetURL(t *testing.T) {
 
 func TestChain_OrdersHandlers(t *testing.T) {
 	v := NewValidator()
-	d := NewDeduper(100, nil)
+	d := newMemDeduper(100, nil)
 	term := &terminal{}
 	first := Build(v, d, term)
 

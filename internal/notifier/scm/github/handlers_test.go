@@ -11,6 +11,7 @@ import (
 
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
+	"github.com/fabioluciano/tekton-events-relay/internal/notifier/scm"
 )
 
 const (
@@ -363,7 +364,7 @@ func TestLabelHandler_Handle_NoNumber(t *testing.T) {
 	}
 }
 
-func TestLabelHandler_Handle_SuccessLabel(t *testing.T) {
+func TestLabelHandler_Handle_AddLabelOnPR(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
 			t.Errorf("expected POST, got %s", r.Method)
@@ -374,10 +375,9 @@ func TestLabelHandler_Handle_SuccessLabel(t *testing.T) {
 
 	prNum := 7
 	h := NewLabelHandler(LabelConfig{
-		Token:        testHandlerToken,
-		BaseURL:      server.URL,
-		SuccessLabel: "ci-passed",
-		FailureLabel: "ci-failed",
+		Token:   testHandlerToken,
+		BaseURL: server.URL,
+		Labels:  scm.LabelSet{Add: []string{"ci-passed"}},
 	}, zap.NewNop())
 
 	err := h.Handle(context.Background(), domain.Event{
@@ -391,7 +391,7 @@ func TestLabelHandler_Handle_SuccessLabel(t *testing.T) {
 	}
 }
 
-func TestLabelHandler_Handle_FailureLabel(t *testing.T) {
+func TestLabelHandler_Handle_AddLabelOnIssue(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -399,10 +399,9 @@ func TestLabelHandler_Handle_FailureLabel(t *testing.T) {
 
 	issueNum := 3
 	h := NewLabelHandler(LabelConfig{
-		Token:        testHandlerToken,
-		BaseURL:      server.URL,
-		SuccessLabel: "ci-passed",
-		FailureLabel: "ci-failed",
+		Token:   testHandlerToken,
+		BaseURL: server.URL,
+		Labels:  scm.LabelSet{Add: []string{"ci-passed"}},
 	}, zap.NewNop())
 
 	err := h.Handle(context.Background(), domain.Event{
@@ -416,11 +415,9 @@ func TestLabelHandler_Handle_FailureLabel(t *testing.T) {
 	}
 }
 
-func TestLabelHandler_Handle_RunningState_Skip(t *testing.T) {
+func TestLabelHandler_Handle_EmptyLabels_Skip(t *testing.T) {
 	h := NewLabelHandler(LabelConfig{
-		Token:        testHandlerToken,
-		SuccessLabel: "ci-passed",
-		FailureLabel: "ci-failed",
+		Token: testHandlerToken,
 	}, zap.NewNop())
 
 	prNum := 1
@@ -431,7 +428,7 @@ func TestLabelHandler_Handle_RunningState_Skip(t *testing.T) {
 		PRNumber: &prNum,
 	})
 	if err != nil {
-		t.Errorf("expected nil for running state, got: %v", err)
+		t.Errorf("expected nil for empty label set, got: %v", err)
 	}
 }
 

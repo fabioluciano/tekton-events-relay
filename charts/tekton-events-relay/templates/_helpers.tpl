@@ -142,3 +142,18 @@ webhook-default.tmpl
 {{- printf "%s-%s.tmpl" $provider $type -}}
 {{- end -}}
 {{- end }}
+
+{{/*
+Fail fast when the per-pod memory store is combined with multiple replicas:
+deduplication and accumulator state would diverge between pods, producing
+duplicate or fragmented notifications. Set config.store.backend to valkey
+or olric before scaling out, or acknowledge the risk explicitly with
+unsafe.allowMemoryStoreWithMultipleReplicas=true.
+*/}}
+{{- define "tekton-events-relay.validateStore" -}}
+{{- $multi := or (gt (int .Values.replicaCount) 1) .Values.autoscaling.enabled -}}
+{{- $memory := eq (.Values.config.store.backend | default "memory") "memory" -}}
+{{- if and $multi $memory (not .Values.unsafe.allowMemoryStoreWithMultipleReplicas) -}}
+{{- fail (printf "tekton-events-relay: replicaCount=%d / autoscaling.enabled=%t with config.store.backend=memory is unsafe: dedupe and accumulator state are per-pod, causing duplicate or fragmented notifications. Set config.store.backend to 'valkey' or 'olric', reduce replicas to 1, or set unsafe.allowMemoryStoreWithMultipleReplicas=true to override." (int .Values.replicaCount) .Values.autoscaling.enabled) -}}
+{{- end -}}
+{{- end -}}

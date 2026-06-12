@@ -112,9 +112,10 @@ func TestValidate_InvalidCEL_AllActions(t *testing.T) {
 		{
 			name: "label invalid",
 			action: Action{
-				Name: "label",
-				Type: ActionTypeLabel,
-				When: "missing()",
+				Name:   "label",
+				Type:   ActionTypeLabel,
+				When:   "missing()",
+				Labels: &ActionLabels{Add: []string{"ci:passed"}},
 			},
 			expectedErr: "actions[0].when",
 		},
@@ -734,7 +735,7 @@ func TestValidate_AllSCMProviders(t *testing.T) {
 					SecretFile: "token",
 					BaseURL:    "https://dev.azure.com",
 					Actions: []Action{
-						{Name: "label", Type: ActionTypeLabel, When: "event.State == 'succeeded'"},
+						{Name: "label", Type: ActionTypeLabel, When: "event.State == 'succeeded'", Labels: &ActionLabels{Add: []string{"ok"}}},
 					},
 				},
 			},

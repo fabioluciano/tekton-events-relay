@@ -433,11 +433,10 @@ func TestBuildAll(t *testing.T) {
 				Enabled:  true,
 				Template: "/tmp/tekton-test-templates/discussion.tmpl"},
 			{
-				Name:         testLabel,
-				Type:         config.ActionTypeLabel,
-				Enabled:      true,
-				SuccessLabel: "ci:passed",
-				FailureLabel: "ci:failed",
+				Name:    testLabel,
+				Type:    config.ActionTypeLabel,
+				Enabled: true,
+				Labels:  &config.ActionLabels{Add: []string{"ci:passed"}, Remove: []string{"ci:failed"}},
 			},
 		})
 
@@ -526,8 +525,9 @@ func TestBuildAll(t *testing.T) {
         - name: ` + testLabel + `
           type: label
           enabled: true
-          success_label: "pipeline::success"
-          failure_label: "pipeline::failed"`
+          labels:
+            add: ["pipeline::success"]
+            remove: ["pipeline::failed"]`
 
 		cfg := unmarshalYAML(t, yamlStr)
 
@@ -602,11 +602,10 @@ func TestBuildAll(t *testing.T) {
 				Enabled: true,
 			},
 			{
-				Name:         testLabel,
-				Type:         config.ActionTypeLabel,
-				Enabled:      true,
-				SuccessLabel: "ci:passed",
-				FailureLabel: "ci:failed",
+				Name:    testLabel,
+				Type:    config.ActionTypeLabel,
+				Enabled: true,
+				Labels:  &config.ActionLabels{Add: []string{"ci:passed"}, Remove: []string{"ci:failed"}},
 			},
 		})
 

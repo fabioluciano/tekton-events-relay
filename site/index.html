@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tekton Events Relay — CloudEvents bridge for Tekton Pipelines</title>
+<meta name="description" content="Tekton emits CloudEvents. Your platforms get updated. Automatically. Commit statuses, PR comments, labels, deployments and chat notifications across 6 SCM platforms and 8 notification channels.">
+<meta property="og:title" content="Tekton Events Relay">
+<meta property="og:description" content="Production-ready CloudEvents bridge: Tekton pipeline events → commit statuses, PR comments, labels and notifications, everywhere your team looks.">
+<meta property="og:image" content="assets/banner-dark.png">
+<link rel="icon" type="image/svg+xml" href="assets/icon.svg">
+<script>(function(){var t;try{t=localStorage.getItem('ter-theme')}catch(e){}if(!t){t=window.matchMedia&&matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';}document.documentElement.setAttribute('data-theme',t);})();</script>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="site.css">
+<script src="assets/relaybot.js"></script>
+<style>
+  /* ---------- hero ---------- */
+  .hero{
+    position:relative; overflow:hidden;
+    background:
+      radial-gradient(1000px 560px at 18% 10%, rgba(22,196,216,.13), transparent 60%),
+      radial-gradient(800px 520px at 88% 80%, rgba(62,139,255,.10), transparent 60%),
+      var(--bg);
+    border-bottom:1px solid var(--line);
+  }
+  .hero-grid{
+    display:grid; grid-template-columns:1.05fr .95fr; gap:48px; align-items:center;
+    padding-top:84px; padding-bottom:92px;
+  }
+  .hero h1{
+    font-size:52px; line-height:1.04; font-weight:700; letter-spacing:-.03em;
+    color:var(--ink); margin:0 0 22px; text-wrap:balance;
+  }
+  .hero h1 .accent{
+    background:linear-gradient(100deg,var(--cyan-bright),var(--blue));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  .hero p.lede{font-size:18.5px; line-height:1.55; margin:0 0 34px; max-width:540px;}
+  .hero .cta{display:flex; gap:14px; flex-wrap:wrap;}
+  .hero .install{
+    margin-top:26px; display:inline-flex; align-items:center; gap:12px;
+    font-family:var(--mono); font-size:13px; color:#8fb0c4;
+    background:var(--code-bg); border:1px solid var(--code-border); border-radius:9px; padding:10px 16px;
+  }
+  .hero .install .dollar{color:var(--cyan-bright);}
+
+  /* fan-out diagram */
+  .fan{display:grid; grid-template-columns:auto 64px 1fr; align-items:center;}
+  .fan .bot-cell{display:flex; align-items:center;}
+  .fan svg.wires{width:64px; height:100%; min-height:380px;}
+  .targets{display:flex; flex-direction:column; gap:14px;}
+  .tcard{
+    background:var(--panel); border:1px solid var(--line); border-radius:13px;
+    padding:13px 18px; display:flex; flex-direction:column; gap:3px;
+  }
+  .tcard .tk{
+    font-family:var(--mono); font-size:10.5px; letter-spacing:.18em; text-transform:uppercase;
+  }
+  .tcard .tv{font-size:13.5px; color:var(--ink); font-weight:500; line-height:1.45;}
+  .tcard.scm{border-left:none;}
+  .tcard.scm .tk{color:var(--cyan-bright);}
+  .tcard.chat .tk{color:var(--blue);}
+  .tcard.ops .tk{color:var(--teal);}
+  .tcard.hook .tk{color:var(--coral);}
+
+  /* ---------- sections ---------- */
+  section{padding:96px 0 0;}
+  .two-col{display:grid; grid-template-columns:1fr 1fr; gap:26px; margin-top:42px;}
+  .pcard{
+    background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:30px 32px;
+  }
+  .pcard h3{margin:0 0 12px; font-size:19px; color:var(--ink); display:flex; align-items:center; gap:10px;}
+  .pcard p{margin:0; font-size:15.5px; line-height:1.65;}
+  .pcard code, .matrix code, .feat p code{
+    font-family:var(--mono); font-size:12.5px; color:var(--inline-fg);
+    background:var(--inline-bg); padding:1px 6px; border-radius:5px;
+  }
+  .pcard .dot{width:10px; height:10px; border-radius:50%; flex:none;}
+  .dot-bad{background:var(--coral); box-shadow:0 0 12px rgba(255,122,89,.6);}
+  .dot-good{background:var(--teal); box-shadow:0 0 12px rgba(25,199,166,.6);}
+
+  .code-cols{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:26px; margin-top:42px;}
+  .code-col{min-width:0;}
+  .code-col p.cap{
+    font-family:var(--mono); font-size:12px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--muted); margin:0 0 12px;
+  }
+
+  /* matrix */
+  .matrix{margin-top:42px; overflow-x:auto; border:1px solid var(--line); border-radius:14px;}
+  .matrix table{border-collapse:collapse; width:100%; min-width:760px; font-size:14px;}
+  .matrix th{
+    font-family:var(--mono); font-size:11.5px; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--muted); font-weight:500; text-align:center; padding:14px 14px;
+    background:var(--bg-deep); border-bottom:1px solid var(--line);
+  }
+  .matrix th:first-child{text-align:left;}
+  .matrix td{
+    padding:11px 14px; text-align:center; border-bottom:1px solid var(--line-soft);
+    color:var(--body);
+  }
+  .matrix td:first-child{text-align:left;}
+  .matrix tr:last-child td{border-bottom:none;}
+  .matrix .y{color:var(--teal); font-weight:600;}
+  .matrix .n{color:var(--body); opacity:.35;}
+  .matrix-note{font-size:13px; color:var(--muted); margin:14px 4px 0;}
+
+  /* features */
+  .feat-grid{display:grid; grid-template-columns:repeat(2, 1fr); gap:26px; margin-top:42px;}
+  .feat{background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:28px 30px;}
+  .feat h3{margin:0 0 10px; font-size:17px; color:var(--ink);}
+  .feat h3 span{color:var(--cyan-bright); font-family:var(--mono); font-size:12px; letter-spacing:.16em; text-transform:uppercase; display:block; margin-bottom:8px;}
+  .feat p{margin:0; font-size:14.5px; line-height:1.7;}
+
+  /* quickstart */
+  .steps{display:flex; flex-direction:column; gap:22px; margin-top:42px;}
+  .step{display:grid; grid-template-columns:54px 1fr; gap:20px; align-items:start;}
+  .step .num{
+    width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+    font-family:var(--mono); font-size:14px; font-weight:600; color:var(--cyan-bright);
+    border:1px solid rgba(70,226,234,.35); margin-top:2px;
+  }
+  .step h3{margin:0 0 10px; font-size:16.5px; color:var(--ink);}
+
+  /* docs index */
+  .docs-grid{display:grid; grid-template-columns:repeat(3, 1fr); gap:26px; margin-top:42px;}
+  .dcol h3{
+    font-family:var(--mono); font-size:12px; letter-spacing:.18em; text-transform:uppercase;
+    color:var(--muted); margin:0 0 14px; font-weight:500;
+  }
+  .dcol ul{margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:9px;}
+  .dcol a{color:var(--body); font-size:15px;}
+  .dcol a:hover{color:var(--cyan-bright); text-decoration:none;}
+
+  @media (max-width: 900px){
+    .hero-grid{grid-template-columns:1fr; padding-top:56px; padding-bottom:64px;}
+    .fan{display:none;}
+    .hero h1{font-size:40px;}
+    .two-col,.code-cols,.feat-grid{grid-template-columns:minmax(0,1fr);}
+    .docs-grid{grid-template-columns:1fr 1fr;}
+  }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="index.html">
+      <img src="assets/icon.svg" alt="">
+      <span class="tname">Tekton Events Relay</span>
+    </a>
+    <nav class="nav-links">
+      <a href="docs.html?page=Quickstart">Quickstart</a>
+      <a href="docs.html">Docs</a>
+      <a href="#integrations">Integrations</a>
+      <button class="theme-btn" type="button" aria-label="Toggle color theme" onclick="terToggleTheme()">
+        <svg class="ic-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.4"></circle><path d="M12 2.5v2.6M12 18.9v2.6M2.5 12h2.6M18.9 12h2.6M5 5l1.8 1.8M17.2 17.2 19 19M19 5l-1.8 1.8M6.8 17.2 5 19"></path></svg>
+        <svg class="ic-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.4 14.2A8.5 8.5 0 0 1 9.8 3.6a8.5 8.5 0 1 0 10.6 10.6Z"></path></svg>
+      </button>
+      <a class="gh" href="https://github.com/fabioluciano/tekton-events-relay">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"></path></svg>
+        GitHub
+      </a>
+    </nav>
+  </div>
+</header>
+
+<div class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <p class="kicker">CloudEvents bridge for Tekton Pipelines</p>
+      <h1>Tekton emits CloudEvents. Your platforms get <span class="accent">updated</span>. Automatically.</h1>
+      <p class="lede">Turn <code style="font-family:var(--mono);font-size:15px;color:var(--inline-fg);">PipelineRun</code> and <code style="font-family:var(--mono);font-size:15px;color:var(--inline-fg);">TaskRun</code> events into commit statuses, PR comments, labels, deployments and chat notifications — with CEL-based routing and Go-template customization. No notification Tasks in your pipelines.</p>
+      <div class="cta">
+        <a class="btn btn-primary" href="docs.html?page=Quickstart">Get started</a>
+        <a class="btn btn-ghost" href="https://github.com/fabioluciano/tekton-events-relay">View on GitHub</a>
+      </div>
+      <div class="install"><span class="dollar">$</span> helm install tekton-events-relay oci://ghcr.io/fabioluciano/charts/tekton-events-relay</div>
+    </div>
+
+    <div class="fan" aria-hidden="true">
+      <div class="bot-cell" id="heroBot"></div>
+      <svg class="wires" viewBox="0 0 64 400" preserveAspectRatio="none" fill="none">
+        <path d="M 0 200 C 36 200, 28 52, 64 52" stroke="#46E2EA" stroke-opacity=".45" stroke-width="2" vector-effect="non-scaling-stroke"/>
+        <path d="M 0 200 C 36 200, 28 150, 64 150" stroke="#3E8BFF" stroke-opacity=".45" stroke-width="2" vector-effect="non-scaling-stroke"/>
+        <path d="M 0 200 C 36 200, 28 252, 64 252" stroke="#19C7A6" stroke-opacity=".45" stroke-width="2" vector-effect="non-scaling-stroke"/>
+        <path d="M 0 200 C 36 200, 28 350, 64 350" stroke="#FF7A59" stroke-opacity=".45" stroke-width="2" vector-effect="non-scaling-stroke"/>
+      </svg>
+      <div class="targets">
+        <div class="tcard scm">
+          <span class="tk">SCM · statuses · comments · labels</span>
+          <span class="tv">GitHub · GitLab · Gitea · Bitbucket · Azure DevOps · SourceHut</span>
+        </div>
+        <div class="tcard chat">
+          <span class="tk">Chat · notifications</span>
+          <span class="tv">Slack · Microsoft Teams · Discord</span>
+        </div>
+        <div class="tcard ops">
+          <span class="tk">Ops · alerts &amp; markers</span>
+          <span class="tv">PagerDuty · Datadog · Grafana · Sentry</span>
+        </div>
+        <div class="tcard hook">
+          <span class="tk">Custom · JSON payloads</span>
+          <span class="tv">Generic Webhooks</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<section id="why">
+  <div class="wrap">
+    <p class="kicker">// Why</p>
+    <h2 class="sec">Keep notification logic out of your pipelines</h2>
+    <div class="two-col">
+      <div class="pcard">
+        <h3><span class="dot dot-bad"></span>Without the relay</h3>
+        <p>Reporting CI status means adding notification <code>Task</code>s and <code>finally</code> blocks to <strong style="color:var(--ink)">every pipeline</strong> — duplicating credentials, API calls and formatting logic everywhere. Pipelines bloat with plumbing instead of build/test/deploy.</p>
+      </div>
+      <div class="pcard">
+        <h3><span class="dot dot-good"></span>With the relay</h3>
+        <p>Pipelines stay clean: <strong style="color:var(--ink)">one deployment, one config.</strong> Routing decisions live in CEL expressions — not in pipeline YAML. Add or remove integrations without ever redeploying a pipeline.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="config">
+  <div class="wrap">
+    <p class="kicker">// Configuration</p>
+    <h2 class="sec">Route events with CEL, format them with Go templates</h2>
+    <div class="code-cols">
+      <div class="code-col">
+        <p class="cap">commit status, filtered by CEL</p>
+<pre class="code"><span class="k">scm</span>:
+  <span class="k">github</span>:
+    - <span class="k">name</span>: <span class="s">main-instance</span>
+      <span class="k">enabled</span>: <span class="v">true</span>
+      <span class="k">actions</span>:
+        - <span class="k">name</span>: <span class="s">commit-status</span>
+          <span class="k">type</span>: <span class="s">commit_status</span>
+          <span class="k">when</span>: <span class="cel">'event.Resource == "pipelinerun"
+                 && event.Repo.Owner == "myorg"'</span>
+          <span class="k">filter</span>:
+            <span class="k">pipelines</span>:
+              <span class="k">allow</span>: [<span class="s">"ci-pipeline"</span>, <span class="s">"release-pipeline"</span>]</pre>
+      </div>
+      <div class="code-col">
+        <p class="cap">slack alert, production failures only</p>
+<pre class="code"><span class="k">notifiers</span>:
+  <span class="k">slack</span>:
+    - <span class="k">name</span>: <span class="s">production-alerts</span>
+      <span class="k">channel</span>: <span class="s">"#production-alerts"</span>
+      <span class="k">when</span>: <span class="cel">'event.Namespace == "production"
+             && event.State == "failure"'</span>
+      <span class="k">template</span>: |
+        <span class="s">:rotating_light: *PRODUCTION FAILURE*
+        *Pipeline:* {{.PipelineName}}
+        *Commit:* `{{.CommitSHA}}`</span></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="integrations">
+  <div class="wrap">
+    <p class="kicker">// Integrations</p>
+    <h2 class="sec">One relay, every platform your team looks at</h2>
+    <p class="sub">Eight SCM actions across six providers — plus eight notification channels.</p>
+    <div class="matrix">
+      <table>
+        <thead>
+          <tr><th>Action</th><th>GitHub</th><th>GitLab</th><th>Gitea</th><th>Bitbucket</th><th>Azure DevOps</th><th>SourceHut</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>commit_status</code></td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td></tr>
+          <tr><td><code>commit_comment</code></td><td class="y">✓</td><td class="y">✓</td><td class="n">—</td><td class="n">—</td><td class="n">—</td><td class="n">—</td></tr>
+          <tr><td><code>pr_comment</code> (+ upsert)</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓*</td><td class="y">✓</td><td class="n">—</td></tr>
+          <tr><td><code>issue_comment</code></td><td class="y">✓</td><td class="n">—</td><td class="y">✓</td><td class="n">—</td><td class="n">—</td><td class="n">—</td></tr>
+          <tr><td><code>discussion_comment</code></td><td class="y">✓</td><td class="n">—</td><td class="n">—</td><td class="n">—</td><td class="n">—</td><td class="n">—</td></tr>
+          <tr><td><code>check_run</code></td><td class="y">✓</td><td class="n">—</td><td class="n">—</td><td class="n">—</td><td class="n">—</td><td class="n">—</td></tr>
+          <tr><td><code>deployment_status</code></td><td class="y">✓</td><td class="y">✓</td><td class="n">—</td><td class="n">—</td><td class="n">—</td><td class="n">—</td></tr>
+          <tr><td><code>label</code> (add/remove)</td><td class="y">✓</td><td class="y">✓</td><td class="y">✓</td><td class="n">—</td><td class="y">✓</td><td class="n">—</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="matrix-note">* Bitbucket Cloud supports <code>mode: upsert</code>; Bitbucket Server falls back to <code>create</code>. &nbsp;·&nbsp; Notifiers: Slack, Microsoft Teams, Discord, PagerDuty, Datadog, Grafana annotations, Sentry releases and generic webhooks.</p>
+  </div>
+</section>
+
+<section id="production">
+  <div class="wrap">
+    <p class="kicker">// Production-ready by default</p>
+    <h2 class="sec">Built like infrastructure, not a webhook script</h2>
+    <div class="feat-grid">
+      <div class="feat">
+        <h3><span>Reliability</span>Failures are expected, not fatal</h3>
+        <p>Exponential-backoff retries with jitter and <code>Retry-After</code> awareness, per-handler timeouts, HTTP 503 back-pressure, and a dead letter queue with replay.</p>
+      </div>
+      <div class="feat">
+        <h3><span>Correctness</span>Exactly the updates you meant</h3>
+        <p>Event deduplication, idempotent comments (<code>mode: upsert</code>), and pluggable state backends — memory, Valkey or Olric — for multi-replica deployments.</p>
+      </div>
+      <div class="feat">
+        <h3><span>Operations</span>Boring to run on purpose</h3>
+        <p>Hot configuration reload, rich <code>/readyz</code> probes, Prometheus metrics and OpenTelemetry tracing out of the box.</p>
+      </div>
+      <div class="feat">
+        <h3><span>Security</span>Verifiable supply chain</h3>
+        <p>HMAC webhook validation with replay protection, native TLS with custom CA support, and Cosign-signed releases logged in Sigstore Rekor.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="quickstart">
+  <div class="wrap">
+    <p class="kicker">// Quickstart</p>
+    <h2 class="sec">Running in three commands</h2>
+    <div class="steps">
+      <div class="step">
+        <div class="num">1</div>
+        <div>
+          <h3>Install Tekton Pipelines (if you haven't)</h3>
+          <pre class="code"><span class="cmd">kubectl apply -f https://storage.googleapis.com/tekton-releases/pipeline/latest/release.yaml</span></pre>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">2</div>
+        <div>
+          <h3>Create your provider secret</h3>
+          <pre class="code"><span class="cmd">kubectl create secret generic github-token \
+  --namespace tekton-events-relay \
+  --from-literal=token=</span><span class="s">"ghp_your_personal_access_token"</span></pre>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">3</div>
+        <div>
+          <h3>Install the relay via Helm</h3>
+          <pre class="code"><span class="cmd">helm install tekton-events-relay \
+  oci://ghcr.io/fabioluciano/charts/tekton-events-relay \
+  --namespace tekton-events-relay --create-namespace \
+  --set config.scm.github[0].enabled=true \
+  --set config.scm.github[0].auth.secretName=github-token</span></pre>
+        </div>
+      </div>
+    </div>
+    <p style="margin-top:28px; font-size:15px;">Then point Tekton's CloudEvents sink at the relay and you're done — full walkthrough in the <a href="docs.html?page=Quickstart">Quickstart guide</a>.</p>
+  </div>
+</section>
+
+<section id="docs">
+  <div class="wrap">
+    <p class="kicker">// Documentation</p>
+    <h2 class="sec">Everything is documented</h2>
+    <div class="docs-grid">
+      <div class="dcol">
+        <h3>Getting started</h3>
+        <ul>
+          <li><a href="docs.html?page=Quickstart">Quickstart</a></li>
+          <li><a href="docs.html?page=Installation">Installation</a></li>
+          <li><a href="docs.html?page=Annotations">Annotations</a></li>
+        </ul>
+      </div>
+      <div class="dcol">
+        <h3>Reference</h3>
+        <ul>
+          <li><a href="docs.html?page=Configuration-Reference">Configuration</a></li>
+          <li><a href="docs.html?page=Actions">Actions</a></li>
+          <li><a href="docs.html?page=CEL-Expressions">CEL Expressions</a></li>
+          <li><a href="docs.html?page=Templates">Templates</a></li>
+        </ul>
+      </div>
+      <div class="dcol">
+        <h3>Production</h3>
+        <ul>
+          <li><a href="docs.html?page=Operations">Operations</a></li>
+          <li><a href="docs.html?page=Observability">Observability</a></li>
+          <li><a href="docs.html?page=Architecture">Architecture</a></li>
+          <li><a href="docs.html?page=Troubleshooting">Troubleshooting</a></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="foot">
+    <div class="fbrand">
+      <img src="assets/icon.svg" alt="">
+      <span>Tekton Events Relay · MIT License</span>
+    </div>
+    <nav>
+      <a href="https://github.com/fabioluciano/tekton-events-relay">Repository</a>
+      <a href="https://github.com/fabioluciano/tekton-events-relay/releases">Releases</a>
+      <a href="https://artifacthub.io/packages/search?repo=tekton-events-relay">Artifact Hub</a>
+      <a href="https://github.com/fabioluciano/tekton-events-relay/issues">Issues</a>
+      <a href="https://github.com/fabioluciano/tekton-events-relay/blob/main/SECURITY.md">Security</a>
+    </nav>
+  </div>
+</footer>
+
+<script>
+  document.getElementById('heroBot').innerHTML = RelayBot({width:190, idPrefix:'hero'});
+  function terToggleTheme(){
+    var h=document.documentElement;
+    var t=h.getAttribute('data-theme')==='light'?'dark':'light';
+    h.setAttribute('data-theme',t);
+    try{localStorage.setItem('ter-theme',t)}catch(e){}
+  }
+</script>
+</body>
+</html>

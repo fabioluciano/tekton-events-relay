@@ -1,6 +1,6 @@
 # tekton-events-relay
 
-![Version: 0.4.0](https://img.shields.io/badge/Version-0.4.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.4.0](https://img.shields.io/badge/AppVersion-0.4.0-informational?style=flat-square)
+![Version: 0.5.0-rc.1](https://img.shields.io/badge/Version-0.5.0--rc.1-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.5.0-rc.1](https://img.shields.io/badge/AppVersion-0.5.0--rc.1-informational?style=flat-square)
 
 **Your pipelines run. Your platforms get updated. You write zero notification code.**
 
@@ -25,7 +25,7 @@ Tekton Events Relay turns the CloudEvents your Tekton pipelines already emit int
 ```bash
 helm install tekton-events-relay \
   oci://ghcr.io/fabioluciano/charts/tekton-events-relay \
-  --version 0.4.0 \
+  --version 0.5.0-rc.1 \
   --namespace tekton-events-relay --create-namespace \
   -f values.yaml
 ```
@@ -89,12 +89,12 @@ Images and charts are signed with [Cosign](https://github.com/sigstore/cosign) (
 cosign verify \
   --certificate-identity-regexp='https://github.com/fabioluciano/tekton-events-relay' \
   --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
-  ghcr.io/fabioluciano/tekton-events-relay:0.4.0
+  ghcr.io/fabioluciano/tekton-events-relay:0.5.0-rc.1
 
 cosign verify \
   --certificate-identity-regexp='https://github.com/fabioluciano/tekton-events-relay' \
   --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
-  oci://ghcr.io/fabioluciano/charts/tekton-events-relay:0.4.0
+  oci://ghcr.io/fabioluciano/charts/tekton-events-relay:0.5.0-rc.1
 ```
 
 ## Scaling note
@@ -230,7 +230,7 @@ The default in-memory state backend is per-pod: run **one replica**, or set `con
 | config.scm.gitea[0].actions[3].type | string | `"label"` | Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status) |
 | config.scm.gitea[0].base_url | string | `"https://gitea.company.example.com"` | API base URL for the SCM provider |
 | config.scm.gitea[0].enabled | bool | `false` | Enable or disable this SCM provider instance |
-| config.scm.github | list | `[{"actions":[{"enabled":false,"name":"commit-status","type":"commit_status","when":"event.Resource == \"pipelinerun\""},{"enabled":false,"name":"check-run","template":"## Build Result: {{.State}}\n**Run:** {{.RunName}}\n**Namespace:** {{.Namespace}}\n{{if .TargetURL}}[View Logs]({{.TargetURL}}){{end}}\n","type":"check_run","when":"stateIn(\"success\", \"failure\", \"error\")"},{"enabled":false,"name":"deployment-status","type":"deployment_status","when":"stateIn(\"success\", \"failure\")"},{"enabled":false,"mode":"create","name":"pr-comment","template":"## Pipeline {{.State}}\n**Run:** {{.RunName}}\n**Commit:** {{.CommitSHA}}\n{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}\n","type":"pr_comment","when":"stateIn(\"success\", \"failure\")"},{"enabled":false,"name":"issue-comment","template":"Pipeline {{.Context}} finished with state: **{{.State}}**\n{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}\n","type":"issue_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"name":"discussion-comment","template":"## Pipeline {{.State}}\n**Run:** {{.RunName}}\n**Commit:** {{.CommitSHA}}\n{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}\n","type":"discussion_comment","when":"stateIn(\"success\", \"failure\")"},{"enabled":false,"labels":{"add":["{{ if eq .State \"success\" }}ci:passed{{ else }}ci:failed{{ end }}"],"remove":["{{ if eq .State \"success\" }}ci:failed{{ else }}ci:passed{{ end }}"]},"name":"label","type":"label","when":""}],"auth":{"secret_name":"github-default-token"},"base_url":"https://api.github.com","enabled":false,"name":"default"}]` | GitHub SCM provider configuration |
+| config.scm.github | list | `[{"actions":[{"enabled":false,"name":"commit-status","type":"commit_status","when":"event.Resource == \"pipelinerun\""},{"enabled":false,"name":"check-run","template":"## Build Result: {{.State}}\n**Run:** {{.RunName}}\n**Namespace:** {{.Namespace}}\n{{if .TargetURL}}[View Logs]({{.TargetURL}}){{end}}\n","type":"check_run","when":"stateIn(\"success\", \"failure\", \"error\")"},{"enabled":false,"name":"deployment-status","type":"deployment_status","when":"stateIn(\"success\", \"failure\")"},{"enabled":false,"mode":"create","name":"pr-comment","template":"## Pipeline {{.State}}\n**Run:** {{.RunName}}\n**Commit:** {{.CommitSHA}}\n{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}\n","type":"pr_comment","when":"stateIn(\"success\", \"failure\")"},{"enabled":false,"name":"issue-comment","template":"Pipeline {{.Context}} finished with state: **{{.State}}**\n{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}\n","type":"issue_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"name":"discussion-comment","template":"## Pipeline {{.State}}\n**Run:** {{.RunName}}\n**Commit:** {{.CommitSHA}}\n{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}\n","type":"discussion_comment","when":"stateIn(\"success\", \"failure\")"},{"enabled":false,"labels":{"add":[{"color":"0e8a16","name":"ci:passed"},{"name":"ready-to-merge"}],"remove":[{"name":"ci:failed"}]},"name":"label","type":"label","when":"event.Resource == \"pipelinerun\""}],"auth":{"secret_name":"github-default-token"},"base_url":"https://api.github.com","enabled":false,"name":"default"}]` | GitHub SCM provider configuration |
 | config.scm.github[0].actions[0].enabled | bool | `false` | Enable or disable this SCM provider instance |
 | config.scm.github[0].actions[0].type | string | `"commit_status"` | Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status) |
 | config.scm.github[0].actions[1].enabled | bool | `false` | Enable or disable this SCM provider instance |
@@ -245,7 +245,7 @@ The default in-memory state backend is per-pod: run **one replica**, or set `con
 | config.scm.github[0].actions[5].enabled | bool | `false` | Enable or disable this SCM provider instance |
 | config.scm.github[0].actions[5].type | string | `"discussion_comment"` | Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status) |
 | config.scm.github[0].actions[6].enabled | bool | `false` | Enable or disable this SCM provider instance |
-| config.scm.github[0].actions[6].labels | object | `{"add":["{{ if eq .State \"success\" }}ci:passed{{ else }}ci:failed{{ end }}"],"remove":["{{ if eq .State \"success\" }}ci:failed{{ else }}ci:passed{{ end }}"]}` | Declarative label effect: add/remove lists, Go-templated against the event |
+| config.scm.github[0].actions[6].labels | object | `{"add":[{"color":"0e8a16","name":"ci:passed"},{"name":"ready-to-merge"}],"remove":[{"name":"ci:failed"}]}` | Declarative label effect: add/remove lists with optional colors (hex without #) Supports both old string format and new object format with color field |
 | config.scm.github[0].actions[6].type | string | `"label"` | Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status) |
 | config.scm.github[0].auth | object | `{"secret_name":"github-default-token"}` | Webhook authentication configuration |
 | config.scm.github[0].auth.secret_name | string | `"github-default-token"` | Kubernetes Secret containing credentials |

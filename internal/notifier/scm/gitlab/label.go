@@ -2,6 +2,7 @@ package gitlab
 
 import (
 	"context"
+	"fmt"
 
 	gl "gitlab.com/gitlab-org/api/client-go"
 	"go.uber.org/zap"
@@ -60,27 +61,82 @@ func (h *LabelHandler) Handle(ctx context.Context, e domain.Event) error {
 	return h.applyLabelSet(ctx, e, projectID)
 }
 
+// ensureLabelsExist creates missing labels with specified colors before applying to issues/MRs.
+// GitLab auto-creates labels without color control, so we pre-create with color if specified.
+func (h *LabelHandler) ensureLabelsExist(ctx context.Context, projectID string, labels []scm.Label) error {
+	if len(labels) == 0 {
+		return nil
+	}
+
+	// List existing labels
+	existingLabels, _, err := h.client.gl.Labels.ListLabels(projectID, &gl.ListLabelsOptions{}, gl.WithContext(ctx))
+	if err != nil {
+		return fmt.Errorf("list labels: %w", err)
+	}
+
+	existing := make(map[string]bool)
+	for _, l := range existingLabels {
+		existing[l.Name] = true
+	}
+
+	// Create missing labels with color
+	for _, label := range labels {
+		if existing[label.Name] {
+			continue // label exists, preserve existing color (idempotent)
+		}
+
+		opts := &gl.CreateLabelOptions{
+			Name: gl.Ptr(label.Name),
+		}
+		if label.Color != "" {
+			// GitLab expects # prefix
+			opts.Color = gl.Ptr("#" + label.Color)
+		}
+
+		if _, _, err := h.client.gl.Labels.CreateLabel(projectID, opts, gl.WithContext(ctx)); err != nil {
+			return fmt.Errorf("create label %q: %w", label.Name, err)
+		}
+	}
+
+	return nil
+}
+
 // applyLabelSet executes the declarative add/remove effect in a single
-// atomic update call; GitLab creates missing labels automatically and
-// ignores removals of absent labels.
+// atomic update call; creates missing labels with color before applying.
 func (h *LabelHandler) applyLabelSet(ctx context.Context, e domain.Event, projectID string) error {
 	add, remove, err := h.labels.Render(e)
 	if err != nil {
 		return err
 	}
-	for _, name := range append(append([]string{}, add...), remove...) {
-		if err := scm.Validate(h.name, "label_name", name); err != nil {
+
+	// Validate all label names
+	for _, label := range append(append([]scm.Label{}, add...), remove...) {
+		if err := scm.Validate(h.name, "label_name", label.Name); err != nil {
 			return err
 		}
 	}
 
+	// Ensure labels with colors exist at project level
+	if err := h.ensureLabelsExist(ctx, projectID, add); err != nil {
+		return err
+	}
+
+	// Convert to label names for GitLab SDK
 	var addOpts, removeOpts *gl.LabelOptions
 	if len(add) > 0 {
-		v := gl.LabelOptions(add)
+		addNames := make([]string, len(add))
+		for i, label := range add {
+			addNames[i] = label.Name
+		}
+		v := gl.LabelOptions(addNames)
 		addOpts = &v
 	}
 	if len(remove) > 0 {
-		v := gl.LabelOptions(remove)
+		removeNames := make([]string, len(remove))
+		for i, label := range remove {
+			removeNames[i] = label.Name
+		}
+		v := gl.LabelOptions(removeNames)
 		removeOpts = &v
 	}
 

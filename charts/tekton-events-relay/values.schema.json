@@ -1526,19 +1526,62 @@
         },
         "labels": {
           "type": "object",
-          "description": "Declarative label effect for label actions: lists of labels to add and remove (Go-templated, e.g. \"ci::{{.State}}\"). The action's when expression is the only execution gate; replaces success_label/failure_label.",
+          "description": "Declarative label effect for label actions: lists of labels to add and remove with optional colors. Supports both string format (backward compat) and object format {name, color}.",
           "properties": {
             "add": {
               "type": "array",
               "items": {
-                "type": "string"
+                "oneOf": [
+                  {
+                    "type": "string",
+                    "description": "Label name (string format for backward compatibility)"
+                  },
+                  {
+                    "type": "object",
+                    "description": "Label with optional color",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Label name (supports Go templates)"
+                      },
+                      "color": {
+                        "type": "string",
+                        "pattern": "^([0-9a-fA-F]{6})?$",
+                        "description": "Hex color without # (6 chars). Empty = provider default."
+                      }
+                    },
+                    "required": ["name"]
+                  }
+                ]
               },
               "description": "Labels to add"
             },
             "remove": {
               "type": "array",
               "items": {
-                "type": "string"
+                "oneOf": [
+                  {
+                    "type": "string",
+                    "description": "Label name (string format for backward compatibility)"
+                  },
+                  {
+                    "type": "object",
+                    "description": "Label with optional color (color ignored for removal)",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Label name (supports Go templates)"
+                      },
+                      "color": {
+                        "type": "string",
+                        "description": "Color field ignored on remove operations"
+                      }
+                    },
+                    "required": ["name"]
+                  }
+                ]
               },
               "description": "Labels to remove (absent labels are ignored)"
             }
@@ -2028,19 +2071,65 @@
           "properties": {
             "labels": {
               "type": "object",
-              "description": "Declarative label effect: add/remove lists, entries support Go templates evaluated against the event",
+              "description": "Declarative label effect for label actions: lists of labels to add and remove with optional colors. Supports both string format (backward compat) and object format {name, color}.",
               "properties": {
                 "add": {
                   "type": "array",
                   "items": {
-                    "type": "string"
-                  }
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "description": "Label name (string format for backward compatibility)"
+                      },
+                      {
+                        "type": "object",
+                        "description": "Label with optional color",
+                        "properties": {
+                          "name": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Label name (supports Go templates)"
+                          },
+                          "color": {
+                            "type": "string",
+                            "pattern": "^([0-9a-fA-F]{6})?$",
+                            "description": "Hex color without # (6 chars). Empty = provider default."
+                          }
+                        },
+                        "required": ["name"]
+                      }
+                    ]
+                  },
+                  "description": "Labels to add"
                 },
                 "remove": {
                   "type": "array",
                   "items": {
-                    "type": "string"
-                  }
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "description": "Label name (string format for backward compatibility)"
+                      },
+                      {
+                        "type": "object",
+                        "description": "Label with optional color",
+                        "properties": {
+                          "name": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Label name (supports Go templates)"
+                          },
+                          "color": {
+                            "type": "string",
+                            "pattern": "^([0-9a-fA-F]{6})?$",
+                            "description": "Hex color without # (6 chars). Empty = provider default."
+                          }
+                        },
+                        "required": ["name"]
+                      }
+                    ]
+                  },
+                  "description": "Labels to remove"
                 }
               },
               "additionalProperties": false
@@ -2059,19 +2148,65 @@
           "properties": {
             "labels": {
               "type": "object",
-              "description": "Declarative label effect: add/remove lists, entries support Go templates evaluated against the event",
+              "description": "Declarative label effect for label actions: lists of labels to add and remove with optional colors. Supports both string format (backward compat) and object format {name, color}.",
               "properties": {
                 "add": {
                   "type": "array",
                   "items": {
-                    "type": "string"
-                  }
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "description": "Label name (string format for backward compatibility)"
+                      },
+                      {
+                        "type": "object",
+                        "description": "Label with optional color",
+                        "properties": {
+                          "name": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Label name (supports Go templates)"
+                          },
+                          "color": {
+                            "type": "string",
+                            "pattern": "^([0-9a-fA-F]{6})?$",
+                            "description": "Hex color without # (6 chars). Empty = provider default."
+                          }
+                        },
+                        "required": ["name"]
+                      }
+                    ]
+                  },
+                  "description": "Labels to add"
                 },
                 "remove": {
                   "type": "array",
                   "items": {
-                    "type": "string"
-                  }
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "description": "Label name (string format for backward compatibility)"
+                      },
+                      {
+                        "type": "object",
+                        "description": "Label with optional color",
+                        "properties": {
+                          "name": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Label name (supports Go templates)"
+                          },
+                          "color": {
+                            "type": "string",
+                            "pattern": "^([0-9a-fA-F]{6})?$",
+                            "description": "Hex color without # (6 chars). Empty = provider default."
+                          }
+                        },
+                        "required": ["name"]
+                      }
+                    ]
+                  },
+                  "description": "Labels to remove"
                 }
               },
               "additionalProperties": false
@@ -2090,19 +2225,65 @@
           "properties": {
             "labels": {
               "type": "object",
-              "description": "Declarative label effect: add/remove lists, entries support Go templates evaluated against the event",
+              "description": "Declarative label effect for label actions: lists of labels to add and remove with optional colors. Supports both string format (backward compat) and object format {name, color}.",
               "properties": {
                 "add": {
                   "type": "array",
                   "items": {
-                    "type": "string"
-                  }
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "description": "Label name (string format for backward compatibility)"
+                      },
+                      {
+                        "type": "object",
+                        "description": "Label with optional color",
+                        "properties": {
+                          "name": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Label name (supports Go templates)"
+                          },
+                          "color": {
+                            "type": "string",
+                            "pattern": "^([0-9a-fA-F]{6})?$",
+                            "description": "Hex color without # (6 chars). Empty = provider default."
+                          }
+                        },
+                        "required": ["name"]
+                      }
+                    ]
+                  },
+                  "description": "Labels to add"
                 },
                 "remove": {
                   "type": "array",
                   "items": {
-                    "type": "string"
-                  }
+                    "oneOf": [
+                      {
+                        "type": "string",
+                        "description": "Label name (string format for backward compatibility)"
+                      },
+                      {
+                        "type": "object",
+                        "description": "Label with optional color",
+                        "properties": {
+                          "name": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Label name (supports Go templates)"
+                          },
+                          "color": {
+                            "type": "string",
+                            "pattern": "^([0-9a-fA-F]{6})?$",
+                            "description": "Hex color without # (6 chars). Empty = provider default."
+                          }
+                        },
+                        "required": ["name"]
+                      }
+                    ]
+                  },
+                  "description": "Labels to remove"
                 }
               },
               "additionalProperties": false

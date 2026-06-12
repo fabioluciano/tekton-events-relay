@@ -45,8 +45,8 @@ func TestLabelHandler_LabelSetAddRemove(t *testing.T) {
 		Token:   testHandlerToken,
 		BaseURL: srv.URL,
 		Labels: scm.LabelSet{
-			Add:    []string{"ci::{{.State}}"},
-			Remove: []string{"ci::running", "ci::missing"},
+			Add:    []scm.Label{{Name: "ci::{{.State}}"}},
+			Remove: []scm.Label{{Name: "ci::running"}, {Name: "ci::missing"}},
 		},
 	}, zap.NewNop())
 
@@ -81,7 +81,7 @@ func TestLabelHandler_LegacyPathPreserved(t *testing.T) {
 
 	h := NewLabelHandler(LabelConfig{
 		Token: testHandlerToken, BaseURL: srv.URL,
-		Labels: scm.LabelSet{Add: []string{"ok"}},
+		Labels: scm.LabelSet{Add: []scm.Label{{Name: "ok"}}},
 	}, zap.NewNop())
 
 	pr := 5

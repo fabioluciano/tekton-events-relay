@@ -324,10 +324,10 @@ func TestActionConfigUnmarshal(t *testing.T) {
 	if !labelAction.Enabled || labelAction.Type != ActionTypeLabel {
 		t.Error("expected enabled GitHub label action")
 	}
-	if labelAction.Labels == nil || len(labelAction.Labels.Add) != 1 || labelAction.Labels.Add[0] != "ci:passed" {
+	if labelAction.Labels == nil || len(labelAction.Labels.Add) != 1 || labelAction.Labels.Add[0].Name != "ci:passed" {
 		t.Errorf("unexpected labels add list: %+v", labelAction.Labels)
 	}
-	if labelAction.Labels == nil || len(labelAction.Labels.Remove) != 1 || labelAction.Labels.Remove[0] != "ci:failed" {
+	if labelAction.Labels == nil || len(labelAction.Labels.Remove) != 1 || labelAction.Labels.Remove[0].Name != "ci:failed" {
 		t.Errorf("unexpected labels remove list: %+v", labelAction.Labels)
 	}
 

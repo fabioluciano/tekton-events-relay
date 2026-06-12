@@ -1,0 +1,41 @@
+<svg width="256" height="256" viewBox="30 6 180 180" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Tekton Events Relay">
+  <defs>
+    <linearGradient id="head" x1="0.12" y1="0" x2="0.85" y2="1">
+      <stop offset="0" stop-color="#3DEAD6"></stop>
+      <stop offset="0.5" stop-color="#16C4D8"></stop>
+      <stop offset="1" stop-color="#0A98C9"></stop>
+    </linearGradient>
+    <linearGradient id="edge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0A98C9"></stop>
+      <stop offset="1" stop-color="#0673A6"></stop>
+    </linearGradient>
+    <radialGradient id="orb" cx="0.5" cy="0.4" r="0.7">
+      <stop offset="0" stop-color="#FFE08A"></stop>
+      <stop offset="0.55" stop-color="#FF9A4D"></stop>
+      <stop offset="1" stop-color="#FF6B43"></stop>
+    </radialGradient>
+    <linearGradient id="eye" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#CFFEFF"></stop>
+      <stop offset="1" stop-color="#46E2EA"></stop>
+    </linearGradient>
+  </defs>
+  <rect x="116.5" y="36" width="7" height="26" rx="3.5" fill="#0C2A3A"></rect>
+  <circle cx="120" cy="28" r="11" fill="url(#orb)"></circle>
+  <circle cx="120" cy="28" r="11" fill="none" stroke="#FFD27A" stroke-opacity="0.5" stroke-width="2"></circle>
+  <rect x="56" y="60" width="128" height="114" rx="36" fill="url(#edge)"></rect>
+  <rect x="56" y="56" width="128" height="112" rx="36" fill="url(#head)"></rect>
+  <rect x="68" y="66" width="104" height="30" rx="15" fill="#FFFFFF" fill-opacity="0.16"></rect>
+  <circle cx="56" cy="120" r="11" fill="url(#edge)"></circle>
+  <circle cx="56" cy="120" r="5" fill="#0C2A3A"></circle>
+  <circle cx="184" cy="120" r="11" fill="url(#edge)"></circle>
+  <circle cx="184" cy="120" r="5" fill="#0C2A3A"></circle>
+  <rect x="76" y="88" width="88" height="60" rx="22" fill="#08243A"></rect>
+  <rect x="76" y="88" width="88" height="60" rx="22" fill="none" stroke="#0B3553" stroke-width="2"></rect>
+  <rect x="96" y="104" width="13" height="22" rx="6.5" fill="url(#eye)"></rect>
+  <rect x="131" y="104" width="13" height="22" rx="6.5" fill="url(#eye)"></rect>
+  <circle cx="102.5" cy="109" r="2.6" fill="#FFFFFF"></circle>
+  <circle cx="137.5" cy="109" r="2.6" fill="#FFFFFF"></circle>
+  <rect x="108" y="135" width="5" height="7" rx="2.5" fill="#46E2EA"></rect>
+  <rect x="117.5" y="131" width="5" height="11" rx="2.5" fill="#7CEBEF"></rect>
+  <rect x="127" y="135" width="5" height="7" rx="2.5" fill="#46E2EA"></rect>
+</svg>

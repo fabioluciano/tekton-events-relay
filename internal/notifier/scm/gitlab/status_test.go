@@ -209,12 +209,26 @@ func TestLabelHandler_Handle_WrongProvider(t *testing.T) {
 //nolint:dupl // intentional duplicate structure testing different label state
 func TestLabelHandler_Handle_FailureLabel(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "PUT" {
-			t.Errorf("expected PUT, got %s", r.Method)
-		}
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"id":3,"labels":["ci-failed"]}`))
+		if r.Method == "GET" {
+			// ListLabels call - return empty list for any GET
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`[]`))
+			return
+		}
+		if r.Method == "POST" {
+			// CreateLabel call
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"id":1,"name":"ci-passed","color":"#0e8a16"}`))
+			return
+		}
+		if r.Method == "PUT" {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"id":3,"labels":["ci-failed"]}`))
+			return
+		}
+		t.Errorf("unexpected method: %s %s", r.Method, r.URL.Path)
+		w.WriteHeader(http.StatusMethodNotAllowed)
 	}))
 	defer server.Close()
 
@@ -223,7 +237,7 @@ func TestLabelHandler_Handle_FailureLabel(t *testing.T) {
 		Token:   testStatusToken,
 		BaseURL: server.URL,
 		Name:    testStatusName,
-		Labels:  scm.LabelSet{Add: []string{"ci-passed"}},
+		Labels:  scm.LabelSet{Add: []scm.Label{{Name: "ci-passed"}}},
 	})
 
 	event := domain.Event{
@@ -244,12 +258,26 @@ func TestLabelHandler_Handle_FailureLabel(t *testing.T) {
 //nolint:dupl // intentional duplicate structure testing different label state
 func TestLabelHandler_Handle_Success(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "PUT" {
-			t.Errorf("expected PUT, got %s", r.Method)
-		}
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"id":7,"labels":["ci-passed"]}`))
+		if r.Method == "GET" {
+			// ListLabels call - return empty list for any GET
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`[]`))
+			return
+		}
+		if r.Method == "POST" {
+			// CreateLabel call
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"id":1,"name":"ci-passed","color":"#0e8a16"}`))
+			return
+		}
+		if r.Method == "PUT" {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"id":7,"labels":["ci-passed"]}`))
+			return
+		}
+		t.Errorf("unexpected method: %s %s", r.Method, r.URL.Path)
+		w.WriteHeader(http.StatusMethodNotAllowed)
 	}))
 	defer server.Close()
 
@@ -258,7 +286,7 @@ func TestLabelHandler_Handle_Success(t *testing.T) {
 		Token:   testStatusToken,
 		BaseURL: server.URL,
 		Name:    testStatusName,
-		Labels:  scm.LabelSet{Add: []string{"ci-passed"}},
+		Labels:  scm.LabelSet{Add: []scm.Label{{Name: "ci-passed"}}},
 	})
 
 	event := domain.Event{

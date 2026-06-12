@@ -22,5 +22,13 @@ func labelSet(action config.Action) scm.LabelSet {
 	if action.Labels == nil {
 		return scm.LabelSet{}
 	}
-	return scm.LabelSet{Add: action.Labels.Add, Remove: action.Labels.Remove}
+	add := make([]scm.Label, len(action.Labels.Add))
+	for i, entry := range action.Labels.Add {
+		add[i] = scm.Label{Name: entry.Name, Color: entry.Color}
+	}
+	remove := make([]scm.Label, len(action.Labels.Remove))
+	for i, entry := range action.Labels.Remove {
+		remove[i] = scm.Label{Name: entry.Name, Color: entry.Color}
+	}
+	return scm.LabelSet{Add: add, Remove: remove}
 }

@@ -436,7 +436,7 @@ func TestBuildAll(t *testing.T) {
 				Name:    testLabel,
 				Type:    config.ActionTypeLabel,
 				Enabled: true,
-				Labels:  &config.ActionLabels{Add: []string{"ci:passed"}, Remove: []string{"ci:failed"}},
+				Labels:  &config.ActionLabels{Add: []config.LabelEntry{{Name: "ci:passed"}}, Remove: []config.LabelEntry{{Name: "ci:failed"}}},
 			},
 		})
 
@@ -605,7 +605,7 @@ func TestBuildAll(t *testing.T) {
 				Name:    testLabel,
 				Type:    config.ActionTypeLabel,
 				Enabled: true,
-				Labels:  &config.ActionLabels{Add: []string{"ci:passed"}, Remove: []string{"ci:failed"}},
+				Labels:  &config.ActionLabels{Add: []config.LabelEntry{{Name: "ci:passed"}}, Remove: []config.LabelEntry{{Name: "ci:failed"}}},
 			},
 		})
 

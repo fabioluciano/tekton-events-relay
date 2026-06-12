@@ -115,7 +115,7 @@ func TestGitHubFactory_Build_creates_handler_for_each_action_type(t *testing.T) 
 			a.Template = testTemplate
 		}},
 		{"label", config.ActionTypeLabel, func(a *config.Action) { //nolint:goconst
-			a.Labels = &config.ActionLabels{Add: []string{"ok"}, Remove: []string{"fail"}}
+			a.Labels = &config.ActionLabels{Add: []config.LabelEntry{{Name: "ok"}}, Remove: []config.LabelEntry{{Name: "fail"}}}
 		}},
 	}
 
@@ -167,7 +167,7 @@ func TestGitHubFactory_Build_returns_all_enabled_handlers(t *testing.T) {
 		BaseURL: testGitHubBaseURL,
 		Actions: []config.Action{
 			{Name: "s", Type: config.ActionTypeCommitStatus, Enabled: true},
-			{Name: "label", Type: config.ActionTypeLabel, Enabled: true, Labels: &config.ActionLabels{Add: []string{"ok"}}},
+			{Name: "label", Type: config.ActionTypeLabel, Enabled: true, Labels: &config.ActionLabels{Add: []config.LabelEntry{{Name: "ok"}}}},
 		},
 	}, log)
 
@@ -354,7 +354,7 @@ func TestGitLabFactory_Build_creates_label_handler(t *testing.T) {
 		Auth:    &config.GitLabAuth{SecretFile: tokenFile},
 		BaseURL: testGitLabBaseURL,
 		Actions: []config.Action{
-			{Name: "label", Type: config.ActionTypeLabel, Enabled: true, Labels: &config.ActionLabels{Add: []string{"ok"}}},
+			{Name: "label", Type: config.ActionTypeLabel, Enabled: true, Labels: &config.ActionLabels{Add: []config.LabelEntry{{Name: "ok"}}}},
 		},
 	}, log)
 
@@ -717,7 +717,7 @@ func TestAzureFactory_Build_creates_label_handler(t *testing.T) {
 		BaseURL:    testAzureBaseURL,
 		Genre:      "ci",
 		Actions: []config.Action{
-			{Name: "label", Type: config.ActionTypeLabel, Enabled: true, Labels: &config.ActionLabels{Add: []string{"ok"}}},
+			{Name: "label", Type: config.ActionTypeLabel, Enabled: true, Labels: &config.ActionLabels{Add: []config.LabelEntry{{Name: "ok"}}}},
 		},
 	}, log)
 
@@ -813,7 +813,7 @@ func TestGiteaFactory_Build_creates_handler_for_each_action_type(t *testing.T) {
 			a.Template = testTemplate
 		}},
 		{"label", config.ActionTypeLabel, func(a *config.Action) {
-			a.Labels = &config.ActionLabels{Add: []string{"ok"}, Remove: []string{"fail"}}
+			a.Labels = &config.ActionLabels{Add: []config.LabelEntry{{Name: "ok"}}, Remove: []config.LabelEntry{{Name: "fail"}}}
 		}},
 	}
 

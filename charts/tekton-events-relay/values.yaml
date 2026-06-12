@@ -875,6 +875,42 @@ config:
         headers:
           X-Source: "tekton-events-relay"
 
+    # -------------------------------------------------------------------------
+    # Email (SMTP)
+    # -------------------------------------------------------------------------
+    # -- SMTP email notifier instances. The most universal channel: any relay
+    # (corporate SMTP, SES, Mailgun, in-cluster Postfix) works.
+    email:
+      # -- Unique identifier for this email instance
+      - name: default
+        # -- Enable or disable this email notifier instance
+        enabled: false
+        # -- SMTP server hostname
+        host: "smtp.example.com"
+        # -- SMTP port (587 STARTTLS, 465 implicit TLS, 25 plain relays)
+        port: 587
+        # -- Connection security: starttls (default), tls or none.
+        # NOTE: with "none", AUTH is only attempted against localhost relays.
+        encryption: starttls
+        # SMTP credentials. Omit auth entirely for unauthenticated relays.
+        # Password comes from the mounted secret (key: password).
+        # secret_name: email-default-credentials
+        # username: ci@example.com
+        # -- Sender address
+        from: "tekton@example.com"
+        # -- Recipient list
+        to:
+          - "platform-team@example.com"
+        # -- Subject Go template (CR/LF stripped to prevent header injection)
+        subject: "[tekton] {{ if .PipelineName }}{{ .PipelineName }}{{ else }}{{ .RunName }}{{ end }} — {{ .State }}"
+        # -- Body Go template (omit for a readable plain-text default)
+        # template: |
+        #   Pipeline {{ .State }}: {{ .PipelineName }}
+        # -- Send body as text/html instead of text/plain
+        html: false
+        # -- CEL expression to filter which events are emailed
+        when: 'event.Resource == "pipelinerun" && stateIn("failure", "error")'
+
 # Secret mounting is automatic based on secret_name in each provider instance
 # Secrets are mounted as volumes at /etc/secrets/{provider}/{instance}/{key}
 #
@@ -894,6 +930,7 @@ config:
 #   pagerduty: integration_key
 #   datadog: api_key
 #   webhook: url_secret_name (+ optional auth: token_file_secret_name, username_file_secret_name, etc.)
+#   email: password
 
 # Monitoring configuration
 monitoring:

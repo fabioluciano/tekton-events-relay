@@ -211,7 +211,21 @@ spec:
               readOnly: true
             {{- end }}
             {{- end }}
-            {{- range $inst := .Values.config.notifiers.sentry }}
+            {{- range $inst := .Values.config.notifiers.email }}
+            {{- if and $inst.enabled $inst.secret_name }}
+            - mountPath: /etc/secrets/email/{{ $inst.name }}
+              name: email-{{ $inst.name }}-secret
+              readOnly: true
+            {{- end }}
+            {{- end }}
+            {{- range $inst := .Values.config.notifiers.email }}
+        {{- if and $inst.enabled $inst.secret_name }}
+        - name: email-{{ $inst.name }}-secret
+          secret:
+            secretName: {{ $inst.secret_name }}
+        {{- end }}
+        {{- end }}
+        {{- range $inst := .Values.config.notifiers.sentry }}
             {{- if and $inst.enabled $inst.secret_name }}
             - mountPath: /etc/secrets/sentry/{{ $inst.name }}
               name: sentry-{{ $inst.name }}-secret

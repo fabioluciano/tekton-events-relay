@@ -635,6 +635,47 @@ data:
         {{- end }}
       {{- end }}
 
+      {{- if .Values.config.notifiers.email }}
+      email:
+        {{- range .Values.config.notifiers.email }}
+        - name: {{ .name }}
+          enabled: {{ .enabled }}
+          host: {{ .host | quote }}
+          {{- if .port }}
+          port: {{ .port }}
+          {{- end }}
+          {{- if .encryption }}
+          encryption: {{ .encryption | quote }}
+          {{- end }}
+          {{- if and .secret_name .username }}
+          auth:
+            username: {{ .username | quote }}
+            password_file: "/etc/secrets/email/{{ .name }}/password"
+          {{- end }}
+          from: {{ .from | quote }}
+          to:
+            {{- range .to }}
+            - {{ . | quote }}
+            {{- end }}
+          {{- if .subject }}
+          subject: {{ .subject | quote }}
+          {{- end }}
+          {{- if .html }}
+          html: {{ .html }}
+          {{- end }}
+          {{- if .insecure_skip_verify }}
+          insecure_skip_verify: {{ .insecure_skip_verify }}
+          {{- end }}
+          {{- if .when }}
+          when: {{ .when | quote }}
+          {{- end }}
+          {{- if .template }}
+          template: |
+{{ .template | nindent 12 }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+
       {{- if .Values.config.notifiers.webhook }}
       webhook:
         {{- range .Values.config.notifiers.webhook }}

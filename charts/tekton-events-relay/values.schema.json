@@ -1025,6 +1025,90 @@
                   "name"
                 ]
               }
+            },
+            "email": {
+              "type": "array",
+              "description": "SMTP email notifier instances. Password is mounted from secret_name (key: password).",
+              "default": [],
+              "items": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "Unique identifier for this email instance"
+                  },
+                  "enabled": {
+                    "type": "boolean",
+                    "description": "Enable or disable this email notifier instance",
+                    "default": false
+                  },
+                  "host": {
+                    "type": "string",
+                    "description": "SMTP server hostname"
+                  },
+                  "port": {
+                    "type": "integer",
+                    "description": "SMTP port (587 STARTTLS, 465 implicit TLS, 25 plain)",
+                    "default": 587,
+                    "minimum": 1,
+                    "maximum": 65535
+                  },
+                  "encryption": {
+                    "type": "string",
+                    "enum": [
+                      "starttls",
+                      "tls",
+                      "none"
+                    ],
+                    "description": "Connection security",
+                    "default": "starttls"
+                  },
+                  "secret_name": {
+                    "type": "string",
+                    "description": "Kubernetes secret with the SMTP password (key: password)"
+                  },
+                  "username": {
+                    "type": "string",
+                    "description": "SMTP username (requires secret_name)"
+                  },
+                  "from": {
+                    "type": "string",
+                    "description": "Sender address"
+                  },
+                  "to": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Recipient list"
+                  },
+                  "subject": {
+                    "type": "string",
+                    "description": "Subject Go template (CR/LF stripped)"
+                  },
+                  "template": {
+                    "type": "string",
+                    "description": "Body Go template; plain-text default when omitted"
+                  },
+                  "html": {
+                    "type": "boolean",
+                    "description": "Send body as text/html",
+                    "default": false
+                  },
+                  "insecure_skip_verify": {
+                    "type": "boolean",
+                    "description": "Skip TLS verification (self-hosted relays)",
+                    "default": false
+                  },
+                  "when": {
+                    "type": "string",
+                    "description": "CEL expression filtering which events are emailed"
+                  }
+                }
+              }
             }
           }
         },
@@ -1551,7 +1635,9 @@
                         "description": "Hex color without # (6 chars). Empty = provider default."
                       }
                     },
-                    "required": ["name"]
+                    "required": [
+                      "name"
+                    ]
                   }
                 ]
               },
@@ -1579,7 +1665,9 @@
                         "description": "Color field ignored on remove operations"
                       }
                     },
-                    "required": ["name"]
+                    "required": [
+                      "name"
+                    ]
                   }
                 ]
               },
@@ -2096,7 +2184,9 @@
                             "description": "Hex color without # (6 chars). Empty = provider default."
                           }
                         },
-                        "required": ["name"]
+                        "required": [
+                          "name"
+                        ]
                       }
                     ]
                   },
@@ -2125,7 +2215,9 @@
                             "description": "Hex color without # (6 chars). Empty = provider default."
                           }
                         },
-                        "required": ["name"]
+                        "required": [
+                          "name"
+                        ]
                       }
                     ]
                   },
@@ -2173,7 +2265,9 @@
                             "description": "Hex color without # (6 chars). Empty = provider default."
                           }
                         },
-                        "required": ["name"]
+                        "required": [
+                          "name"
+                        ]
                       }
                     ]
                   },
@@ -2202,7 +2296,9 @@
                             "description": "Hex color without # (6 chars). Empty = provider default."
                           }
                         },
-                        "required": ["name"]
+                        "required": [
+                          "name"
+                        ]
                       }
                     ]
                   },
@@ -2250,7 +2346,9 @@
                             "description": "Hex color without # (6 chars). Empty = provider default."
                           }
                         },
-                        "required": ["name"]
+                        "required": [
+                          "name"
+                        ]
                       }
                     ]
                   },
@@ -2279,7 +2377,9 @@
                             "description": "Hex color without # (6 chars). Empty = provider default."
                           }
                         },
-                        "required": ["name"]
+                        "required": [
+                          "name"
+                        ]
                       }
                     ]
                   },

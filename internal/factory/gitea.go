@@ -66,8 +66,6 @@ func (f *GiteaFactory) buildHandler(inst config.GiteaInstance, action config.Act
 		return gitea.NewLabelHandler(gitea.LabelConfig{
 			Token:              token,
 			BaseURL:            inst.BaseURL,
-			SuccessLabel:       action.SuccessLabel,
-			FailureLabel:       action.FailureLabel,
 			Labels:             labelSet(action),
 			InsecureSkipVerify: inst.InsecureSkipVerify,
 			Log:                log,

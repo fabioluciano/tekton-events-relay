@@ -169,12 +169,6 @@ data:
               template: |
 {{ .template | nindent 16 }}
               {{- end }}
-              {{- if .success_label }}
-              success_label: {{ .success_label | quote }}
-              {{- end }}
-              {{- if .failure_label }}
-              failure_label: {{ .failure_label | quote }}
-              {{- end }}
               {{- if .labels }}
               labels:
                 {{- if .labels.add }}
@@ -236,12 +230,6 @@ data:
               {{- end }}
               {{- if .context_per_task }}
               context_per_task: true
-              {{- end }}
-              {{- if .success_label }}
-              success_label: {{ .success_label | quote }}
-              {{- end }}
-              {{- if .failure_label }}
-              failure_label: {{ .failure_label | quote }}
               {{- end }}
               {{- if .labels }}
               labels:
@@ -349,12 +337,6 @@ data:
               {{- if .context_per_task }}
               context_per_task: true
               {{- end }}
-              {{- if .success_label }}
-              success_label: {{ .success_label | quote }}
-              {{- end }}
-              {{- if .failure_label }}
-              failure_label: {{ .failure_label | quote }}
-              {{- end }}
               {{- if .labels }}
               labels:
                 {{- if .labels.add }}
@@ -417,12 +399,6 @@ data:
               {{- if .template }}
               template: |
 {{ .template | nindent 16 }}
-              {{- end }}
-              {{- if .success_label }}
-              success_label: {{ .success_label | quote }}
-              {{- end }}
-              {{- if .failure_label }}
-              failure_label: {{ .failure_label | quote }}
               {{- end }}
               {{- if .labels }}
               labels:

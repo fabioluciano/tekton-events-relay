@@ -8,13 +8,19 @@ import (
 
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
+	"github.com/fabioluciano/tekton-events-relay/internal/notifier/scm"
+)
+
+const (
+	testToken   = "token"
+	testBaseURL = "https://dev.azure.example.com"
 )
 
 func newTestCommentHandler(t *testing.T) notifier.ActionHandler {
 	t.Helper()
 	h, err := NewCommentHandler(CommentConfig{
-		Token:    "token",
-		BaseURL:  "https://dev.azure.example.com",
+		Token:    testToken,
+		BaseURL:  testBaseURL,
 		Genre:    "tekton",
 		Template: "Run {{.RunName}}: {{.State}}",
 		Log:      zap.NewNop(),
@@ -67,8 +73,8 @@ func TestCommentHandler_SkipsWrongProviderAndMissingFields(t *testing.T) {
 
 func TestCommentHandler_InvalidTemplateRejected(t *testing.T) {
 	_, err := NewCommentHandler(CommentConfig{
-		Token:    "token",
-		BaseURL:  "https://dev.azure.example.com",
+		Token:    testToken,
+		BaseURL:  testBaseURL,
 		Template: "{{.Broken",
 		Log:      zap.NewNop(),
 	})
@@ -79,8 +85,8 @@ func TestCommentHandler_InvalidTemplateRejected(t *testing.T) {
 
 func TestLabelHandler_NameAndType(t *testing.T) {
 	h := NewLabelHandler(LabelConfig{
-		Token: "token", BaseURL: "https://dev.azure.example.com",
-		SuccessLabel: "ok", FailureLabel: "bad", Log: zap.NewNop(),
+		Token: testToken, BaseURL: testBaseURL,
+		Labels: scm.LabelSet{Add: []string{"ok"}, Remove: []string{"bad"}}, Log: zap.NewNop(),
 	})
 	if h.Name() != "azure-devops" {
 		t.Errorf("Name = %q, want azure-devops", h.Name())
@@ -92,8 +98,8 @@ func TestLabelHandler_NameAndType(t *testing.T) {
 
 func TestLabelHandler_SkipsWrongProviderAndMissingFields(t *testing.T) {
 	h := NewLabelHandler(LabelConfig{
-		Token: "token", BaseURL: "https://dev.azure.example.com",
-		SuccessLabel: "ok", FailureLabel: "bad", Log: zap.NewNop(),
+		Token: testToken, BaseURL: testBaseURL,
+		Labels: scm.LabelSet{Add: []string{"ok"}, Remove: []string{"bad"}}, Log: zap.NewNop(),
 	})
 	pr := 7
 
@@ -109,11 +115,13 @@ func TestLabelHandler_SkipsWrongProviderAndMissingFields(t *testing.T) {
 		t.Fatalf("Handle should skip missing PR number, got: %v", err)
 	}
 
-	// Non-terminal state has no label configured: must skip silently.
+	// No label effect declared: must skip silently without any API call.
+	empty := NewLabelHandler(LabelConfig{
+		Token: testToken, BaseURL: testBaseURL, Log: zap.NewNop(),
+	})
 	e = azureEvent()
 	e.PRNumber = &pr
-	e.State = domain.StateRunning
-	if err := h.Handle(context.Background(), e); err != nil {
-		t.Fatalf("Handle should skip state without label, got: %v", err)
+	if err := empty.Handle(context.Background(), e); err != nil {
+		t.Fatalf("Handle should skip empty label set, got: %v", err)
 	}
 }

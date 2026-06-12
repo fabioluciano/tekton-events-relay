@@ -17,8 +17,8 @@ type LabelSet struct {
 	Remove []string
 }
 
-// Empty reports whether no add/remove effect is declared (legacy
-// success_label/failure_label behavior applies).
+// Empty reports whether no add/remove effect is declared (the action
+// is a no-op).
 func (s LabelSet) Empty() bool { return len(s.Add) == 0 && len(s.Remove) == 0 }
 
 // Render evaluates the template entries against the event, returning the

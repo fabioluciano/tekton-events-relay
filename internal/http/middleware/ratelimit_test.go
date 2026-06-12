@@ -7,7 +7,7 @@ import (
 )
 
 func TestRateLimitMiddleware_WithinLimit(t *testing.T) {
-	handler := RateLimitMiddleware(10, 5)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	handler := NewRateLimiter(10, 5).Middleware()(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
@@ -24,7 +24,7 @@ func TestRateLimitMiddleware_WithinLimit(t *testing.T) {
 }
 
 func TestRateLimitMiddleware_ExceedsLimit(t *testing.T) {
-	handler := RateLimitMiddleware(1, 2)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	handler := NewRateLimiter(1, 2).Middleware()(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
@@ -47,7 +47,7 @@ func TestRateLimitMiddleware_ExceedsLimit(t *testing.T) {
 }
 
 func TestRateLimitMiddleware_DifferentSources(t *testing.T) {
-	handler := RateLimitMiddleware(1, 1)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	handler := NewRateLimiter(1, 1).Middleware()(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
@@ -67,7 +67,7 @@ func TestRateLimitMiddleware_DifferentSources(t *testing.T) {
 }
 
 func TestRateLimitMiddleware_FallbackToIP(t *testing.T) {
-	handler := RateLimitMiddleware(1, 1)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	handler := NewRateLimiter(1, 1).Middleware()(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 

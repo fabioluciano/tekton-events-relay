@@ -233,20 +233,13 @@ type Action struct {
 	// For large templates, consider storing the template content in a ConfigMap and mounting it as a volume.
 	Template string `yaml:"template,omitempty"`
 
-	// Label action fields (legacy: state-switched single label).
-	//
-	// Deprecated: prefer the Labels block with explicit add/remove lists.
-	SuccessLabel string `yaml:"success_label,omitempty"`
-	FailureLabel string `yaml:"failure_label,omitempty"`
-
 	// ContextPerTask (commit_status only): TaskRun events post their status
 	// under "<context>/<task>" instead of the shared context, yielding one
 	// independent check per task.
 	ContextPerTask bool `yaml:"context_per_task,omitempty"`
 
 	// Labels declares the label effect (add/remove lists, Go-templated).
-	// The action's `when` expression is the only execution gate. When set,
-	// it replaces the legacy success_label/failure_label behavior.
+	// The action's `when` expression is the only execution gate.
 	Labels *ActionLabels `yaml:"labels,omitempty"`
 
 	// Filter

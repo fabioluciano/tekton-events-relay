@@ -15,19 +15,15 @@ import (
 
 // LabelHandler applies labels to GitHub issues and pull requests.
 type LabelHandler struct {
-	client       *Client
-	successLabel string
-	failureLabel string
-	labels       scm.LabelSet
-	log          *zap.Logger
+	client *Client
+	labels scm.LabelSet
+	log    *zap.Logger
 }
 
 // LabelConfig configures the label handler.
 type LabelConfig struct {
 	Token              string
 	BaseURL            string
-	SuccessLabel       string // Deprecated: use Labels
-	FailureLabel       string // Deprecated: use Labels
 	Labels             scm.LabelSet
 	InsecureSkipVerify bool
 }
@@ -38,11 +34,9 @@ func NewLabelHandler(cfg LabelConfig, log *zap.Logger) notifier.ActionHandler {
 		log = zap.NewNop()
 	}
 	return &LabelHandler{
-		client:       NewClient(cfg.Token, cfg.BaseURL, cfg.InsecureSkipVerify, log, false),
-		successLabel: cfg.SuccessLabel,
-		failureLabel: cfg.FailureLabel,
-		labels:       cfg.Labels,
-		log:          log,
+		client: NewClient(cfg.Token, cfg.BaseURL, cfg.InsecureSkipVerify, log, false),
+		labels: cfg.Labels,
+		log:    log,
 	}
 }
 
@@ -72,35 +66,10 @@ func (h *LabelHandler) Handle(ctx context.Context, e domain.Event) error {
 		return nil // No issue or PR number - normal for TaskRuns not triggered by issue/PR
 	}
 
-	if !h.labels.Empty() {
-		return h.applyLabelSet(ctx, e, issueNumber)
+	if h.labels.Empty() {
+		return nil // nothing declared — config validation rejects this upfront
 	}
-
-	var label string
-	switch e.State {
-	case domain.StateSuccess:
-		if err := scm.Validate(providerGitHub, "label_name", h.successLabel); err != nil {
-			return err
-		}
-		label = h.successLabel
-	case domain.StateFailure:
-		if err := scm.Validate(providerGitHub, "label_name", h.failureLabel); err != nil {
-			return err
-		}
-		label = h.failureLabel
-	default:
-		return nil // State not final (pending/running) - normal, will trigger on completion
-	}
-
-	if label == "" {
-		return nil // No label configured for this state
-	}
-
-	url := fmt.Sprintf("%s/repos/%s/%s/issues/%d/labels",
-		h.client.baseURL, e.Repo.Owner, e.Repo.Name, issueNumber)
-
-	payload := map[string][]string{"labels": {label}}
-	return h.client.Do(ctx, "POST", url, payload)
+	return h.applyLabelSet(ctx, e, issueNumber)
 }
 
 // applyLabelSet executes the declarative add/remove effect: removals run

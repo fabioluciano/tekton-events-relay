@@ -15,11 +15,9 @@ import (
 
 // LabelHandler applies labels to Azure DevOps pull requests.
 type LabelHandler struct {
-	client       *Client
-	successLabel string
-	failureLabel string
-	labels       scm.LabelSet
-	log          *zap.Logger
+	client *Client
+	labels scm.LabelSet
+	log    *zap.Logger
 }
 
 // LabelConfig configures the label handler.
@@ -27,8 +25,6 @@ type LabelConfig struct {
 	Token              string
 	BaseURL            string
 	Genre              string
-	SuccessLabel       string // Deprecated: use Labels
-	FailureLabel       string // Deprecated: use Labels
 	Labels             scm.LabelSet
 	InsecureSkipVerify bool
 	Log                *zap.Logger
@@ -41,11 +37,9 @@ func NewLabelHandler(cfg LabelConfig) notifier.ActionHandler {
 		log = zap.NewNop()
 	}
 	return &LabelHandler{
-		client:       NewClient(cfg.Token, cfg.BaseURL, cfg.Genre, cfg.InsecureSkipVerify, false, cfg.Log),
-		successLabel: cfg.SuccessLabel,
-		failureLabel: cfg.FailureLabel,
-		labels:       cfg.Labels,
-		log:          log,
+		client: NewClient(cfg.Token, cfg.BaseURL, cfg.Genre, cfg.InsecureSkipVerify, false, cfg.Log),
+		labels: cfg.Labels,
+		log:    log,
 	}
 }
 
@@ -65,46 +59,10 @@ func (h *LabelHandler) Handle(ctx context.Context, e domain.Event) error {
 		return nil
 	}
 
-	if !h.labels.Empty() {
-		return h.applyLabelSet(ctx, e)
+	if h.labels.Empty() {
+		return nil // nothing declared — config validation rejects this upfront
 	}
-
-	var label string
-	switch e.State {
-	case domain.StateSuccess:
-		label = h.successLabel
-	case domain.StateFailure:
-		label = h.failureLabel
-	default:
-		return nil
-	}
-
-	if label == "" {
-		return nil
-	}
-
-	if err := scm.Validate(providerAzure, "label_name", label); err != nil {
-		return err
-	}
-
-	gitClient, err := git.NewClient(ctx, h.client.conn)
-	if err != nil {
-		return err
-	}
-
-	prID := *e.PRNumber
-	labelRef := core.WebApiCreateTagRequestData{
-		Name: &label,
-	}
-
-	_, err = gitClient.CreatePullRequestLabel(ctx, git.CreatePullRequestLabelArgs{
-		Label:         &labelRef,
-		RepositoryId:  &e.Repo.Name,
-		PullRequestId: &prID,
-		Project:       &e.Repo.Project,
-	})
-
-	return err
+	return h.applyLabelSet(ctx, e)
 }
 
 // applyLabelSet executes the declarative add/remove effect on the PR.

@@ -81,7 +81,7 @@ func TestLabelHandler_LegacyPathPreserved(t *testing.T) {
 
 	h := NewLabelHandler(LabelConfig{
 		Token: testHandlerToken, BaseURL: srv.URL,
-		SuccessLabel: "ok", FailureLabel: "bad",
+		Labels: scm.LabelSet{Add: []string{"ok"}},
 	}, zap.NewNop())
 
 	pr := 5

@@ -112,13 +112,13 @@ func (c *Client) GH() *gh.Client {
 }
 
 // Do performs an HTTP request with GitHub authentication and JSON encoding.
-// This method preserves backward compatibility with handler code that constructs URLs manually.
+// Handlers use it to call endpoints not covered by the typed go-github client.
 func (c *Client) Do(ctx context.Context, method, url string, payload any) error {
 	return c.DoWithResponse(ctx, method, url, payload, nil)
 }
 
 // DoWithResponse performs an HTTP request and decodes the JSON response into result.
-// This method preserves backward compatibility with handler code that constructs URLs manually.
+// Handlers use it to call endpoints not covered by the typed go-github client.
 func (c *Client) DoWithResponse(ctx context.Context, method, url string, payload any, result any) error {
 	var body bytes.Buffer
 	if payload != nil {

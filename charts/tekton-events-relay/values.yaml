@@ -457,10 +457,12 @@ config:
             # -- Enable or disable this SCM provider instance
             enabled: false
             when: ""
-            # -- Label to add when pipeline succeeds
-            success_label: "ci:passed"
-            # -- Label to add when pipeline fails
-            failure_label: "ci:failed"
+            # -- Declarative label effect: add/remove lists, Go-templated against the event
+            labels:
+              add:
+                - '{{ if eq .State "success" }}ci:passed{{ else }}ci:failed{{ end }}'
+              remove:
+                - '{{ if eq .State "success" }}ci:failed{{ else }}ci:passed{{ end }}'
 
     # -- GitLab SCM provider configuration
     gitlab:
@@ -515,10 +517,12 @@ config:
             # -- Enable or disable this SCM provider instance
             enabled: false
             when: ""
-            # -- Label to add when pipeline succeeds
-            success_label: "pipeline::success"
-            # -- Label to add when pipeline fails
-            failure_label: "pipeline::failed"
+            # -- Declarative label effect: add/remove lists, Go-templated against the event
+            labels:
+              add:
+                - '{{ if eq .State "success" }}pipeline::success{{ else }}pipeline::failed{{ end }}'
+              remove:
+                - '{{ if eq .State "success" }}pipeline::failed{{ else }}pipeline::success{{ end }}'
       - name: server
         # -- Deployment model: 'saas' for gitlab.com, 'self-managed' for self-hosted
         variant: self-managed
@@ -568,10 +572,12 @@ config:
             # -- Enable or disable this SCM provider instance
             enabled: false
             when: ""
-            # -- Label to add when pipeline succeeds
-            success_label: "pipeline::success"
-            # -- Label to add when pipeline fails
-            failure_label: "pipeline::failed"
+            # -- Declarative label effect: add/remove lists, Go-templated against the event
+            labels:
+              add:
+                - '{{ if eq .State "success" }}pipeline::success{{ else }}pipeline::failed{{ end }}'
+              remove:
+                - '{{ if eq .State "success" }}pipeline::failed{{ else }}pipeline::success{{ end }}'
 
     # -- Bitbucket SCM provider configuration
     bitbucket:
@@ -642,10 +648,12 @@ config:
             # -- Enable or disable this SCM provider instance
             enabled: false
             when: ""
-            # -- Label to add when pipeline succeeds
-            success_label: "build-passed"
-            # -- Label to add when pipeline fails
-            failure_label: "build-failed"
+            # -- Declarative label effect: add/remove lists, Go-templated against the event
+            labels:
+              add:
+                - '{{ if eq .State "success" }}build-passed{{ else }}build-failed{{ end }}'
+              remove:
+                - '{{ if eq .State "success" }}build-failed{{ else }}build-passed{{ end }}'
 
     # -- Gitea SCM provider configuration
     gitea:
@@ -696,10 +704,12 @@ config:
             # -- Enable or disable this SCM provider instance
             enabled: false
             when: ""
-            # -- Label to add when pipeline succeeds
-            success_label: "ci:passed"
-            # -- Label to add when pipeline fails
-            failure_label: "ci:failed"
+            # -- Declarative label effect: add/remove lists, Go-templated against the event
+            labels:
+              add:
+                - '{{ if eq .State "success" }}ci:passed{{ else }}ci:failed{{ end }}'
+              remove:
+                - '{{ if eq .State "success" }}ci:failed{{ else }}ci:passed{{ end }}'
 
     # -- SourceHut SCM provider configuration
     sourcehut:

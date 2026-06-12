@@ -85,7 +85,7 @@ func TestIntegration_FullPipeline_TaskRun(t *testing.T) {
 	chain := Build(
 		NewValidator(),
 		NewEventFilter(true, false, false, false, false), // Allow TaskRun only
-		NewDeduper(100, nil),
+		newMemDeduper(100, nil),
 		NewEnricher(""),
 		NewDispatcher(reg, testLogger(), nil, 10),
 	)
@@ -163,7 +163,7 @@ func TestIntegration_FilteredByDeny(t *testing.T) {
 	chain := Build(
 		NewValidator(),
 		NewEventFilter(true, false, false, false, false),
-		NewDeduper(100, nil),
+		newMemDeduper(100, nil),
 		NewEnricher(""),
 		NewDispatcher(reg, testLogger(), nil, 10),
 	)
@@ -227,7 +227,7 @@ func TestIntegration_FilteredByCEL(t *testing.T) {
 	chain := Build(
 		NewValidator(),
 		NewEventFilter(true, false, false, false, false),
-		NewDeduper(100, nil),
+		newMemDeduper(100, nil),
 		NewEnricher(""),
 		NewDispatcher(reg, testLogger(), nil, 10),
 	)
@@ -299,7 +299,7 @@ func TestIntegration_BothFiltersPass(t *testing.T) {
 	chain := Build(
 		NewValidator(),
 		NewEventFilter(true, false, false, false, false),
-		NewDeduper(100, nil),
+		newMemDeduper(100, nil),
 		NewEnricher(""),
 		NewDispatcher(reg, testLogger(), nil, 10),
 	)
@@ -372,7 +372,7 @@ func TestIntegration_PipelineRun(t *testing.T) {
 	chain := Build(
 		NewValidator(),
 		NewEventFilter(false, true, false, false, false), // Allow PipelineRun only
-		NewDeduper(100, nil),
+		newMemDeduper(100, nil),
 		NewEnricher(""),
 		NewDispatcher(reg, testLogger(), nil, 10),
 	)
@@ -444,7 +444,7 @@ func TestIntegration_CustomRun(t *testing.T) {
 	chain := Build(
 		NewValidator(),
 		NewEventFilter(false, false, true, false, false), // Allow CustomRun only
-		NewDeduper(100, nil),
+		newMemDeduper(100, nil),
 		NewEnricher(""),
 		NewDispatcher(reg, testLogger(), nil, 10),
 	)
@@ -515,7 +515,7 @@ func TestIntegration_EventListener(t *testing.T) {
 	chain := Build(
 		NewValidator(),
 		NewEventFilter(false, false, false, true, false), // Allow EventListener only
-		NewDeduper(100, nil),
+		newMemDeduper(100, nil),
 		NewEnricher(""),
 		NewDispatcher(reg, testLogger(), nil, 10),
 	)

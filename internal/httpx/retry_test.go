@@ -22,7 +22,7 @@ func TestDoWithRetry_Success(t *testing.T) {
 	defer server.Close()
 
 	req, _ := http.NewRequestWithContext(context.Background(), "GET", server.URL, nil)
-	resp, err := DoWithRetry(nil, req, 3, 10*time.Millisecond)
+	resp, err := DoWithRetryPolicy(nil, req, RetryPolicy{MaxAttempts: 3, InitialBackoff: 10 * time.Millisecond, MaxBackoff: 5 * time.Second})
 	if err != nil {
 		t.Fatalf("expected success, got error: %v", err)
 	}
@@ -45,7 +45,7 @@ func TestDoWithRetry_TransientRetry(t *testing.T) {
 	defer server.Close()
 
 	req, _ := http.NewRequestWithContext(context.Background(), "GET", server.URL, nil)
-	resp, err := DoWithRetry(nil, req, 5, 10*time.Millisecond)
+	resp, err := DoWithRetryPolicy(nil, req, RetryPolicy{MaxAttempts: 5, InitialBackoff: 10 * time.Millisecond, MaxBackoff: 5 * time.Second})
 	if err != nil {
 		t.Fatalf("expected success after retries, got error: %v", err)
 	}
@@ -63,7 +63,7 @@ func TestDoWithRetry_MaxAttemptsExceeded(t *testing.T) {
 	defer server.Close()
 
 	req, _ := http.NewRequestWithContext(context.Background(), "GET", server.URL, nil)
-	resp, err := DoWithRetry(nil, req, 2, 10*time.Millisecond)
+	resp, err := DoWithRetryPolicy(nil, req, RetryPolicy{MaxAttempts: 2, InitialBackoff: 10 * time.Millisecond, MaxBackoff: 5 * time.Second})
 	if resp != nil {
 		defer func() { _ = resp.Body.Close() }()
 	}
@@ -90,7 +90,7 @@ func TestDoWithRetry_WithBody(t *testing.T) {
 
 	bodyContent := "test payload"
 	req, _ := http.NewRequestWithContext(context.Background(), "POST", server.URL, bytes.NewReader([]byte(bodyContent)))
-	resp, err := DoWithRetry(nil, req, 3, 10*time.Millisecond)
+	resp, err := DoWithRetryPolicy(nil, req, RetryPolicy{MaxAttempts: 3, InitialBackoff: 10 * time.Millisecond, MaxBackoff: 5 * time.Second})
 	if err != nil {
 		t.Fatalf("expected success, got error: %v", err)
 	}
@@ -114,7 +114,7 @@ func TestDoWithRetry_CustomClient(t *testing.T) {
 
 	customClient := &http.Client{Timeout: 5 * time.Second}
 	req, _ := http.NewRequestWithContext(context.Background(), "GET", server.URL, nil)
-	resp, err := DoWithRetry(customClient, req, 1, 10*time.Millisecond)
+	resp, err := DoWithRetryPolicy(customClient, req, RetryPolicy{MaxAttempts: 1, InitialBackoff: 10 * time.Millisecond, MaxBackoff: 5 * time.Second})
 	if err != nil {
 		t.Errorf("expected success with custom client, got error: %v", err)
 	}
@@ -125,7 +125,7 @@ func TestDoWithRetry_CustomClient(t *testing.T) {
 
 func TestDoWithRetry_NetworkError(t *testing.T) {
 	req, _ := http.NewRequestWithContext(context.Background(), "GET", "http://localhost", nil)
-	resp, err := DoWithRetry(&http.Client{Transport: &errorTransport{}}, req, 2, 10*time.Millisecond)
+	resp, err := DoWithRetryPolicy(&http.Client{Transport: &errorTransport{}}, req, RetryPolicy{MaxAttempts: 2, InitialBackoff: 10 * time.Millisecond, MaxBackoff: 5 * time.Second})
 	if resp != nil {
 		defer func() { _ = resp.Body.Close() }()
 	}
@@ -149,7 +149,7 @@ func TestDoWithRetry_ReturnsRetryableAfterMaxAttempts(t *testing.T) {
 	defer server.Close()
 
 	req, _ := http.NewRequestWithContext(context.Background(), "GET", server.URL, nil)
-	resp, err := DoWithRetry(nil, req, 3, 10*time.Millisecond)
+	resp, err := DoWithRetryPolicy(nil, req, RetryPolicy{MaxAttempts: 3, InitialBackoff: 10 * time.Millisecond, MaxBackoff: 5 * time.Second})
 	if resp != nil {
 		defer func() { _ = resp.Body.Close() }()
 	}
@@ -185,7 +185,7 @@ func TestDoWithRetry_ContextCancellation(t *testing.T) {
 		cancel()
 	}()
 
-	resp, err := DoWithRetry(nil, req, 5, 100*time.Millisecond)
+	resp, err := DoWithRetryPolicy(nil, req, RetryPolicy{MaxAttempts: 5, InitialBackoff: 100 * time.Millisecond, MaxBackoff: 5 * time.Second})
 	if resp != nil {
 		defer func() { _ = resp.Body.Close() }()
 	}
@@ -217,7 +217,7 @@ func TestDoWithRetry_ContextCancellationDuringSleep(t *testing.T) {
 		cancel()
 	}()
 
-	resp, err := DoWithRetry(nil, req, 5, 200*time.Millisecond)
+	resp, err := DoWithRetryPolicy(nil, req, RetryPolicy{MaxAttempts: 5, InitialBackoff: 200 * time.Millisecond, MaxBackoff: 5 * time.Second})
 	if resp != nil {
 		defer func() { _ = resp.Body.Close() }()
 	}

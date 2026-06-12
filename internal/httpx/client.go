@@ -5,12 +5,10 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"time"
 
 	"go.uber.org/zap"
@@ -22,9 +20,6 @@ type clientConfig struct {
 	logger             *zap.Logger
 	name               string
 	insecureSkipVerify bool
-	caBundleFile       string
-	clientCertFile     string
-	clientKeyFile      string
 }
 
 // Option configures an HTTP client.
@@ -53,35 +48,8 @@ func WithInsecureSkipVerify() Option {
 	}
 }
 
-// WithCABundle trusts the given PEM bundle (in addition to nothing else):
-// the safe alternative to InsecureSkipVerify for self-signed SCM instances.
-func WithCABundle(path string) Option {
-	return func(c *clientConfig) {
-		c.caBundleFile = path
-	}
-}
-
-// WithClientCertificate presents a client certificate (mTLS) to servers.
-func WithClientCertificate(certFile, keyFile string) Option {
-	return func(c *clientConfig) {
-		c.clientCertFile = certFile
-		c.clientKeyFile = keyFile
-	}
-}
-
 // NewClient creates a new HTTP client with connection pooling and optional configuration.
 func NewClient(opts ...Option) *http.Client {
-	client, err := NewClientErr(opts...)
-	if err != nil {
-		// TLS material problems are configuration errors; surface them on
-		// first use instead of panicking at build time.
-		return &http.Client{Transport: errClientTransport{err: err}}
-	}
-	return client
-}
-
-// NewClientErr is NewClient with explicit error reporting for TLS material.
-func NewClientErr(opts ...Option) (*http.Client, error) {
 	cfg := &clientConfig{
 		timeout: 30 * time.Second,
 	}
@@ -93,39 +61,13 @@ func NewClientErr(opts ...Option) (*http.Client, error) {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.MaxIdleConnsPerHost = 100
 
-	if cfg.insecureSkipVerify || cfg.caBundleFile != "" || cfg.clientCertFile != "" {
+	if cfg.insecureSkipVerify {
 		if transport.TLSClientConfig == nil {
 			transport.TLSClientConfig = &tls.Config{
 				MinVersion: tls.VersionTLS12,
 			}
 		}
-	}
-
-	if cfg.insecureSkipVerify {
 		transport.TLSClientConfig.InsecureSkipVerify = true
-	}
-
-	if cfg.caBundleFile != "" {
-		pem, err := os.ReadFile(cfg.caBundleFile) // #nosec G304 -- path from validated config
-		if err != nil {
-			return nil, fmt.Errorf("read CA bundle: %w", err)
-		}
-		pool, err := x509.SystemCertPool()
-		if err != nil {
-			pool = x509.NewCertPool()
-		}
-		if !pool.AppendCertsFromPEM(pem) {
-			return nil, fmt.Errorf("CA bundle %s contains no valid certificates", cfg.caBundleFile)
-		}
-		transport.TLSClientConfig.RootCAs = pool
-	}
-
-	if cfg.clientCertFile != "" {
-		cert, err := tls.LoadX509KeyPair(cfg.clientCertFile, cfg.clientKeyFile)
-		if err != nil {
-			return nil, fmt.Errorf("load client certificate: %w", err)
-		}
-		transport.TLSClientConfig.Certificates = []tls.Certificate{cert}
 	}
 
 	var finalTransport http.RoundTripper = transport
@@ -141,14 +83,7 @@ func NewClientErr(opts ...Option) (*http.Client, error) {
 	return &http.Client{
 		Timeout:   cfg.timeout,
 		Transport: finalTransport,
-	}, nil
-}
-
-// errClientTransport fails every request with a fixed configuration error.
-type errClientTransport struct{ err error }
-
-func (t errClientTransport) RoundTrip(*http.Request) (*http.Response, error) {
-	return nil, t.err
+	}
 }
 
 // NewJSONRequest builds a request with a JSON-encoded body and content type.

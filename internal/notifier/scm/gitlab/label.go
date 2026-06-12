@@ -2,7 +2,6 @@ package gitlab
 
 import (
 	"context"
-	"fmt"
 
 	gl "gitlab.com/gitlab-org/api/client-go"
 	"go.uber.org/zap"
@@ -14,11 +13,9 @@ import (
 
 // LabelHandler applies labels to GitLab issues and merge requests.
 type LabelHandler struct {
-	client       *Client
-	name         string
-	successLabel string
-	failureLabel string
-	labels       scm.LabelSet
+	client *Client
+	name   string
+	labels scm.LabelSet
 }
 
 // LabelConfig configures the label handler.
@@ -26,8 +23,6 @@ type LabelConfig struct {
 	Token              string
 	BaseURL            string
 	Name               string
-	SuccessLabel       string // Deprecated: use Labels
-	FailureLabel       string // Deprecated: use Labels
 	Labels             scm.LabelSet
 	InsecureSkipVerify bool
 	Log                *zap.Logger
@@ -36,11 +31,9 @@ type LabelConfig struct {
 // NewLabelHandler creates a new GitLab label handler.
 func NewLabelHandler(cfg LabelConfig) notifier.ActionHandler {
 	return &LabelHandler{
-		client:       NewClient(cfg.Token, cfg.BaseURL, cfg.InsecureSkipVerify, false, cfg.Log),
-		name:         cfg.Name,
-		successLabel: cfg.SuccessLabel,
-		failureLabel: cfg.FailureLabel,
-		labels:       cfg.Labels,
+		client: NewClient(cfg.Token, cfg.BaseURL, cfg.InsecureSkipVerify, false, cfg.Log),
+		name:   cfg.Name,
+		labels: cfg.Labels,
 	}
 }
 
@@ -61,44 +54,10 @@ func (h *LabelHandler) Handle(ctx context.Context, e domain.Event) error {
 		return nil //nolint:nilerr // intentional: drop event if project cannot be identified
 	}
 
-	if !h.labels.Empty() {
-		return h.applyLabelSet(ctx, e, projectID)
+	if h.labels.Empty() {
+		return nil // nothing declared — config validation rejects this upfront
 	}
-
-	var label string
-	switch e.State {
-	case domain.StateSuccess:
-		if err := scm.Validate(h.name, "label_name", h.successLabel); err != nil {
-			return fmt.Errorf("validate success label: %w", err)
-		}
-		label = h.successLabel
-	case domain.StateFailure:
-		if err := scm.Validate(h.name, "label_name", h.failureLabel); err != nil {
-			return fmt.Errorf("validate failure label: %w", err)
-		}
-		label = h.failureLabel
-	default:
-		return nil
-	}
-
-	if label == "" {
-		return nil
-	}
-
-	labels := gl.LabelOptions{label}
-
-	switch {
-	case e.IssueNumber != nil:
-		opts := &gl.UpdateIssueOptions{AddLabels: &labels}
-		_, _, err := h.client.gl.Issues.UpdateIssue(projectID, int64(*e.IssueNumber), opts, gl.WithContext(ctx))
-		return err
-	case e.PRNumber != nil:
-		opts := &gl.UpdateMergeRequestOptions{AddLabels: &labels}
-		_, _, err := h.client.gl.MergeRequests.UpdateMergeRequest(projectID, int64(*e.PRNumber), opts, gl.WithContext(ctx))
-		return err
-	default:
-		return nil
-	}
+	return h.applyLabelSet(ctx, e, projectID)
 }
 
 // applyLabelSet executes the declarative add/remove effect in a single

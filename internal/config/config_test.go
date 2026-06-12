@@ -236,8 +236,9 @@ func TestActionConfigUnmarshal(t *testing.T) {
         - name: label
           type: label
           enabled: true
-          success_label: "ci:passed"
-          failure_label: "ci:failed"
+          labels:
+            add: ["ci:passed"]
+            remove: ["ci:failed"]
         - name: commit-status
           type: commit_status
           enabled: true
@@ -269,8 +270,9 @@ func TestActionConfigUnmarshal(t *testing.T) {
         - name: label
           type: label
           enabled: true
-          success_label: "pipeline:success"
-          failure_label: "pipeline:failed"
+          labels:
+            add: ["pipeline:success"]
+            remove: ["pipeline:failed"]
   azure_devops:
     - name: main-instance
       enabled: true
@@ -280,8 +282,9 @@ func TestActionConfigUnmarshal(t *testing.T) {
         - name: label
           type: label
           enabled: true
-          success_label: "build-passed"
-          failure_label: "build-failed"
+          labels:
+            add: ["build-passed"]
+            remove: ["build-failed"]
 `
 
 	tmpDir := t.TempDir()
@@ -321,11 +324,11 @@ func TestActionConfigUnmarshal(t *testing.T) {
 	if !labelAction.Enabled || labelAction.Type != ActionTypeLabel {
 		t.Error("expected enabled GitHub label action")
 	}
-	if labelAction.SuccessLabel != "ci:passed" {
-		t.Errorf("unexpected success label: %s", labelAction.SuccessLabel)
+	if labelAction.Labels == nil || len(labelAction.Labels.Add) != 1 || labelAction.Labels.Add[0] != "ci:passed" {
+		t.Errorf("unexpected labels add list: %+v", labelAction.Labels)
 	}
-	if labelAction.FailureLabel != "ci:failed" {
-		t.Errorf("unexpected failure label: %s", labelAction.FailureLabel)
+	if labelAction.Labels == nil || len(labelAction.Labels.Remove) != 1 || labelAction.Labels.Remove[0] != "ci:failed" {
+		t.Errorf("unexpected labels remove list: %+v", labelAction.Labels)
 	}
 
 	// commit_status action (index 3)

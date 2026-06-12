@@ -88,8 +88,6 @@ func (f *GitHubFactory) buildHandler(inst config.GitHubInstance, action config.A
 		return github.NewLabelHandler(github.LabelConfig{
 			Token:              client.Token(),
 			BaseURL:            client.BaseURL(),
-			SuccessLabel:       action.SuccessLabel,
-			FailureLabel:       action.FailureLabel,
 			Labels:             labelSet(action),
 			InsecureSkipVerify: inst.InsecureSkipVerify,
 		}, log), nil

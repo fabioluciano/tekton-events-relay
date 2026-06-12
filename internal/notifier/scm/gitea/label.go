@@ -14,19 +14,15 @@ import (
 
 // LabelHandler applies labels to Gitea issues and pull requests.
 type LabelHandler struct {
-	client       *Client
-	successLabel string
-	failureLabel string
-	labels       scm.LabelSet
-	log          *zap.Logger
+	client *Client
+	labels scm.LabelSet
+	log    *zap.Logger
 }
 
 // LabelConfig configures the label handler.
 type LabelConfig struct {
 	Token              string
 	BaseURL            string
-	SuccessLabel       string // Deprecated: use Labels
-	FailureLabel       string // Deprecated: use Labels
 	Labels             scm.LabelSet
 	InsecureSkipVerify bool
 	Log                *zap.Logger
@@ -39,11 +35,9 @@ func NewLabelHandler(cfg LabelConfig) notifier.ActionHandler {
 		log = zap.NewNop()
 	}
 	return &LabelHandler{
-		client:       NewClient(cfg.Token, cfg.BaseURL, cfg.InsecureSkipVerify, false, cfg.Log),
-		successLabel: cfg.SuccessLabel,
-		failureLabel: cfg.FailureLabel,
-		labels:       cfg.Labels,
-		log:          log,
+		client: NewClient(cfg.Token, cfg.BaseURL, cfg.InsecureSkipVerify, false, cfg.Log),
+		labels: cfg.Labels,
+		log:    log,
 	}
 }
 
@@ -73,51 +67,10 @@ func (h *LabelHandler) Handle(_ context.Context, e domain.Event) error {
 		return nil
 	}
 
-	if !h.labels.Empty() {
-		return h.applyLabelSet(e, int64(issueNumber))
+	if h.labels.Empty() {
+		return nil // nothing declared — config validation rejects this upfront
 	}
-
-	var label string
-	switch e.State {
-	case domain.StateSuccess:
-		label = h.successLabel
-	case domain.StateFailure:
-		label = h.failureLabel
-	default:
-		return nil
-	}
-
-	if label == "" {
-		return nil
-	}
-
-	if err := scm.Validate(providerGitea, "label_name", label); err != nil {
-		return err
-	}
-
-	// First, list all repo labels to find the ID for the label name
-	labels, _, err := h.client.sdk.ListRepoLabels(e.Repo.Owner, e.Repo.Name, giteaSDK.ListLabelsOptions{})
-	if err != nil {
-		return fmt.Errorf("list repo labels: %w", err)
-	}
-
-	var labelID int64
-	for _, l := range labels {
-		if l.Name == label {
-			labelID = l.ID
-			break
-		}
-	}
-
-	if labelID == 0 {
-		return fmt.Errorf("label %q not found in repository", label)
-	}
-
-	// Add the label by ID
-	_, _, err = h.client.sdk.AddIssueLabels(e.Repo.Owner, e.Repo.Name, int64(issueNumber), giteaSDK.IssueLabelsOption{
-		Labels: []int64{labelID},
-	})
-	return err
+	return h.applyLabelSet(e, int64(issueNumber))
 }
 
 // applyLabelSet executes the declarative add/remove effect. Gitea labels

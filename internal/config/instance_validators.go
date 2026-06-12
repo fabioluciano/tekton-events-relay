@@ -103,6 +103,7 @@ func validateAction(prefix string, action Action) []ValidationError {
 		// Validate action type against known types
 		validTypes := map[ActionType]bool{
 			ActionTypeCommitStatus:      true,
+			ActionTypeCommitComment:     true,
 			ActionTypePRComment:         true,
 			ActionTypeIssueComment:      true,
 			ActionTypeLabel:             true,
@@ -113,9 +114,17 @@ func validateAction(prefix string, action Action) []ValidationError {
 		if !validTypes[action.Type] {
 			errs = append(errs, ValidationError{
 				Path:    prefix + ".type",
-				Message: fmt.Sprintf("invalid action type '%s' (must be one of: commit_status, pr_comment, issue_comment, label, discussion_comment, check_run, deployment_status)", action.Type),
+				Message: fmt.Sprintf("invalid action type '%s' (must be one of: commit_status, commit_comment, pr_comment, issue_comment, label, discussion_comment, check_run, deployment_status)", action.Type),
 			})
 		}
+	}
+
+	// A label action with no effect declared is a configuration mistake.
+	if action.Type == ActionTypeLabel && (action.Labels == nil || (len(action.Labels.Add) == 0 && len(action.Labels.Remove) == 0)) {
+		errs = append(errs, ValidationError{
+			Path:    prefix + ".labels",
+			Message: "label actions require a labels block with at least one add or remove entry",
+		})
 	}
 
 	if action.When != "" {

@@ -2026,13 +2026,24 @@
         {
           "type": "object",
           "properties": {
-            "success_label": {
-              "type": "string",
-              "description": "Label to add when pipeline succeeds (for label actions)"
-            },
-            "failure_label": {
-              "type": "string",
-              "description": "Label to add when pipeline fails (for label actions)"
+            "labels": {
+              "type": "object",
+              "description": "Declarative label effect: add/remove lists, entries support Go templates evaluated against the event",
+              "properties": {
+                "add": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "remove": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "additionalProperties": false
             }
           }
         }
@@ -2046,13 +2057,24 @@
         {
           "type": "object",
           "properties": {
-            "success_label": {
-              "type": "string",
-              "description": "Label to add when pipeline succeeds (for label actions)"
-            },
-            "failure_label": {
-              "type": "string",
-              "description": "Label to add when pipeline fails (for label actions)"
+            "labels": {
+              "type": "object",
+              "description": "Declarative label effect: add/remove lists, entries support Go templates evaluated against the event",
+              "properties": {
+                "add": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "remove": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "additionalProperties": false
             }
           }
         }
@@ -2066,13 +2088,24 @@
         {
           "type": "object",
           "properties": {
-            "success_label": {
-              "type": "string",
-              "description": "Label to add when pipeline succeeds (for label actions)"
-            },
-            "failure_label": {
-              "type": "string",
-              "description": "Label to add when pipeline fails (for label actions)"
+            "labels": {
+              "type": "object",
+              "description": "Declarative label effect: add/remove lists, entries support Go templates evaluated against the event",
+              "properties": {
+                "add": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "remove": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "additionalProperties": false
             }
           }
         }
@@ -2360,13 +2393,24 @@
               {
                 "type": "object",
                 "properties": {
-                  "success_label": {
-                    "type": "string",
-                    "description": "Label to add when pipeline succeeds (for label actions)"
-                  },
-                  "failure_label": {
-                    "type": "string",
-                    "description": "Label to add when pipeline fails (for label actions)"
+                  "labels": {
+                    "type": "object",
+                    "description": "Declarative label effect: add/remove lists, entries support Go templates evaluated against the event",
+                    "properties": {
+                      "add": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "remove": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "additionalProperties": false
                   }
                 }
               }

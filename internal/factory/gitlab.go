@@ -106,8 +106,6 @@ func (f *GitLabFactory) buildHandler(inst config.GitLabInstance, action config.A
 			Token:              token,
 			BaseURL:            inst.BaseURL,
 			Name:               inst.Name,
-			SuccessLabel:       action.SuccessLabel,
-			FailureLabel:       action.FailureLabel,
 			Labels:             labelSet(action),
 			InsecureSkipVerify: inst.InsecureSkipVerify,
 			Log:                log,

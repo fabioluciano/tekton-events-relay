@@ -3,6 +3,8 @@ package github
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"strings"
 
 	"go.uber.org/zap"
 
@@ -102,7 +104,15 @@ func (h *DeploymentStatusHandler) Handle(ctx context.Context, e domain.Event) er
 	}
 
 	if err := h.client.DoWithResponse(ctx, "POST", deploymentURL, deploymentPayload, &deploymentResp); err != nil {
-		return fmt.Errorf("create deployment: %w", err)
+		if isHTTPStatus(err, http.StatusConflict) {
+			existingID, findErr := h.findExistingDeployment(ctx, e.Repo.Owner, e.Repo.Name, e.CommitSHA, environment)
+			if findErr != nil {
+				return fmt.Errorf("create deployment conflict, lookup failed: %w", findErr)
+			}
+			deploymentResp.ID = existingID
+		} else {
+			return fmt.Errorf("create deployment: %w", err)
+		}
 	}
 
 	// Step 2: Create deployment status
@@ -141,4 +151,26 @@ func (h *DeploymentStatusHandler) mapState(state domain.State) string {
 	default:
 		return statusQueued
 	}
+}
+
+// isHTTPStatus checks if an error contains a specific HTTP status code.
+func isHTTPStatus(err error, code int) bool {
+	return strings.Contains(err.Error(), fmt.Sprintf("returned %d", code))
+}
+
+// findExistingDeployment lists deployments and returns the ID of the first match.
+func (h *DeploymentStatusHandler) findExistingDeployment(ctx context.Context, owner, repo, sha, environment string) (int64, error) {
+	url := fmt.Sprintf("%s/repos/%s/%s/deployments?ref=%s&environment=%s",
+		h.client.baseURL, owner, repo, sha, environment)
+
+	var deployments []struct {
+		ID int64 `json:"id"`
+	}
+	if err := h.client.DoWithResponse(ctx, "GET", url, nil, &deployments); err != nil {
+		return 0, fmt.Errorf("list deployments: %w", err)
+	}
+	if len(deployments) == 0 {
+		return 0, fmt.Errorf("no existing deployment found for ref=%s environment=%s", sha, environment)
+	}
+	return deployments[0].ID, nil
 }

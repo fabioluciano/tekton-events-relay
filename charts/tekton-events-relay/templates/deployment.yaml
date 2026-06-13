@@ -1,4 +1,5 @@
 {{- include "tekton-events-relay.validateStore" . -}}
+{{- include "tekton-events-relay.validateEmbeddedValkey" . -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -86,6 +87,11 @@ spec:
             - containerPort: {{ .Values.service.targetPort }}
               name: http
               protocol: TCP
+            {{- if .Values.config.server.metrics_addr }}
+            - containerPort: {{ .Values.config.server.metrics_addr | trimPrefix ":" | atoi }}
+              name: metrics
+              protocol: TCP
+            {{- end }}
           readinessProbe:
             {{- toYaml .Values.readinessProbe | nindent 12 }}
           resources:
@@ -106,7 +112,7 @@ spec:
               name: dlq
             {{- end }}
             {{- range $inst := .Values.config.scm.github }}
-            {{- if and $inst.enabled $inst.auth $inst.auth.secret_name }}
+            {{- if and $inst.enabled $inst.auth $inst.auth.secretRef }}
             - mountPath: /etc/secrets/github/{{ $inst.name }}
               name: github-{{ $inst.name }}-secret
               readOnly: true
@@ -118,7 +124,7 @@ spec:
             {{- end }}
             {{- end }}
             {{- range $inst := .Values.config.scm.gitlab }}
-            {{- if and $inst.enabled $inst.auth $inst.auth.secret_name }}
+            {{- if and $inst.enabled $inst.auth $inst.auth.secretRef }}
             - mountPath: /etc/secrets/gitlab/{{ $inst.name }}
               name: gitlab-{{ $inst.name }}-secret
               readOnly: true
@@ -131,7 +137,7 @@ spec:
             {{- end }}
             {{- range $inst := .Values.config.scm.bitbucket }}
             {{- if and $inst.enabled $inst.auth }}
-            {{- if or $inst.auth.username_secret_name $inst.auth.app_password_secret_name $inst.auth.secret_name }}
+            {{- if or $inst.auth.username_secretRef $inst.auth.app_password_secretRef $inst.auth.secretRef }}
             - mountPath: /etc/secrets/bitbucket/{{ $inst.name }}
               name: bitbucket-{{ $inst.name }}-secret
               readOnly: true
@@ -144,14 +150,14 @@ spec:
             {{- end }}
             {{- end }}
             {{- range $inst := .Values.config.scm.azure_devops }}
-            {{- if and $inst.enabled $inst.secret_name }}
+            {{- if and $inst.enabled $inst.secretRef }}
             - mountPath: /etc/secrets/azure/{{ $inst.name }}
               name: azure-{{ $inst.name }}-secret
               readOnly: true
             {{- end }}
             {{- end }}
             {{- range $inst := .Values.config.scm.gitea }}
-            {{- if and $inst.enabled $inst.auth $inst.auth.secret_name }}
+            {{- if and $inst.enabled $inst.auth $inst.auth.secretRef }}
             - mountPath: /etc/secrets/gitea/{{ $inst.name }}
               name: gitea-{{ $inst.name }}-secret
               readOnly: true
@@ -163,93 +169,179 @@ spec:
             {{- end }}
             {{- end }}
             {{- range $inst := .Values.config.scm.sourcehut }}
-            {{- if and $inst.enabled $inst.auth $inst.auth.secret_name }}
+            {{- if and $inst.enabled $inst.auth $inst.auth.secretRef }}
             - mountPath: /etc/secrets/sourcehut/{{ $inst.name }}
               name: sourcehut-{{ $inst.name }}-secret
               readOnly: true
             {{- end }}
             {{- end }}
             {{- range $inst := .Values.config.notifiers.slack }}
-            {{- if and $inst.enabled (or $inst.secret_name (and $inst.bot_token $inst.bot_token.token_secret_name)) }}
+            {{- if and $inst.enabled (or $inst.secretRef (and $inst.bot_token $inst.bot_token.secretRef)) }}
             - mountPath: /etc/secrets/slack/{{ $inst.name }}
               name: slack-{{ $inst.name }}-secret
               readOnly: true
             {{- end }}
             {{- end }}
             {{- range $inst := .Values.config.notifiers.teams }}
-            {{- if and $inst.enabled $inst.secret_name }}
+            {{- if and $inst.enabled $inst.secretRef }}
             - mountPath: /etc/secrets/teams/{{ $inst.name }}
               name: teams-{{ $inst.name }}-secret
               readOnly: true
             {{- end }}
             {{- end }}
             {{- range $inst := .Values.config.notifiers.discord }}
-            {{- if and $inst.enabled (or $inst.secret_name (and $inst.bot_token $inst.bot_token.token_secret_name)) }}
+            {{- if and $inst.enabled (or $inst.secretRef (and $inst.bot_token $inst.bot_token.secretRef)) }}
             - mountPath: /etc/secrets/discord/{{ $inst.name }}
               name: discord-{{ $inst.name }}-secret
               readOnly: true
             {{- end }}
             {{- end }}
             {{- range $inst := .Values.config.notifiers.pagerduty }}
-            {{- if and $inst.enabled $inst.secret_name }}
+            {{- if and $inst.enabled $inst.secretRef }}
             - mountPath: /etc/secrets/pagerduty/{{ $inst.name }}
               name: pagerduty-{{ $inst.name }}-secret
               readOnly: true
             {{- end }}
             {{- end }}
             {{- range $inst := .Values.config.notifiers.datadog }}
-            {{- if and $inst.enabled $inst.secret_name }}
+            {{- if and $inst.enabled $inst.secretRef }}
             - mountPath: /etc/secrets/datadog/{{ $inst.name }}
               name: datadog-{{ $inst.name }}-secret
               readOnly: true
             {{- end }}
             {{- end }}
             {{- range $inst := .Values.config.notifiers.grafana }}
-            {{- if and $inst.enabled $inst.secret_name }}
+            {{- if and $inst.enabled $inst.secretRef }}
             - mountPath: /etc/secrets/grafana/{{ $inst.name }}
               name: grafana-{{ $inst.name }}-secret
               readOnly: true
             {{- end }}
             {{- end }}
             {{- range $inst := .Values.config.notifiers.email }}
-            {{- if and $inst.enabled $inst.secret_name }}
+            {{- if and $inst.enabled $inst.secretRef }}
             - mountPath: /etc/secrets/email/{{ $inst.name }}
               name: email-{{ $inst.name }}-secret
               readOnly: true
             {{- end }}
             {{- end }}
-            {{- range $inst := .Values.config.notifiers.email }}
-        {{- if and $inst.enabled $inst.secret_name }}
-        - name: email-{{ $inst.name }}-secret
-          secret:
-            secretName: {{ $inst.secret_name }}
-        {{- end }}
-        {{- end }}
-        {{- range $inst := .Values.config.notifiers.sentry }}
-            {{- if and $inst.enabled $inst.secret_name }}
+            {{- range $inst := .Values.config.notifiers.sentry }}
+            {{- if and $inst.enabled $inst.secretRef }}
             - mountPath: /etc/secrets/sentry/{{ $inst.name }}
               name: sentry-{{ $inst.name }}-secret
               readOnly: true
             {{- end }}
             {{- end }}
             {{- range $inst := .Values.config.notifiers.webhook }}
-            {{- if and $inst.enabled $inst.url_secret_name }}
+            {{- if and $inst.enabled $inst.secretRef }}
             - mountPath: /etc/secrets/webhook/{{ $inst.name }}
               name: webhook-{{ $inst.name }}-secret
               readOnly: true
             {{- end }}
             {{- end }}
-            {{- if .Values.templates.enabled }}
+            {{- range $inst := .Values.config.scm.github }}
+            {{- range $action := $inst.actions }}
+            {{- if $action.templateRef }}
+            - mountPath: /etc/templates/{{ $action.templateRef.configmapName }}
+              name: tpl-{{ $action.templateRef.configmapName }}
+              readOnly: true
+            {{- end }}
+            {{- end }}
+            {{- end }}
+            {{- range $inst := .Values.config.scm.gitlab }}
+            {{- range $action := $inst.actions }}
+            {{- if $action.templateRef }}
+            - mountPath: /etc/templates/{{ $action.templateRef.configmapName }}
+              name: tpl-{{ $action.templateRef.configmapName }}
+              readOnly: true
+            {{- end }}
+            {{- end }}
+            {{- end }}
+            {{- range $inst := .Values.config.scm.gitea }}
+            {{- range $action := $inst.actions }}
+            {{- if $action.templateRef }}
+            - mountPath: /etc/templates/{{ $action.templateRef.configmapName }}
+              name: tpl-{{ $action.templateRef.configmapName }}
+              readOnly: true
+            {{- end }}
+            {{- end }}
+            {{- end }}
+            {{- range $inst := .Values.config.scm.sourcehut }}
+            {{- range $action := $inst.actions }}
+            {{- if $action.templateRef }}
+            - mountPath: /etc/templates/{{ $action.templateRef.configmapName }}
+              name: tpl-{{ $action.templateRef.configmapName }}
+              readOnly: true
+            {{- end }}
+            {{- end }}
+            {{- end }}
+            {{- range $inst := .Values.config.scm.bitbucket }}
+            {{- range $action := $inst.actions }}
+            {{- if $action.templateRef }}
+            - mountPath: /etc/templates/{{ $action.templateRef.configmapName }}
+              name: tpl-{{ $action.templateRef.configmapName }}
+              readOnly: true
+            {{- end }}
+            {{- end }}
+            {{- end }}
+            {{- range $inst := .Values.config.scm.azure_devops }}
+            {{- range $action := $inst.actions }}
+            {{- if $action.templateRef }}
+            - mountPath: /etc/templates/{{ $action.templateRef.configmapName }}
+              name: tpl-{{ $action.templateRef.configmapName }}
+              readOnly: true
+            {{- end }}
+            {{- end }}
+            {{- end }}
+            {{- range $inst := .Values.config.notifiers.slack }}
+            {{- if and $inst.templateRef }}
+            - mountPath: /etc/templates/{{ $inst.templateRef.configmapName }}
+              name: tpl-{{ $inst.templateRef.configmapName }}
+              readOnly: true
+            {{- end }}
+            {{- end }}
+            {{- range $inst := .Values.config.notifiers.teams }}
+            {{- if and $inst.templateRef }}
+            - mountPath: /etc/templates/{{ $inst.templateRef.configmapName }}
+              name: tpl-{{ $inst.templateRef.configmapName }}
+              readOnly: true
+            {{- end }}
+            {{- end }}
+            {{- range $inst := .Values.config.notifiers.discord }}
+            {{- if and $inst.templateRef }}
+            - mountPath: /etc/templates/{{ $inst.templateRef.configmapName }}
+              name: tpl-{{ $inst.templateRef.configmapName }}
+              readOnly: true
+            {{- end }}
+            {{- end }}
+            {{- range $inst := .Values.config.notifiers.grafana }}
+            {{- if and $inst.templateRef }}
+            - mountPath: /etc/templates/{{ $inst.templateRef.configmapName }}
+              name: tpl-{{ $inst.templateRef.configmapName }}
+              readOnly: true
+            {{- end }}
+            {{- end }}
+            {{- range $inst := .Values.config.notifiers.email }}
+            {{- if and $inst.templateRef }}
+            - mountPath: /etc/templates/{{ $inst.templateRef.configmapName }}
+              name: tpl-{{ $inst.templateRef.configmapName }}
+              readOnly: true
+            {{- end }}
+            {{- end }}
+            {{- range $inst := .Values.config.notifiers.webhook }}
+            {{- if and $inst.templateRef }}
+            - mountPath: /etc/templates/{{ $inst.templateRef.configmapName }}
+              name: tpl-{{ $inst.templateRef.configmapName }}
+              readOnly: true
+            {{- end }}
+            {{- end }}
             - mountPath: /etc/templates
               name: templates
               readOnly: true
-            {{- end }}
+      {{- with .Values.dnsConfig }}
       dnsConfig:
-        options:
-          - name: ndots
-            value: "2"
-          - name: edns0
-      dnsPolicy: ClusterFirst
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      dnsPolicy: {{ .Values.dnsPolicy | default "ClusterFirst" }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -291,10 +383,10 @@ spec:
             sizeLimit: {{ .Values.config.dlq.volumeSizeLimit }}
         {{- end }}
         {{- range $inst := .Values.config.scm.github }}
-        {{- if and $inst.enabled $inst.auth $inst.auth.secret_name }}
+        {{- if and $inst.enabled $inst.auth $inst.auth.secretRef }}
         - name: github-{{ $inst.name }}-secret
           secret:
-            secretName: {{ $inst.auth.secret_name }}
+            secretName: {{ $inst.auth.secretRef.secretName }}
         {{- end }}
         {{- if and $inst.enabled $inst.auth $inst.auth.private_key_secret_name }}
         - name: github-{{ $inst.name }}-app-key
@@ -306,10 +398,10 @@ spec:
         {{- end }}
         {{- end }}
         {{- range $inst := .Values.config.scm.gitlab }}
-        {{- if and $inst.enabled $inst.auth $inst.auth.secret_name }}
+        {{- if and $inst.enabled $inst.auth $inst.auth.secretRef }}
         - name: gitlab-{{ $inst.name }}-secret
           secret:
-            secretName: {{ $inst.auth.secret_name }}
+            secretName: {{ $inst.auth.secretRef.secretName }}
         {{- end }}
         {{- if and $inst.enabled $inst.auth $inst.auth.oauth2 $inst.auth.oauth2.client_id_secret_name }}
         - name: gitlab-{{ $inst.name }}-oauth2-secret
@@ -318,34 +410,34 @@ spec:
         {{- end }}
         {{- end }}
         {{- range $inst := .Values.config.scm.bitbucket }}
-        {{- if and $inst.enabled $inst.auth $inst.auth.username_secret_name }}
+        {{- if and $inst.enabled $inst.auth $inst.auth.username_secretRef }}
         - name: bitbucket-{{ $inst.name }}-secret
           secret:
-            secretName: {{ $inst.auth.username_secret_name }}
+            secretName: {{ $inst.auth.username_secretRef.secretName }}
         {{- end }}
         {{- if and $inst.enabled $inst.auth $inst.auth.oauth2 $inst.auth.oauth2.client_id_secret_name }}
         - name: bitbucket-{{ $inst.name }}-oauth2-secret
           secret:
             secretName: {{ $inst.auth.oauth2.client_id_secret_name }}
         {{- end }}
-        {{- if and $inst.enabled $inst.auth $inst.auth.secret_name }}
+        {{- if and $inst.enabled $inst.auth $inst.auth.secretRef }}
         - name: bitbucket-{{ $inst.name }}-secret
           secret:
-            secretName: {{ $inst.auth.secret_name }}
+            secretName: {{ $inst.auth.secretRef.secretName }}
         {{- end }}
         {{- end }}
         {{- range $inst := .Values.config.scm.azure_devops }}
-        {{- if and $inst.enabled $inst.secret_name }}
+        {{- if and $inst.enabled $inst.secretRef }}
         - name: azure-{{ $inst.name }}-secret
           secret:
-            secretName: {{ $inst.secret_name }}
+            secretName: {{ $inst.secretRef.secretName }}
         {{- end }}
         {{- end }}
         {{- range $inst := .Values.config.scm.gitea }}
-        {{- if and $inst.enabled $inst.auth $inst.auth.secret_name }}
+        {{- if and $inst.enabled $inst.auth $inst.auth.secretRef }}
         - name: gitea-{{ $inst.name }}-secret
           secret:
-            secretName: {{ $inst.auth.secret_name }}
+            secretName: {{ $inst.auth.secretRef.secretName }}
         {{- end }}
         {{- if and $inst.enabled $inst.auth $inst.auth.oauth2 $inst.auth.oauth2.client_id_secret_name }}
         - name: gitea-{{ $inst.name }}-oauth2-secret
@@ -354,80 +446,181 @@ spec:
         {{- end }}
         {{- end }}
         {{- range $inst := .Values.config.scm.sourcehut }}
-        {{- if and $inst.enabled $inst.auth $inst.auth.secret_name }}
+        {{- if and $inst.enabled $inst.auth $inst.auth.secretRef }}
         - name: sourcehut-{{ $inst.name }}-secret
           secret:
-            secretName: {{ $inst.auth.secret_name }}
+            secretName: {{ $inst.auth.secretRef.secretName }}
         {{- end }}
         {{- end }}
         {{- range $inst := .Values.config.notifiers.slack }}
-        {{- if and $inst.enabled $inst.secret_name }}
+        {{- if and $inst.enabled $inst.secretRef }}
         - name: slack-{{ $inst.name }}-secret
           secret:
-            secretName: {{ $inst.secret_name }}
+            secretName: {{ $inst.secretRef.secretName }}
         {{- end }}
-        {{- if and $inst.enabled $inst.bot_token $inst.bot_token.token_secret_name }}
+        {{- if and $inst.enabled $inst.bot_token $inst.bot_token.secretRef }}
         - name: slack-{{ $inst.name }}-secret
           secret:
-            secretName: {{ $inst.bot_token.token_secret_name }}
+            secretName: {{ $inst.bot_token.secretRef.secretName }}
         {{- end }}
         {{- end }}
         {{- range $inst := .Values.config.notifiers.teams }}
-        {{- if and $inst.enabled $inst.secret_name }}
+        {{- if and $inst.enabled $inst.secretRef }}
         - name: teams-{{ $inst.name }}-secret
           secret:
-            secretName: {{ $inst.secret_name }}
+            secretName: {{ $inst.secretRef.secretName }}
         {{- end }}
         {{- end }}
         {{- range $inst := .Values.config.notifiers.discord }}
-        {{- if and $inst.enabled $inst.secret_name }}
+        {{- if and $inst.enabled $inst.secretRef }}
         - name: discord-{{ $inst.name }}-secret
           secret:
-            secretName: {{ $inst.secret_name }}
+            secretName: {{ $inst.secretRef.secretName }}
         {{- end }}
-        {{- if and $inst.enabled $inst.bot_token $inst.bot_token.token_secret_name }}
+        {{- if and $inst.enabled $inst.bot_token $inst.bot_token.secretRef }}
         - name: discord-{{ $inst.name }}-secret
           secret:
-            secretName: {{ $inst.bot_token.token_secret_name }}
+            secretName: {{ $inst.bot_token.secretRef.secretName }}
         {{- end }}
         {{- end }}
         {{- range $inst := .Values.config.notifiers.pagerduty }}
-        {{- if and $inst.enabled $inst.secret_name }}
+        {{- if and $inst.enabled $inst.secretRef }}
         - name: pagerduty-{{ $inst.name }}-secret
           secret:
-            secretName: {{ $inst.secret_name }}
+            secretName: {{ $inst.secretRef.secretName }}
         {{- end }}
         {{- end }}
         {{- range $inst := .Values.config.notifiers.datadog }}
-        {{- if and $inst.enabled $inst.secret_name }}
+        {{- if and $inst.enabled $inst.secretRef }}
         - name: datadog-{{ $inst.name }}-secret
           secret:
-            secretName: {{ $inst.secret_name }}
+            secretName: {{ $inst.secretRef.secretName }}
         {{- end }}
         {{- end }}
         {{- range $inst := .Values.config.notifiers.grafana }}
-        {{- if and $inst.enabled $inst.secret_name }}
+        {{- if and $inst.enabled $inst.secretRef }}
         - name: grafana-{{ $inst.name }}-secret
           secret:
-            secretName: {{ $inst.secret_name }}
+            secretName: {{ $inst.secretRef.secretName }}
         {{- end }}
         {{- end }}
         {{- range $inst := .Values.config.notifiers.sentry }}
-        {{- if and $inst.enabled $inst.secret_name }}
+        {{- if and $inst.enabled $inst.secretRef }}
         - name: sentry-{{ $inst.name }}-secret
           secret:
-            secretName: {{ $inst.secret_name }}
+            secretName: {{ $inst.secretRef.secretName }}
         {{- end }}
         {{- end }}
         {{- range $inst := .Values.config.notifiers.webhook }}
-        {{- if and $inst.enabled $inst.url_secret_name }}
+        {{- if and $inst.enabled $inst.secretRef }}
         - name: webhook-{{ $inst.name }}-secret
           secret:
-            secretName: {{ $inst.url_secret_name }}
+            secretName: {{ $inst.secretRef.secretName }}
         {{- end }}
         {{- end }}
-        {{- if .Values.templates.enabled }}
-        - name: templates
-          configMap:
+        {{- range $inst := .Values.config.notifiers.email }}
+        {{- if and $inst.enabled $inst.secretRef }}
+        - name: email-{{ $inst.name }}-secret
+          secret:
+            secretName: {{ $inst.secretRef.secretName }}
+        {{- end }}
+        {{- end }}
+        {{- range $inst := .Values.config.scm.github }}
+        {{- range $action := $inst.actions }}
+        {{- if $action.templateRef }}
+        - configMap:
+            name: {{ $action.templateRef.configmapName }}
+          name: tpl-{{ $action.templateRef.configmapName }}
+        {{- end }}
+        {{- end }}
+        {{- end }}
+        {{- range $inst := .Values.config.scm.gitlab }}
+        {{- range $action := $inst.actions }}
+        {{- if $action.templateRef }}
+        - configMap:
+            name: {{ $action.templateRef.configmapName }}
+          name: tpl-{{ $action.templateRef.configmapName }}
+        {{- end }}
+        {{- end }}
+        {{- end }}
+        {{- range $inst := .Values.config.scm.gitea }}
+        {{- range $action := $inst.actions }}
+        {{- if $action.templateRef }}
+        - configMap:
+            name: {{ $action.templateRef.configmapName }}
+          name: tpl-{{ $action.templateRef.configmapName }}
+        {{- end }}
+        {{- end }}
+        {{- end }}
+        {{- range $inst := .Values.config.scm.sourcehut }}
+        {{- range $action := $inst.actions }}
+        {{- if $action.templateRef }}
+        - configMap:
+            name: {{ $action.templateRef.configmapName }}
+          name: tpl-{{ $action.templateRef.configmapName }}
+        {{- end }}
+        {{- end }}
+        {{- end }}
+        {{- range $inst := .Values.config.scm.bitbucket }}
+        {{- range $action := $inst.actions }}
+        {{- if $action.templateRef }}
+        - configMap:
+            name: {{ $action.templateRef.configmapName }}
+          name: tpl-{{ $action.templateRef.configmapName }}
+        {{- end }}
+        {{- end }}
+        {{- end }}
+        {{- range $inst := .Values.config.scm.azure_devops }}
+        {{- range $action := $inst.actions }}
+        {{- if $action.templateRef }}
+        - configMap:
+            name: {{ $action.templateRef.configmapName }}
+          name: tpl-{{ $action.templateRef.configmapName }}
+        {{- end }}
+        {{- end }}
+        {{- end }}
+        {{- range $inst := .Values.config.notifiers.slack }}
+        {{- if $inst.templateRef }}
+        - configMap:
+            name: {{ $inst.templateRef.configmapName }}
+          name: tpl-{{ $inst.templateRef.configmapName }}
+        {{- end }}
+        {{- end }}
+        {{- range $inst := .Values.config.notifiers.teams }}
+        {{- if $inst.templateRef }}
+        - configMap:
+            name: {{ $inst.templateRef.configmapName }}
+          name: tpl-{{ $inst.templateRef.configmapName }}
+        {{- end }}
+        {{- end }}
+        {{- range $inst := .Values.config.notifiers.discord }}
+        {{- if $inst.templateRef }}
+        - configMap:
+            name: {{ $inst.templateRef.configmapName }}
+          name: tpl-{{ $inst.templateRef.configmapName }}
+        {{- end }}
+        {{- end }}
+        {{- range $inst := .Values.config.notifiers.grafana }}
+        {{- if $inst.templateRef }}
+        - configMap:
+            name: {{ $inst.templateRef.configmapName }}
+          name: tpl-{{ $inst.templateRef.configmapName }}
+        {{- end }}
+        {{- end }}
+        {{- range $inst := .Values.config.notifiers.email }}
+        {{- if $inst.templateRef }}
+        - configMap:
+            name: {{ $inst.templateRef.configmapName }}
+          name: tpl-{{ $inst.templateRef.configmapName }}
+        {{- end }}
+        {{- end }}
+        {{- range $inst := .Values.config.notifiers.webhook }}
+        {{- if $inst.templateRef }}
+        - configMap:
+            name: {{ $inst.templateRef.configmapName }}
+          name: tpl-{{ $inst.templateRef.configmapName }}
+        {{- end }}
+        {{- end }}
+        - configMap:
             name: {{ include "tekton-events-relay.fullname" . }}-templates
-        {{- end }}
+          name: templates

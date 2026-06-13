@@ -55,9 +55,13 @@ data:
       ttl: {{ .Values.config.store.ttl | quote }}
       {{- if eq .Values.config.store.backend "valkey" }}
       valkey:
-        address: {{ required "config.store.valkey.address is required when store.backend=valkey" .Values.config.store.valkey.address | quote }}
-        {{- if .Values.config.store.valkey.password_file }}
-        password_file: {{ .Values.config.store.valkey.password_file | quote }}
+        {{- if .Values.config.store.valkey.embedded.enabled }}
+        address: "{{ include "tekton-events-relay.fullname" . }}-valkey:{{ (index .Subcharts "valkey").Values.service.port | default 6379 }}"
+        {{- else }}
+        address: {{ required "config.store.valkey.address is required when store.backend=valkey and embedded is disabled" .Values.config.store.valkey.address | quote }}
+        {{- end }}
+        {{- if .Values.config.store.valkey.password_secretRef }}
+        password_file: {{ .Values.config.store.valkey.password_secretRef.secretName | quote }}
         {{- end }}
         db: {{ .Values.config.store.valkey.db | int }}
         key_prefix: {{ .Values.config.store.valkey.key_prefix | quote }}
@@ -116,6 +120,7 @@ data:
       {{- if .Values.config.tracing.service_name }}
       service_name: {{ .Values.config.tracing.service_name | quote }}
       {{- end }}
+      insecure: {{ .Values.config.tracing.insecure | default false }}
     {{- end }}
     {{- end }}
 
@@ -128,11 +133,11 @@ data:
           enabled: {{ .enabled }}
           {{- if .auth }}
           auth:
-            {{- if .auth.secret_name }}
+            {{- if .auth.secretRef }}
             secret_file: "/etc/secrets/github/{{ .name }}/token"
             {{- end }}
-            {{- if .auth.secret_key }}
-            secret_key: {{ .auth.secret_key | quote }}
+            {{- if and .auth.secretRef .auth.secretRef.secretKey }}
+            secret_key: {{ .auth.secretRef.secretKey | quote }}
             {{- end }}
             {{- if .auth.app_id }}
             app_id: {{ .auth.app_id }}
@@ -165,7 +170,9 @@ data:
               {{- if .context_per_task }}
               context_per_task: true
               {{- end }}
-              {{- if .template }}
+              {{- if .templateRef }}
+              template_file: "/etc/templates/{{ .templateRef.configmapName }}/{{ .templateRef.configmapKey }}"
+              {{- else if .template }}
               template: |
 {{ .template | nindent 16 }}
               {{- end }}
@@ -197,11 +204,11 @@ data:
           enabled: {{ .enabled }}
           {{- if .auth }}
           auth:
-            {{- if .auth.secret_name }}
+            {{- if .auth.secretRef }}
             secret_file: "/etc/secrets/gitlab/{{ .name }}/token"
             {{- end }}
-            {{- if .auth.secret_key }}
-            secret_key: {{ .auth.secret_key | quote }}
+            {{- if and .auth.secretRef .auth.secretRef.secretKey }}
+            secret_key: {{ .auth.secretRef.secretKey | quote }}
             {{- end }}
             {{- if .auth.oauth2 }}
             oauth2:
@@ -259,17 +266,17 @@ data:
           enabled: {{ .enabled }}
           {{- if .auth }}
           auth:
-            {{- if .auth.username_secret_name }}
+            {{- if .auth.username_secretRef }}
             username_file: "/etc/secrets/bitbucket/{{ .name }}/username"
             {{- end }}
-            {{- if .auth.app_password_secret_name }}
+            {{- if .auth.app_password_secretRef }}
             app_password_file: "/etc/secrets/bitbucket/{{ .name }}/app_password"
             {{- end }}
-            {{- if .auth.secret_name }}
+            {{- if .auth.secretRef }}
             token_file: "/etc/secrets/bitbucket/{{ .name }}/token"
             {{- end }}
-            {{- if .auth.secret_key }}
-            token_key: {{ .auth.secret_key | quote }}
+            {{- if and .auth.secretRef .auth.secretRef.secretKey }}
+            token_key: {{ .auth.secretRef.secretKey | quote }}
             {{- end }}
             {{- if .auth.oauth2 }}
             oauth2:
@@ -309,11 +316,11 @@ data:
         {{- range .Values.config.scm.azure_devops }}
         - name: {{ .name }}
           enabled: {{ .enabled }}
-          {{- if .secret_name }}
+          {{- if .secretRef }}
           secret_file: "/etc/secrets/azure/{{ .name }}/token"
           {{- end }}
-          {{- if .secret_key }}
-          secret_key: {{ .secret_key | quote }}
+          {{- if and .secretRef .secretRef.secretKey }}
+          secret_key: {{ .secretRef.secretKey | quote }}
           {{- end }}
           genre: {{ .genre | quote }}
           {{- if .base_url }}
@@ -364,11 +371,11 @@ data:
           enabled: {{ .enabled }}
           {{- if .auth }}
           auth:
-            {{- if .auth.secret_name }}
+            {{- if .auth.secretRef }}
             secret_file: "/etc/secrets/gitea/{{ .name }}/token"
             {{- end }}
-            {{- if .auth.secret_key }}
-            secret_key: {{ .auth.secret_key | quote }}
+            {{- if and .auth.secretRef .auth.secretRef.secretKey }}
+            secret_key: {{ .auth.secretRef.secretKey | quote }}
             {{- end }}
             {{- if .auth.oauth2 }}
             oauth2:
@@ -396,7 +403,9 @@ data:
               {{- if .context_per_task }}
               context_per_task: true
               {{- end }}
-              {{- if .template }}
+              {{- if .templateRef }}
+              template_file: "/etc/templates/{{ .templateRef.configmapName }}/{{ .templateRef.configmapKey }}"
+              {{- else if .template }}
               template: |
 {{ .template | nindent 16 }}
               {{- end }}
@@ -427,11 +436,11 @@ data:
           enabled: {{ .enabled }}
           {{- if .auth }}
           auth:
-            {{- if .auth.secret_name }}
+            {{- if .auth.secretRef }}
             secret_file: "/etc/secrets/sourcehut/{{ .name }}/token"
             {{- end }}
-            {{- if .auth.secret_key }}
-            secret_key: {{ .auth.secret_key | quote }}
+            {{- if and .auth.secretRef .auth.secretRef.secretKey }}
+            secret_key: {{ .auth.secretRef.secretKey | quote }}
             {{- end }}
           {{- end }}
           {{- if .base_url }}
@@ -468,7 +477,7 @@ data:
         {{- range .Values.config.notifiers.slack }}
         - name: {{ .name }}
           enabled: {{ .enabled }}
-          {{- if or .secret_name .bot_token }}
+          {{- if or .secretRef .bot_token }}
           auth:
             {{- if .bot_token }}
             bot_token:
@@ -490,7 +499,9 @@ data:
           {{- if .when }}
           when: {{ .when | quote }}
           {{- end }}
-          {{- if .template }}
+          {{- if .templateRef }}
+          template_file: "/etc/templates/{{ .templateRef.configmapName }}/{{ .templateRef.configmapKey }}"
+          {{- else if .template }}
           template: |
 {{ .template | nindent 12 }}
           {{- end }}
@@ -501,14 +512,16 @@ data:
         {{- range .Values.config.notifiers.teams }}
         - name: {{ .name }}
           enabled: {{ .enabled }}
-          {{- if .secret_name }}
+          {{- if .secretRef }}
           auth:
             webhook_url_file: "/etc/secrets/teams/{{ .name }}/webhook_url"
           {{- end }}
           {{- if .when }}
           when: {{ .when | quote }}
           {{- end }}
-          {{- if .template }}
+          {{- if .templateRef }}
+          template_file: "/etc/templates/{{ .templateRef.configmapName }}/{{ .templateRef.configmapKey }}"
+          {{- else if .template }}
           template: |
 {{ .template | nindent 12 }}
           {{- end }}
@@ -519,7 +532,7 @@ data:
         {{- range .Values.config.notifiers.discord }}
         - name: {{ .name }}
           enabled: {{ .enabled }}
-          {{- if or .secret_name .bot_token }}
+          {{- if or .secretRef .bot_token }}
           auth:
             {{- if .bot_token }}
             bot_token:
@@ -538,7 +551,9 @@ data:
           {{- if .when }}
           when: {{ .when | quote }}
           {{- end }}
-          {{- if .template }}
+          {{- if .templateRef }}
+          template_file: "/etc/templates/{{ .templateRef.configmapName }}/{{ .templateRef.configmapKey }}"
+          {{- else if .template }}
           template: |
 {{ .template | nindent 12 }}
           {{- end }}
@@ -549,7 +564,7 @@ data:
         {{- range .Values.config.notifiers.pagerduty }}
         - name: {{ .name }}
           enabled: {{ .enabled }}
-          {{- if .secret_name }}
+          {{- if .secretRef }}
           auth:
             integration_key_file: "/etc/secrets/pagerduty/{{ .name }}/integration_key"
           {{- end }}
@@ -566,7 +581,7 @@ data:
         {{- range .Values.config.notifiers.datadog }}
         - name: {{ .name }}
           enabled: {{ .enabled }}
-          {{- if .secret_name }}
+          {{- if .secretRef }}
           auth:
             api_key_file: "/etc/secrets/datadog/{{ .name }}/api_key"
           {{- end }}
@@ -590,9 +605,12 @@ data:
         - name: {{ .name }}
           enabled: {{ .enabled }}
           url: {{ .url | quote }}
-          {{- if .secret_name }}
+          {{- if .secretRef }}
           auth:
             token_file: "/etc/secrets/grafana/{{ .name }}/token"
+            {{- if and .secretRef .secretRef.secretKey }}
+            token_key: {{ .secretRef.secretKey | quote }}
+            {{- end }}
           {{- end }}
           {{- if .tags }}
           tags:
@@ -603,7 +621,9 @@ data:
           {{- if .when }}
           when: {{ .when | quote }}
           {{- end }}
-          {{- if .template }}
+          {{- if .templateRef }}
+          template_file: "/etc/templates/{{ .templateRef.configmapName }}/{{ .templateRef.configmapKey }}"
+          {{- else if .template }}
           template: |
 {{ .template | nindent 12 }}
           {{- end }}
@@ -625,9 +645,12 @@ data:
             - {{ . | quote }}
             {{- end }}
           {{- end }}
-          {{- if .secret_name }}
+          {{- if .secretRef }}
           auth:
             token_file: "/etc/secrets/sentry/{{ .name }}/token"
+            {{- if and .secretRef .secretRef.secretKey }}
+            token_key: {{ .secretRef.secretKey | quote }}
+            {{- end }}
           {{- end }}
           {{- if .when }}
           when: {{ .when | quote }}
@@ -647,10 +670,13 @@ data:
           {{- if .encryption }}
           encryption: {{ .encryption | quote }}
           {{- end }}
-          {{- if and .secret_name .username }}
+          {{- if and .secretRef .username }}
           auth:
             username: {{ .username | quote }}
             password_file: "/etc/secrets/email/{{ .name }}/password"
+            {{- if and .secretRef .secretRef.secretKey }}
+            password_key: {{ .secretRef.secretKey | quote }}
+            {{- end }}
           {{- end }}
           from: {{ .from | quote }}
           to:
@@ -669,7 +695,9 @@ data:
           {{- if .when }}
           when: {{ .when | quote }}
           {{- end }}
-          {{- if .template }}
+          {{- if .templateRef }}
+          template_file: "/etc/templates/{{ .templateRef.configmapName }}/{{ .templateRef.configmapKey }}"
+          {{- else if .template }}
           template: |
 {{ .template | nindent 12 }}
           {{- end }}
@@ -681,28 +709,28 @@ data:
         {{- range .Values.config.notifiers.webhook }}
         - name: {{ .name }}
           enabled: {{ .enabled }}
-          {{- if .url_secret_name }}
+          {{- if .secretRef }}
           url_file: "/etc/secrets/webhook/{{ .name }}/url"
           {{- end }}
-          {{- if .url_key }}
-          url_key: {{ .url_key | quote }}
+          {{- if and .secretRef .secretRef.secretKey }}
+          url_key: {{ .secretRef.secretKey | quote }}
           {{- end }}
           {{- if .auth }}
           auth:
             type: {{ .auth.type | quote }}
-            {{- if .auth.token_file_secret_name }}
+            {{- if .auth.token_secretRef }}
             token_file: "/etc/secrets/webhook/{{ .name }}/token"
             {{- end }}
-            {{- if .auth.token_key }}
-            token_key: {{ .auth.token_key | quote }}
+            {{- if and .auth.token_secretRef .auth.token_secretRef.secretKey }}
+            token_key: {{ .auth.token_secretRef.secretKey | quote }}
             {{- end }}
-            {{- if .auth.username_file_secret_name }}
+            {{- if .auth.username_secretRef }}
             username_file: "/etc/secrets/webhook/{{ .name }}/username"
             {{- end }}
-            {{- if .auth.password_file_secret_name }}
+            {{- if .auth.password_secretRef }}
             password_file: "/etc/secrets/webhook/{{ .name }}/password"
             {{- end }}
-            {{- if .auth.secret_file_secret_name }}
+            {{- if .auth.hmac_secretRef }}
             secret_file: "/etc/secrets/webhook/{{ .name }}/hmac_secret"
             {{- end }}
             {{- if .auth.header }}
@@ -716,7 +744,9 @@ data:
           headers:
             {{- .headers | toYaml | nindent 12 }}
           {{- end }}
-          {{- if .template }}
+          {{- if .templateRef }}
+          template_file: "/etc/templates/{{ .templateRef.configmapName }}/{{ .templateRef.configmapKey }}"
+          {{- else if .template }}
           template: |
 {{ .template | nindent 12 }}
           {{- end }}

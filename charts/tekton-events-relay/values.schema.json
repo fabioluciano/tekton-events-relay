@@ -75,7 +75,7 @@
     "replicaCount": {
       "type": "integer",
       "description": "Number of replicas for the deployment. For production workloads, use 2 or more for high availability.",
-      "default": 2,
+      "default": 1,
       "minimum": 1,
       "examples": [
         1,
@@ -382,10 +382,20 @@
                   "description": "Valkey server address (host:port); required when backend=valkey",
                   "default": ""
                 },
-                "password_file": {
-                  "type": "string",
-                  "description": "File containing the Valkey password (optional)",
-                  "default": ""
+                "password_secretRef": {
+                  "type": "object",
+                  "description": "Reference to a Kubernetes Secret containing the Valkey password",
+                  "properties": {
+                    "secretName": {
+                      "type": "string",
+                      "description": "Name of the Kubernetes Secret"
+                    },
+                    "secretKey": {
+                      "type": "string",
+                      "description": "Key within the secret (optional, provider-specific default)"
+                    }
+                  },
+                  "required": ["secretName"]
                 },
                 "db": {
                   "type": "integer",
@@ -397,6 +407,17 @@
                   "type": "string",
                   "description": "Prefix applied to all keys",
                   "default": "tekton-events-relay"
+                },
+                "embedded": {
+                  "type": "object",
+                  "description": "Deploy an embedded Valkey instance as a subchart",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean",
+                      "description": "Enable embedded Valkey",
+                      "default": false
+                    }
+                  }
                 }
               }
             },
@@ -585,17 +606,39 @@
                     "description": "Enable or disable this Slack notifier instance",
                     "default": false
                   },
-                  "secret_name": {
-                    "type": "string",
-                    "description": "Name of the Kubernetes Secret containing the Slack Incoming Webhook URL (webhook_url key). Used for webhook mode."
+                  "secretRef": {
+                    "type": "object",
+                    "description": "Reference to a Kubernetes Secret containing the Slack Incoming Webhook URL (webhook_url key). Used for webhook mode.",
+                    "properties": {
+                      "secretName": {
+                        "type": "string",
+                        "description": "Name of the Kubernetes Secret"
+                      },
+                      "secretKey": {
+                        "type": "string",
+                        "description": "Key within the secret (optional, provider-specific default)"
+                      }
+                    },
+                    "required": ["secretName"]
                   },
                   "bot_token": {
                     "type": "object",
-                    "description": "Slack Bot Token auth (uses chat.postMessage API). Mutually exclusive with secret_name.",
+                    "description": "Slack Bot Token auth (uses chat.postMessage API). Mutually exclusive with secretRef.",
                     "properties": {
-                      "token_secret_name": {
-                        "type": "string",
-                        "description": "Name of the Kubernetes Secret containing the xoxb- Bot Token"
+                      "secretRef": {
+                        "type": "object",
+                        "description": "Reference to a Kubernetes Secret containing the xoxb- Bot Token",
+                        "properties": {
+                          "secretName": {
+                            "type": "string",
+                            "description": "Name of the Kubernetes Secret"
+                          },
+                          "secretKey": {
+                            "type": "string",
+                            "description": "Key within the secret (optional, provider-specific default)"
+                          }
+                        },
+                        "required": ["secretName"]
                       },
                       "channel_id": {
                         "type": "string",
@@ -639,6 +682,21 @@
                   "template": {
                     "type": "string",
                     "description": "Go template for the Slack message body. Available variables: .State, .RunName, .CommitSHA, .TargetURL"
+                  },
+                  "templateRef": {
+                    "type": "object",
+                    "description": "Reference to a ConfigMap containing the template",
+                    "properties": {
+                      "configmapName": {
+                        "type": "string",
+                        "description": "Name of the Kubernetes ConfigMap"
+                      },
+                      "configmapKey": {
+                        "type": "string",
+                        "description": "Key within the ConfigMap"
+                      }
+                    },
+                    "required": ["configmapName", "configmapKey"]
                   }
                 },
                 "required": [
@@ -662,9 +720,20 @@
                     "description": "Enable or disable this Teams notifier instance",
                     "default": false
                   },
-                  "secret_name": {
-                    "type": "string",
-                    "description": "Name of the Kubernetes Secret containing the Teams Incoming Webhook URL (webhook_url key)"
+                  "secretRef": {
+                    "type": "object",
+                    "description": "Reference to a Kubernetes Secret containing the Teams Incoming Webhook URL (webhook_url key)",
+                    "properties": {
+                      "secretName": {
+                        "type": "string",
+                        "description": "Name of the Kubernetes Secret"
+                      },
+                      "secretKey": {
+                        "type": "string",
+                        "description": "Key within the secret (optional, provider-specific default)"
+                      }
+                    },
+                    "required": ["secretName"]
                   },
                   "when": {
                     "type": "string",
@@ -676,6 +745,21 @@
                   "template": {
                     "type": "string",
                     "description": "Go template for the Teams message body. Available variables: .State, .RunName, .Namespace, .CommitSHA, .TargetURL"
+                  },
+                  "templateRef": {
+                    "type": "object",
+                    "description": "Reference to a ConfigMap containing the template",
+                    "properties": {
+                      "configmapName": {
+                        "type": "string",
+                        "description": "Name of the Kubernetes ConfigMap"
+                      },
+                      "configmapKey": {
+                        "type": "string",
+                        "description": "Key within the ConfigMap"
+                      }
+                    },
+                    "required": ["configmapName", "configmapKey"]
                   }
                 },
                 "required": [
@@ -699,17 +783,39 @@
                     "description": "Enable or disable this Discord notifier instance",
                     "default": false
                   },
-                  "secret_name": {
-                    "type": "string",
-                    "description": "Name of the Kubernetes Secret containing the Discord Webhook URL (webhook_url key). Used for webhook mode."
+                  "secretRef": {
+                    "type": "object",
+                    "description": "Reference to a Kubernetes Secret containing the Discord Webhook URL (webhook_url key). Used for webhook mode.",
+                    "properties": {
+                      "secretName": {
+                        "type": "string",
+                        "description": "Name of the Kubernetes Secret"
+                      },
+                      "secretKey": {
+                        "type": "string",
+                        "description": "Key within the secret (optional, provider-specific default)"
+                      }
+                    },
+                    "required": ["secretName"]
                   },
                   "bot_token": {
                     "type": "object",
-                    "description": "Discord Bot Token auth (uses channels/{id}/messages API). Mutually exclusive with secret_name.",
+                    "description": "Discord Bot Token auth (uses channels/{id}/messages API). Mutually exclusive with secretRef.",
                     "properties": {
-                      "token_secret_name": {
-                        "type": "string",
-                        "description": "Name of the Kubernetes Secret containing the Discord Bot Token"
+                      "secretRef": {
+                        "type": "object",
+                        "description": "Reference to a Kubernetes Secret containing the Discord Bot Token",
+                        "properties": {
+                          "secretName": {
+                            "type": "string",
+                            "description": "Name of the Kubernetes Secret"
+                          },
+                          "secretKey": {
+                            "type": "string",
+                            "description": "Key within the secret (optional, provider-specific default)"
+                          }
+                        },
+                        "required": ["secretName"]
                       },
                       "channel_id": {
                         "type": "string",
@@ -737,6 +843,21 @@
                   "template": {
                     "type": "string",
                     "description": "Go template for the Discord message body. Available variables: .State, .RunName, .Namespace, .CommitSHA, .TargetURL"
+                  },
+                  "templateRef": {
+                    "type": "object",
+                    "description": "Reference to a ConfigMap containing the template",
+                    "properties": {
+                      "configmapName": {
+                        "type": "string",
+                        "description": "Name of the Kubernetes ConfigMap"
+                      },
+                      "configmapKey": {
+                        "type": "string",
+                        "description": "Key within the ConfigMap"
+                      }
+                    },
+                    "required": ["configmapName", "configmapKey"]
                   }
                 },
                 "required": [
@@ -760,9 +881,20 @@
                     "description": "Enable or disable this PagerDuty notifier instance",
                     "default": false
                   },
-                  "secret_name": {
-                    "type": "string",
-                    "description": "Name of the Kubernetes Secret containing the PagerDuty integration key (integration_key key)"
+                  "secretRef": {
+                    "type": "object",
+                    "description": "Reference to a Kubernetes Secret containing the PagerDuty integration key (integration_key key)",
+                    "properties": {
+                      "secretName": {
+                        "type": "string",
+                        "description": "Name of the Kubernetes Secret"
+                      },
+                      "secretKey": {
+                        "type": "string",
+                        "description": "Key within the secret (optional, provider-specific default)"
+                      }
+                    },
+                    "required": ["secretName"]
                   },
                   "severity": {
                     "type": "string",
@@ -804,9 +936,20 @@
                     "description": "Enable or disable this Datadog notifier instance",
                     "default": false
                   },
-                  "secret_name": {
-                    "type": "string",
-                    "description": "Name of the Kubernetes Secret containing the Datadog API key (api_key key)"
+                  "secretRef": {
+                    "type": "object",
+                    "description": "Reference to a Kubernetes Secret containing the Datadog API key (api_key key)",
+                    "properties": {
+                      "secretName": {
+                        "type": "string",
+                        "description": "Name of the Kubernetes Secret"
+                      },
+                      "secretKey": {
+                        "type": "string",
+                        "description": "Key within the secret (optional, provider-specific default)"
+                      }
+                    },
+                    "required": ["secretName"]
                   },
                   "site": {
                     "type": "string",
@@ -865,9 +1008,20 @@
                     "type": "string",
                     "description": "Grafana base URL"
                   },
-                  "secret_name": {
-                    "type": "string",
-                    "description": "Kubernetes Secret containing the service account token (token key)"
+                  "secretRef": {
+                    "type": "object",
+                    "description": "Reference to a Kubernetes Secret containing the service account token (token key)",
+                    "properties": {
+                      "secretName": {
+                        "type": "string",
+                        "description": "Name of the Kubernetes Secret"
+                      },
+                      "secretKey": {
+                        "type": "string",
+                        "description": "Key within the secret (optional, provider-specific default)"
+                      }
+                    },
+                    "required": ["secretName"]
                   },
                   "tags": {
                     "type": "array",
@@ -883,6 +1037,21 @@
                   "template": {
                     "type": "string",
                     "description": "Go template for the annotation text"
+                  },
+                  "templateRef": {
+                    "type": "object",
+                    "description": "Reference to a ConfigMap containing the template",
+                    "properties": {
+                      "configmapName": {
+                        "type": "string",
+                        "description": "Name of the Kubernetes ConfigMap"
+                      },
+                      "configmapKey": {
+                        "type": "string",
+                        "description": "Key within the ConfigMap"
+                      }
+                    },
+                    "required": ["configmapName", "configmapKey"]
                   }
                 },
                 "required": [
@@ -921,9 +1090,20 @@
                     },
                     "description": "Project slugs the release belongs to"
                   },
-                  "secret_name": {
-                    "type": "string",
-                    "description": "Kubernetes Secret containing the auth token (token key)"
+                  "secretRef": {
+                    "type": "object",
+                    "description": "Reference to a Kubernetes Secret containing the auth token (token key)",
+                    "properties": {
+                      "secretName": {
+                        "type": "string",
+                        "description": "Name of the Kubernetes Secret"
+                      },
+                      "secretKey": {
+                        "type": "string",
+                        "description": "Key within the secret (optional, provider-specific default)"
+                      }
+                    },
+                    "required": ["secretName"]
                   },
                   "when": {
                     "type": "string",
@@ -951,13 +1131,20 @@
                     "description": "Enable or disable this webhook notifier instance",
                     "default": false
                   },
-                  "url_secret_name": {
-                    "type": "string",
-                    "description": "Name of the Kubernetes Secret containing the webhook URL (url key)"
-                  },
-                  "url_key": {
-                    "type": "string",
-                    "description": "Key within the secret for the webhook URL"
+                  "secretRef": {
+                    "type": "object",
+                    "description": "Reference to a Kubernetes Secret containing the webhook URL",
+                    "properties": {
+                      "secretName": {
+                        "type": "string",
+                        "description": "Name of the Kubernetes Secret"
+                      },
+                      "secretKey": {
+                        "type": "string",
+                        "description": "Key within the secret (optional, provider-specific default)"
+                      }
+                    },
+                    "required": ["secretName"]
                   },
                   "auth": {
                     "type": "object",
@@ -973,25 +1160,65 @@
                           "hmac"
                         ]
                       },
-                      "token_file_secret_name": {
-                        "type": "string",
-                        "description": "Name of the Kubernetes Secret containing the bearer/apikey token (token key)"
+                      "token_secretRef": {
+                        "type": "object",
+                        "description": "Reference to a Kubernetes Secret containing the bearer/apikey token",
+                        "properties": {
+                          "secretName": {
+                            "type": "string",
+                            "description": "Name of the Kubernetes Secret"
+                          },
+                          "secretKey": {
+                            "type": "string",
+                            "description": "Key within the secret (optional, provider-specific default)"
+                          }
+                        },
+                        "required": ["secretName"]
                       },
-                      "token_key": {
-                        "type": "string",
-                        "description": "Key within the secret for the token"
+                      "username_secretRef": {
+                        "type": "object",
+                        "description": "Reference to a Kubernetes Secret containing the basic auth username",
+                        "properties": {
+                          "secretName": {
+                            "type": "string",
+                            "description": "Name of the Kubernetes Secret"
+                          },
+                          "secretKey": {
+                            "type": "string",
+                            "description": "Key within the secret (optional, provider-specific default)"
+                          }
+                        },
+                        "required": ["secretName"]
                       },
-                      "username_file_secret_name": {
-                        "type": "string",
-                        "description": "Name of the Kubernetes Secret containing the basic auth username (username key)"
+                      "password_secretRef": {
+                        "type": "object",
+                        "description": "Reference to a Kubernetes Secret containing the basic auth password",
+                        "properties": {
+                          "secretName": {
+                            "type": "string",
+                            "description": "Name of the Kubernetes Secret"
+                          },
+                          "secretKey": {
+                            "type": "string",
+                            "description": "Key within the secret (optional, provider-specific default)"
+                          }
+                        },
+                        "required": ["secretName"]
                       },
-                      "password_file_secret_name": {
-                        "type": "string",
-                        "description": "Name of the Kubernetes Secret containing the basic auth password (password key)"
-                      },
-                      "secret_file_secret_name": {
-                        "type": "string",
-                        "description": "Name of the Kubernetes Secret containing the HMAC shared secret (hmac_secret key)"
+                      "hmac_secretRef": {
+                        "type": "object",
+                        "description": "Reference to a Kubernetes Secret containing the HMAC shared secret",
+                        "properties": {
+                          "secretName": {
+                            "type": "string",
+                            "description": "Name of the Kubernetes Secret"
+                          },
+                          "secretKey": {
+                            "type": "string",
+                            "description": "Key within the secret (optional, provider-specific default)"
+                          }
+                        },
+                        "required": ["secretName"]
                       },
                       "header": {
                         "type": "string",
@@ -1028,7 +1255,7 @@
             },
             "email": {
               "type": "array",
-              "description": "SMTP email notifier instances. Password is mounted from secret_name (key: password).",
+              "description": "SMTP email notifier instances. Password is mounted from secretRef (key: password).",
               "default": [],
               "items": {
                 "type": "object",
@@ -1066,13 +1293,24 @@
                     "description": "Connection security",
                     "default": "starttls"
                   },
-                  "secret_name": {
-                    "type": "string",
-                    "description": "Kubernetes secret with the SMTP password (key: password)"
+                  "secretRef": {
+                    "type": "object",
+                    "description": "Reference to a Kubernetes Secret with the SMTP password (key: password)",
+                    "properties": {
+                      "secretName": {
+                        "type": "string",
+                        "description": "Name of the Kubernetes Secret"
+                      },
+                      "secretKey": {
+                        "type": "string",
+                        "description": "Key within the secret (optional, provider-specific default)"
+                      }
+                    },
+                    "required": ["secretName"]
                   },
                   "username": {
                     "type": "string",
-                    "description": "SMTP username (requires secret_name)"
+                    "description": "SMTP username (requires secretRef)"
                   },
                   "from": {
                     "type": "string",
@@ -1092,6 +1330,21 @@
                   "template": {
                     "type": "string",
                     "description": "Body Go template; plain-text default when omitted"
+                  },
+                  "templateRef": {
+                    "type": "object",
+                    "description": "Reference to a ConfigMap containing the template",
+                    "properties": {
+                      "configmapName": {
+                        "type": "string",
+                        "description": "Name of the Kubernetes ConfigMap"
+                      },
+                      "configmapKey": {
+                        "type": "string",
+                        "description": "Key within the ConfigMap"
+                      }
+                    },
+                    "required": ["configmapName", "configmapKey"]
                   },
                   "html": {
                     "type": "boolean",
@@ -1130,6 +1383,11 @@
               "type": "string",
               "description": "Service name reported in traces",
               "default": "tekton-events-relay"
+            },
+            "insecure": {
+              "type": "boolean",
+              "description": "When false, uses HTTPS for OTLP export. Set to true for plaintext HTTP.",
+              "default": false
             }
           }
         }
@@ -1911,21 +2169,6 @@
         "enabled"
       ]
     },
-    "templates": {
-      "type": "object",
-      "title": "Template Configuration",
-      "description": "Configuration for external template ConfigMaps",
-      "properties": {
-        "enabled": {
-          "type": "boolean",
-          "description": "Enable template ConfigMap mounting",
-          "default": false
-        }
-      },
-      "required": [
-        "enabled"
-      ]
-    },
     "unsafe": {
       "type": "object",
       "title": "Unsafe overrides",
@@ -2047,6 +2290,21 @@
         "template": {
           "type": "string",
           "description": "Go template for the notification body"
+        },
+        "templateRef": {
+          "type": "object",
+          "description": "Reference to a ConfigMap containing the template",
+          "properties": {
+            "configmapName": {
+              "type": "string",
+              "description": "Name of the Kubernetes ConfigMap"
+            },
+            "configmapKey": {
+              "type": "string",
+              "description": "Key within the ConfigMap"
+            }
+          },
+          "required": ["configmapName", "configmapKey"]
         },
         "mode": {
           "type": "string",
@@ -2417,16 +2675,22 @@
         },
         "auth": {
           "type": "object",
-          "description": "Authentication configuration for the GitHub instance \u2014 use secret_name (token auth) or app_id/installation_id (GitHub App auth)",
+          "description": "Authentication configuration for the GitHub instance \u2014 use secretRef (token auth) or app_id/installation_id (GitHub App auth)",
           "properties": {
-            "secret_name": {
-              "type": "string",
-              "description": "Name of the Kubernetes Secret containing the GitHub PAT (token key)"
-            },
-            "secret_key": {
-              "type": "string",
-              "description": "Key within the secret for the token value",
-              "default": "token"
+            "secretRef": {
+              "type": "object",
+              "description": "Reference to a Kubernetes Secret containing the GitHub PAT",
+              "properties": {
+                "secretName": {
+                  "type": "string",
+                  "description": "Name of the Kubernetes Secret"
+                },
+                "secretKey": {
+                  "type": "string",
+                  "description": "Key within the secret (optional, provider-specific default)"
+                }
+              },
+              "required": ["secretName"]
             },
             "app_id": {
               "type": "integer",
@@ -2436,9 +2700,20 @@
               "type": "integer",
               "description": "GitHub App installation ID (for GitHub App authentication)"
             },
-            "private_key_secret_name": {
-              "type": "string",
-              "description": "Name of the Kubernetes Secret containing the GitHub App RSA private key"
+            "private_key_secretRef": {
+              "type": "object",
+              "description": "Reference to a Kubernetes Secret containing the GitHub App RSA private key",
+              "properties": {
+                "secretName": {
+                  "type": "string",
+                  "description": "Name of the Kubernetes Secret"
+                },
+                "secretKey": {
+                  "type": "string",
+                  "description": "Key within the secret (optional, provider-specific default)"
+                }
+              },
+              "required": ["secretName"]
             }
           }
         },
@@ -2488,36 +2763,56 @@
         },
         "auth": {
           "type": "object",
-          "description": "Authentication configuration for the GitLab instance \u2014 use secret_name (Personal Access Token) or oauth2 (OAuth2 client_credentials)",
+          "description": "Authentication configuration for the GitLab instance \u2014 use secretRef (Personal Access Token) or oauth2 (OAuth2 client_credentials)",
           "properties": {
-            "secret_name": {
-              "type": "string",
-              "description": "Name of the Kubernetes Secret containing the GitLab PAT (token key)"
-            },
-            "secret_key": {
-              "type": "string",
-              "description": "Key within the secret for the token value",
-              "default": "token"
+            "secretRef": {
+              "type": "object",
+              "description": "Reference to a Kubernetes Secret containing the GitLab PAT",
+              "properties": {
+                "secretName": {
+                  "type": "string",
+                  "description": "Name of the Kubernetes Secret"
+                },
+                "secretKey": {
+                  "type": "string",
+                  "description": "Key within the secret (optional, provider-specific default)"
+                }
+              },
+              "required": ["secretName"]
             },
             "oauth2": {
               "type": "object",
               "description": "OAuth2 client_credentials configuration",
               "properties": {
-                "client_id_secret_name": {
-                  "type": "string",
-                  "description": "Name of the Kubernetes Secret containing the OAuth2 client ID"
+                "client_id_secretRef": {
+                  "type": "object",
+                  "description": "Reference to a Kubernetes Secret containing the OAuth2 client ID",
+                  "properties": {
+                    "secretName": {
+                      "type": "string",
+                      "description": "Name of the Kubernetes Secret"
+                    },
+                    "secretKey": {
+                      "type": "string",
+                      "description": "Key within the secret (optional, provider-specific default)"
+                    }
+                  },
+                  "required": ["secretName"]
                 },
-                "client_id_key": {
-                  "type": "string",
-                  "description": "Key within the secret for the client ID"
-                },
-                "client_secret_secret_name": {
-                  "type": "string",
-                  "description": "Name of the Kubernetes Secret containing the OAuth2 client secret"
-                },
-                "client_secret_key": {
-                  "type": "string",
-                  "description": "Key within the secret for the client secret"
+                "client_secret_secretRef": {
+                  "type": "object",
+                  "description": "Reference to a Kubernetes Secret containing the OAuth2 client secret",
+                  "properties": {
+                    "secretName": {
+                      "type": "string",
+                      "description": "Name of the Kubernetes Secret"
+                    },
+                    "secretKey": {
+                      "type": "string",
+                      "description": "Key within the secret (optional, provider-specific default)"
+                    }
+                  },
+                  "required": ["secretName"]
                 },
                 "token_url": {
                   "type": "string",
@@ -2575,34 +2870,84 @@
           "type": "object",
           "description": "Authentication configuration (variant=cloud: username/app_password or oauth2; variant=server: token)",
           "properties": {
-            "username_secret_name": {
-              "type": "string",
-              "description": "Name of the Kubernetes secret containing the Bitbucket Cloud username"
+            "username_secretRef": {
+              "type": "object",
+              "description": "Reference to a Kubernetes Secret containing the Bitbucket Cloud username",
+              "properties": {
+                "secretName": {
+                  "type": "string",
+                  "description": "Name of the Kubernetes Secret"
+                },
+                "secretKey": {
+                  "type": "string",
+                  "description": "Key within the secret (optional, provider-specific default)"
+                }
+              },
+              "required": ["secretName"]
             },
-            "app_password_secret_name": {
-              "type": "string",
-              "description": "Name of the Kubernetes secret containing the Bitbucket Cloud app password"
+            "app_password_secretRef": {
+              "type": "object",
+              "description": "Reference to a Kubernetes Secret containing the Bitbucket Cloud app password",
+              "properties": {
+                "secretName": {
+                  "type": "string",
+                  "description": "Name of the Kubernetes Secret"
+                },
+                "secretKey": {
+                  "type": "string",
+                  "description": "Key within the secret (optional, provider-specific default)"
+                }
+              },
+              "required": ["secretName"]
             },
-            "secret_name": {
-              "type": "string",
-              "description": "Name of the Kubernetes secret containing the Bitbucket Server personal access token"
-            },
-            "secret_key": {
-              "type": "string",
-              "description": "Key within the secret for the token (default: token)",
-              "default": "token"
+            "secretRef": {
+              "type": "object",
+              "description": "Reference to a Kubernetes Secret containing the Bitbucket Server personal access token",
+              "properties": {
+                "secretName": {
+                  "type": "string",
+                  "description": "Name of the Kubernetes Secret"
+                },
+                "secretKey": {
+                  "type": "string",
+                  "description": "Key within the secret (optional, provider-specific default)"
+                }
+              },
+              "required": ["secretName"]
             },
             "oauth2": {
               "type": "object",
               "description": "OAuth2 client_credentials configuration for Bitbucket Cloud",
               "properties": {
-                "client_id_secret_name": {
-                  "type": "string",
-                  "description": "Name of the Kubernetes secret containing the OAuth2 client ID"
+                "client_id_secretRef": {
+                  "type": "object",
+                  "description": "Reference to a Kubernetes Secret containing the OAuth2 client ID",
+                  "properties": {
+                    "secretName": {
+                      "type": "string",
+                      "description": "Name of the Kubernetes Secret"
+                    },
+                    "secretKey": {
+                      "type": "string",
+                      "description": "Key within the secret (optional, provider-specific default)"
+                    }
+                  },
+                  "required": ["secretName"]
                 },
-                "client_secret_secret_name": {
-                  "type": "string",
-                  "description": "Name of the Kubernetes secret containing the OAuth2 client secret"
+                "client_secret_secretRef": {
+                  "type": "object",
+                  "description": "Reference to a Kubernetes Secret containing the OAuth2 client secret",
+                  "properties": {
+                    "secretName": {
+                      "type": "string",
+                      "description": "Name of the Kubernetes Secret"
+                    },
+                    "secretKey": {
+                      "type": "string",
+                      "description": "Key within the secret (optional, provider-specific default)"
+                    }
+                  },
+                  "required": ["secretName"]
                 },
                 "token_url": {
                   "type": "string",
@@ -2653,14 +2998,20 @@
           "description": "Skip TLS certificate verification (not recommended for production)",
           "default": false
         },
-        "secret_name": {
-          "type": "string",
-          "description": "Name of the Kubernetes Secret containing the Azure DevOps Personal Access Token (token key)"
-        },
-        "secret_key": {
-          "type": "string",
-          "description": "Key within the secret for the token value",
-          "default": "token"
+        "secretRef": {
+          "type": "object",
+          "description": "Reference to a Kubernetes Secret containing the Azure DevOps Personal Access Token",
+          "properties": {
+            "secretName": {
+              "type": "string",
+              "description": "Name of the Kubernetes Secret"
+            },
+            "secretKey": {
+              "type": "string",
+              "description": "Key within the secret (optional, provider-specific default)"
+            }
+          },
+          "required": ["secretName"]
         },
         "actions": {
           "type": "array",
@@ -2727,36 +3078,56 @@
         },
         "auth": {
           "type": "object",
-          "description": "Authentication configuration for the Gitea instance \u2014 use secret_name (Personal Access Token) or oauth2 (OAuth2 client_credentials)",
+          "description": "Authentication configuration for the Gitea instance \u2014 use secretRef (Personal Access Token) or oauth2 (OAuth2 client_credentials)",
           "properties": {
-            "secret_name": {
-              "type": "string",
-              "description": "Name of the Kubernetes Secret containing the Gitea PAT (token key)"
-            },
-            "secret_key": {
-              "type": "string",
-              "description": "Key within the secret for the token value",
-              "default": "token"
+            "secretRef": {
+              "type": "object",
+              "description": "Reference to a Kubernetes Secret containing the Gitea PAT",
+              "properties": {
+                "secretName": {
+                  "type": "string",
+                  "description": "Name of the Kubernetes Secret"
+                },
+                "secretKey": {
+                  "type": "string",
+                  "description": "Key within the secret (optional, provider-specific default)"
+                }
+              },
+              "required": ["secretName"]
             },
             "oauth2": {
               "type": "object",
               "description": "OAuth2 client_credentials configuration",
               "properties": {
-                "client_id_secret_name": {
-                  "type": "string",
-                  "description": "Name of the Kubernetes Secret containing the OAuth2 client ID"
+                "client_id_secretRef": {
+                  "type": "object",
+                  "description": "Reference to a Kubernetes Secret containing the OAuth2 client ID",
+                  "properties": {
+                    "secretName": {
+                      "type": "string",
+                      "description": "Name of the Kubernetes Secret"
+                    },
+                    "secretKey": {
+                      "type": "string",
+                      "description": "Key within the secret (optional, provider-specific default)"
+                    }
+                  },
+                  "required": ["secretName"]
                 },
-                "client_id_key": {
-                  "type": "string",
-                  "description": "Key within the secret for the client ID"
-                },
-                "client_secret_secret_name": {
-                  "type": "string",
-                  "description": "Name of the Kubernetes Secret containing the OAuth2 client secret"
-                },
-                "client_secret_key": {
-                  "type": "string",
-                  "description": "Key within the secret for the client secret"
+                "client_secret_secretRef": {
+                  "type": "object",
+                  "description": "Reference to a Kubernetes Secret containing the OAuth2 client secret",
+                  "properties": {
+                    "secretName": {
+                      "type": "string",
+                      "description": "Name of the Kubernetes Secret"
+                    },
+                    "secretKey": {
+                      "type": "string",
+                      "description": "Key within the secret (optional, provider-specific default)"
+                    }
+                  },
+                  "required": ["secretName"]
                 },
                 "token_url": {
                   "type": "string",
@@ -2806,14 +3177,20 @@
           "type": "object",
           "description": "Authentication configuration for the SourceHut instance",
           "properties": {
-            "secret_name": {
-              "type": "string",
-              "description": "Name of the Kubernetes Secret containing the SourceHut token (token key)"
-            },
-            "secret_key": {
-              "type": "string",
-              "description": "Key within the secret for the token value",
-              "default": "token"
+            "secretRef": {
+              "type": "object",
+              "description": "Reference to a Kubernetes Secret containing the SourceHut token",
+              "properties": {
+                "secretName": {
+                  "type": "string",
+                  "description": "Name of the Kubernetes Secret"
+                },
+                "secretKey": {
+                  "type": "string",
+                  "description": "Key within the secret (optional, provider-specific default)"
+                }
+              },
+              "required": ["secretName"]
             }
           }
         },

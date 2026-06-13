@@ -1,6 +1,5 @@
-# Default notification templates, mounted at /etc/templates when
-# templates.enabled=true and referenced from actions via
-#   template_file: /etc/templates/<name>.tmpl
+# Default notification templates, mounted at /etc/templates and referenced
+# from actions via template_file: /etc/templates/<name>.tmpl
 #
 # Renderer capabilities differ per notifier:
 #   - SCM comment/checkrun handlers, grafana and the accumulator compile with

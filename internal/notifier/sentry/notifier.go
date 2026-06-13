@@ -5,6 +5,7 @@ package sentry
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -142,7 +143,8 @@ func (n *Notifier) post(ctx context.Context, url string, payload any) error {
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 300 {
-		return fmt.Errorf("sentry API returned %d", resp.StatusCode)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("sentry API returned %d: %s", resp.StatusCode, string(body))
 	}
 	return nil
 }

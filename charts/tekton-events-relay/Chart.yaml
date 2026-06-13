@@ -4,6 +4,11 @@ description: CloudEvents receiver that reports pipeline execution status to mult
 type: application
 version: 0.5.0
 appVersion: "0.5.0"
+dependencies:
+  - name: valkey
+    version: 0.9.4
+    condition: config.store.valkey.embedded.enabled
+    repository: https://valkey.io/valkey-helm/
 annotations:
   org.opencontainers.image.source: https://github.com/fabioluciano/tekton-events-relay
   artifacthub.io/category: integration-delivery

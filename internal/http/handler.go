@@ -168,7 +168,10 @@ func decodeEvent(decoders *event.Registry, ce *cehttp.Event, log *zap.Logger, co
 	}
 	env, err := decoder.Decode(event.RawEvent{ID: ce.ID, Type: ce.Type, Source: ce.Source, Data: ce.Data})
 	if err != nil {
-		log.Debug("skip event", zap.String("decoder", decoder.Name()), zap.Error(err))
+		log.Warn("skip event", zap.String("decoder", decoder.Name()), zap.Error(err))
+		if collectors != nil {
+			collectors.ErrorsPermanent.WithLabelValues("decode_error").Inc()
+		}
 		w.WriteHeader(http.StatusOK)
 		return nil, false
 	}

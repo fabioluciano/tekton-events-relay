@@ -141,6 +141,9 @@ func New(cfg Config, log *zap.Logger) (*Notifier, error) {
 	if err != nil {
 		return nil, fmt.Errorf("email %s: invalid template: %w", cfg.Name, err)
 	}
+	if log == nil {
+		log = zap.NewNop()
+	}
 
 	return &Notifier{cfg: cfg, subjectTmpl: subjectTmpl, bodyTmpl: bodyTmpl, log: log}, nil
 }

@@ -144,6 +144,16 @@ webhook-default.tmpl
 {{- end }}
 
 {{/*
+Fail fast when the embedded Valkey subchart is enabled but the store backend
+is not set to "valkey". The embedded instance would be deployed but unused.
+*/}}
+{{- define "tekton-events-relay.validateEmbeddedValkey" -}}
+{{- if and (index .Values "config" "store" "valkey" "embedded" "enabled") (ne (.Values.config.store.backend | default "memory") "valkey") -}}
+{{- fail "config.store.valkey.embedded.enabled=true requires config.store.backend=valkey" -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Fail fast when the per-pod memory store is combined with multiple replicas:
 deduplication and accumulator state would diverge between pods, producing
 duplicate or fragmented notifications. Set config.store.backend to valkey

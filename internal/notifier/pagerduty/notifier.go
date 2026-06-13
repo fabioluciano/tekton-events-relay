@@ -90,7 +90,7 @@ func (n *Notifier) payload(e domain.Event) (any, error) {
 	p := map[string]any{
 		"routing_key":  n.cfg.IntegrationKey,
 		"event_action": action,
-		"dedup_key":    e.RunName, // ensures idempotency per run
+		"dedup_key":    e.RunID, // ensures idempotency per run (UID is unique across time)
 		"payload": map[string]any{
 			"summary":   fmt.Sprintf("[%s] %s — %s", e.State, e.Context, e.Description),
 			"source":    fmt.Sprintf("%s/%s", e.Namespace, e.RunName),

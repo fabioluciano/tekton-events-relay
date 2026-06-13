@@ -46,6 +46,11 @@ func (r *StatusReporter) Handle(ctx context.Context, e domain.Event) error {
 		return err
 	}
 
+	safeOwner := sanitizeYAML(e.Repo.Owner)
+	safeRepo := sanitizeYAML(e.Repo.Name)
+	safeSHA := sanitizeYAML(e.CommitSHA)
+	safeDesc := sanitizeYAML(e.Description)
+
 	manifest := fmt.Sprintf(`image: alpine
 sources:
   - https://git.sr.ht/~%s/%s#%s
@@ -54,9 +59,9 @@ tasks:
       echo "%s: %s"
       exit %d
 `,
-		e.Repo.Owner, e.Repo.Name, e.CommitSHA,
+		safeOwner, safeRepo, safeSHA,
 		providerNameStateMap.Map(e.State, "pending"),
-		e.Description,
+		safeDesc,
 		exitFor(e.State),
 	)
 
@@ -76,4 +81,12 @@ var providerNameStateMap = scm.StateMap{
 	domain.StateFailure:  "failed",
 	domain.StateError:    "failed",
 	domain.StateCanceled: "cancelled",
+}
+
+// sanitizeYAML removes characters that could break YAML block scalars.
+func sanitizeYAML(s string) string {
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.ReplaceAll(s, "\r", "")
+	s = strings.ReplaceAll(s, "\"", "'")
+	return s
 }

@@ -50,8 +50,10 @@ func (h *healthHandler) readyEndpoint(w http.ResponseWriter, _ *http.Request) {
 			break
 		}
 	}
-	if snapshot := h.status.Snapshot(); snapshot != nil {
-		body["handlers"] = snapshot
+	if h.status != nil {
+		if snapshot := h.status.Snapshot(); snapshot != nil {
+			body["handlers"] = snapshot
+		}
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
@@ -133,6 +135,8 @@ func BuildServer(cfg *config.Config, decoders *event.Registry, chain pipeline.Ha
 	if deadLetter != nil {
 		listHandler := http.Handler(dlqListHandler(deadLetter, log))
 		replayHandler := http.Handler(dlqReplayHandler(deadLetter, chain, collectors, log))
+		listHandler = middleware.PanicRecovery(log)(listHandler)
+		replayHandler = middleware.PanicRecovery(log)(replayHandler)
 		if authMW != nil {
 			listHandler = authMW(listHandler)
 			replayHandler = authMW(replayHandler)

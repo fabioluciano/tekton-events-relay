@@ -6,6 +6,7 @@
 package tekton
 
 import (
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -19,6 +20,8 @@ const (
 	descStarted       = "Started"
 	descRunning       = "Running"
 	descFailed        = "Failed"
+	descCanceled      = "Canceled"
+	descError         = "Error"
 	condTypeSucceeded = "Succeeded"
 
 	// Decoder names
@@ -65,8 +68,8 @@ type childReference struct {
 
 // runResult represents a Tekton result (name/value pair).
 type runResult struct {
-	Name  string `json:"name"`
-	Value string `json:"value"`
+	Name  string          `json:"name"`
+	Value json.RawMessage `json:"value"`
 }
 
 // pipelineSpec contains fields we care about from the embedded pipeline spec.
@@ -101,6 +104,10 @@ func MapState(eventType string) domain.State {
 		return domain.StateSuccess
 	case strings.HasSuffix(eventType, ".failed.v1"):
 		return domain.StateFailure
+	case strings.HasSuffix(eventType, ".cancelled.v1"):
+		return domain.StateCanceled
+	case strings.HasSuffix(eventType, ".error.v1"):
+		return domain.StateError
 	}
 	return domain.StatePending
 }
@@ -127,6 +134,27 @@ func descriptionFor(obj *runObject, eventType string) string {
 		return descSucceeded
 	case strings.HasSuffix(eventType, ".failed.v1"):
 		return descFailed
+	case strings.HasSuffix(eventType, ".cancelled.v1"):
+		return descCanceled
+	case strings.HasSuffix(eventType, ".error.v1"):
+		return descError
 	}
 	return ""
+}
+
+// rawMessageToString converts a json.RawMessage to a string representation.
+// For string values, it strips the quotes. For other types (objects, arrays, numbers, booleans),
+// it returns the raw JSON.
+func rawMessageToString(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	// If it's a JSON string, strip the quotes
+	if raw[0] == '"' && raw[len(raw)-1] == '"' {
+		var s string
+		if err := json.Unmarshal(raw, &s); err == nil {
+			return s
+		}
+	}
+	return string(raw)
 }

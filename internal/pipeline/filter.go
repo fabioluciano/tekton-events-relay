@@ -54,6 +54,10 @@ func (f *EventFilter) Handle(ctx context.Context, env *event.Envelope) error {
 		if !f.AllowEventListener {
 			return nil
 		}
+	default:
+		if f.IgnoreUnknown {
+			return nil
+		}
 	}
 	return f.Next(ctx, env)
 }

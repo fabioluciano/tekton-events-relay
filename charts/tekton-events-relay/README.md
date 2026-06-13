@@ -1,6 +1,6 @@
 # tekton-events-relay
 
-![Version: 0.5.0](https://img.shields.io/badge/Version-0.5.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.5.0](https://img.shields.io/badge/AppVersion-0.5.0-informational?style=flat-square)
+![Version: 0.6.0](https://img.shields.io/badge/Version-0.6.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.6.0](https://img.shields.io/badge/AppVersion-0.6.0-informational?style=flat-square)
 
 **Your pipelines run. Your platforms get updated. You write zero notification code.**
 
@@ -25,7 +25,7 @@ Tekton Events Relay turns the CloudEvents your Tekton pipelines already emit int
 ```bash
 helm install tekton-events-relay \
   oci://ghcr.io/fabioluciano/charts/tekton-events-relay \
-  --version 0.5.0 \
+  --version 0.6.0 \
   --namespace tekton-events-relay --create-namespace \
   -f values.yaml
 ```
@@ -89,12 +89,12 @@ Images and charts are signed with [Cosign](https://github.com/sigstore/cosign) (
 cosign verify \
   --certificate-identity-regexp='https://github.com/fabioluciano/tekton-events-relay' \
   --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
-  ghcr.io/fabioluciano/tekton-events-relay:0.5.0
+  ghcr.io/fabioluciano/tekton-events-relay:0.6.0
 
 cosign verify \
   --certificate-identity-regexp='https://github.com/fabioluciano/tekton-events-relay' \
   --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
-  oci://ghcr.io/fabioluciano/charts/tekton-events-relay:0.5.0
+  oci://ghcr.io/fabioluciano/charts/tekton-events-relay:0.6.0
 ```
 
 ## Scaling note
@@ -167,6 +167,17 @@ The default in-memory state backend is per-pod: run **one replica**, or set `con
 | config.notifiers.discord[0].template | string | `"**Pipeline {{.State}}** in `{{.Namespace}}`\n```\nRun:    {{.RunName}}\nCommit: {{.CommitSHA}}\n```\n{{if .TargetURL}}[View in Dashboard]({{.TargetURL}}){{end}}\n"` | Go template for the Discord message body. Available variables: .State, .RunName, .Namespace, .CommitSHA, .TargetURL |
 | config.notifiers.discord[0].username | string | `"Tekton CI"` | Display name for the bot posting messages |
 | config.notifiers.discord[0].when | string | `"event.Namespace == \"staging\" || event.Namespace == \"production\""` | CEL expression to filter which events trigger notifications |
+| config.notifiers.email | list | `[{"enabled":false,"encryption":"starttls","from":"tekton@example.com","host":"smtp.example.com","html":false,"name":"default","port":587,"subject":"[tekton] {{ if .PipelineName }}{{ .PipelineName }}{{ else }}{{ .RunName }}{{ end }} — {{ .State }}","to":["platform-team@example.com"],"when":"event.Resource == \"pipelinerun\" && stateIn(\"failure\", \"error\")"}]` | SMTP email notifier instances. The most universal channel: any relay (corporate SMTP, SES, Mailgun, in-cluster Postfix) works. |
+| config.notifiers.email[0] | object | `{"enabled":false,"encryption":"starttls","from":"tekton@example.com","host":"smtp.example.com","html":false,"name":"default","port":587,"subject":"[tekton] {{ if .PipelineName }}{{ .PipelineName }}{{ else }}{{ .RunName }}{{ end }} — {{ .State }}","to":["platform-team@example.com"],"when":"event.Resource == \"pipelinerun\" && stateIn(\"failure\", \"error\")"}` | Unique identifier for this email instance |
+| config.notifiers.email[0].enabled | bool | `false` | Enable or disable this email notifier instance |
+| config.notifiers.email[0].encryption | string | `"starttls"` | Connection security: starttls (default), tls or none. NOTE: with "none", AUTH is only attempted against localhost relays. |
+| config.notifiers.email[0].from | string | `"tekton@example.com"` | Sender address |
+| config.notifiers.email[0].host | string | `"smtp.example.com"` | SMTP server hostname |
+| config.notifiers.email[0].html | bool | `false` | Send body as text/html instead of text/plain |
+| config.notifiers.email[0].port | int | `587` | SMTP port (587 STARTTLS, 465 implicit TLS, 25 plain relays) |
+| config.notifiers.email[0].subject | string | `"[tekton] {{ if .PipelineName }}{{ .PipelineName }}{{ else }}{{ .RunName }}{{ end }} — {{ .State }}"` | Subject Go template (CR/LF stripped to prevent header injection) |
+| config.notifiers.email[0].to | list | `["platform-team@example.com"]` | Recipient list |
+| config.notifiers.email[0].when | string | `"event.Resource == \"pipelinerun\" && stateIn(\"failure\", \"error\")"` | CEL expression to filter which events are emailed |
 | config.notifiers.pagerduty | list | `[{"enabled":false,"name":"main-service","severity":"critical","when":"event.State == \"failure\" || event.State == \"error\""}]` | PagerDuty incident services configuration. Supports multiple services with independent integration keys. |
 | config.notifiers.pagerduty[0] | object | `{"enabled":false,"name":"main-service","severity":"critical","when":"event.State == \"failure\" || event.State == \"error\""}` | Unique identifier for this PagerDuty service configuration |
 | config.notifiers.pagerduty[0].enabled | bool | `false` | Enable or disable this PagerDuty notifier instance |

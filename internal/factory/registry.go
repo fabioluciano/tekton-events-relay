@@ -140,5 +140,10 @@ func buildNotifierHandlers(cfg *config.Config, log *zap.Logger, reg *notifier.Re
 		return err
 	}
 
+	// Email
+	if err := BuildAndRegister(cfg.Notifiers.Email, &EmailFactory{}, log, reg); err != nil {
+		return err
+	}
+
 	return nil
 }

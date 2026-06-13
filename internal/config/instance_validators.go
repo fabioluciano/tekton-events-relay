@@ -163,6 +163,8 @@ func validateCELWhen(prefix string, inst interface{}) []ValidationError {
 		when = v.When
 	case WebhookInstance:
 		when = v.When
+	case EmailInstance:
+		when = v.When
 	}
 
 	if when != "" {
@@ -184,6 +186,8 @@ func validateTemplate(prefix string, inst interface{}) []ValidationError {
 	case TeamsInstance:
 		tmpl = v.Template
 	case DiscordInstance:
+		tmpl = v.Template
+	case EmailInstance:
 		tmpl = v.Template
 	}
 
@@ -650,6 +654,32 @@ func (c *Config) validateSCM(names map[string]map[string]bool) error {
 	return nil
 }
 
+func validateEmailInstance(prefix string, inst EmailInstance) []ValidationError {
+	var errs []ValidationError
+	if inst.Enabled {
+		if inst.Host == "" {
+			errs = append(errs, ValidationError{Path: prefix + ".host", Message: "host required when enabled"})
+		}
+		if inst.From == "" {
+			errs = append(errs, ValidationError{Path: prefix + ".from", Message: "from required when enabled"})
+		}
+		if len(inst.To) == 0 {
+			errs = append(errs, ValidationError{Path: prefix + ".to", Message: "at least one recipient required when enabled"})
+		}
+		if inst.Port < 0 || inst.Port > 65535 {
+			errs = append(errs, ValidationError{Path: prefix + ".port", Message: "port must be between 1 and 65535"})
+		}
+		if inst.Subject != "" {
+			if _, err := template.New("subject").Parse(inst.Subject); err != nil {
+				errs = append(errs, ValidationError{Path: prefix + ".subject", Message: fmt.Sprintf("invalid template: %v", err)})
+			}
+		}
+	}
+	errs = append(errs, validateCELWhen(prefix, inst)...)
+	errs = append(errs, validateTemplate(prefix, inst)...)
+	return errs
+}
+
 //nolint:dupl // validateSCM and validateNotifiers share structure but operate on different config sections
 func (c *Config) validateNotifiers(names map[string]map[string]bool) error {
 	for i, inst := range c.Notifiers.Slack {
@@ -667,6 +697,16 @@ func (c *Config) validateNotifiers(names map[string]map[string]bool) error {
 			return err
 		}
 		errs := validateTeamsInstance(fmt.Sprintf("notifiers.teams[%d]", i), inst)
+		if len(errs) > 0 {
+			return fmt.Errorf("%s", errs[0].Error())
+		}
+	}
+
+	for i, inst := range c.Notifiers.Email {
+		if err := checkDuplicateName("notifiers.email", inst.Name, names); err != nil {
+			return err
+		}
+		errs := validateEmailInstance(fmt.Sprintf("notifiers.email[%d]", i), inst)
 		if len(errs) > 0 {
 			return fmt.Errorf("%s", errs[0].Error())
 		}

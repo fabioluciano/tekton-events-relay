@@ -58,6 +58,14 @@ spec:
         - port: {{ .Values.config.store.olric.memberlist_port }}
           protocol: UDP
     {{- end }}
+    {{- range .Values.config.notifiers.email }}
+    {{- if .enabled }}
+    # Allow outbound SMTP for the "{{ .name }}" email notifier
+    - ports:
+        - port: {{ .port | default 587 }}
+          protocol: TCP
+    {{- end }}
+    {{- end }}
   ingress:
     {{- if .Values.config.server.metrics_addr }}
     # Allow Prometheus scraping of the dedicated metrics port

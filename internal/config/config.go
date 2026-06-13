@@ -198,6 +198,7 @@ type NotifiersConfig struct {
 	Webhook   []WebhookInstance   `yaml:"webhook,omitempty" validate:"omitempty,dive"`
 	Grafana   []GrafanaInstance   `yaml:"grafana,omitempty" validate:"omitempty,dive"`
 	Sentry    []SentryInstance    `yaml:"sentry,omitempty" validate:"omitempty,dive"`
+	Email     []EmailInstance     `yaml:"email,omitempty" validate:"omitempty,dive"`
 }
 
 // ActionType identifies the type of action in the configuration.
@@ -558,6 +559,36 @@ func (d DiscordInstance) WebhookURL() string {
 		return d.Auth.WebhookURLFile
 	}
 	return ""
+}
+
+// EmailInstance represents a single SMTP email notifier configuration.
+type EmailInstance struct {
+	Name    string `yaml:"name" validate:"required"`
+	Enabled bool   `yaml:"enabled"`
+	Host    string `yaml:"host"`
+	Port    int    `yaml:"port,omitempty"` // default 587
+	// Encryption: starttls (default), tls (implicit, 465) or none (in-cluster relays)
+	Encryption string     `yaml:"encryption,omitempty" validate:"omitempty,oneof=starttls tls none"`
+	Auth       *EmailAuth `yaml:"auth,omitempty"`
+	From       string     `yaml:"from"`
+	To         []string   `yaml:"to"`
+	// Subject is a Go template rendered against the event (CR/LF stripped).
+	Subject string `yaml:"subject,omitempty"`
+	// Template is the body Go template; a readable plain-text default applies.
+	Template string `yaml:"template,omitempty"`
+	HTML     bool   `yaml:"html,omitempty"`
+	// InsecureSkipVerify disables TLS verification (self-hosted relays).
+	InsecureSkipVerify bool   `yaml:"insecure_skip_verify,omitempty"`
+	When               string `yaml:"when"`
+}
+
+func (e EmailInstance) isEnabled() bool { return e.Enabled }
+
+// EmailAuth holds SMTP credentials. Password comes from a mounted secret.
+type EmailAuth struct {
+	Username     string `yaml:"username,omitempty"`
+	PasswordFile string `yaml:"password_file,omitempty"`
+	PasswordKey  string `yaml:"password_key,omitempty"`
 }
 
 // PagerDutyInstance represents a single PagerDuty notifier configuration.

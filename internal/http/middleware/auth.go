@@ -130,7 +130,7 @@ func validateBearer(r *http.Request, expectedToken string) bool {
 	}
 
 	parts := strings.SplitN(auth, " ", 2)
-	if len(parts) != 2 || parts[0] != "Bearer" {
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
 		return false
 	}
 

@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/fabioluciano/tekton-events-relay/internal/config"
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
 )
 
@@ -36,7 +35,7 @@ func TestFilteredHandler_NilConfig(t *testing.T) {
 
 func TestFilteredHandler_EmptyFilter(t *testing.T) {
 	inner := &mockActionHandler{name: testHandler, typ: ActionCommitStatus}
-	cfg := &config.ActionFilterConfig{
+	cfg := &FilterConfig{
 		// All filter lists empty
 	}
 	handler := NewFilteredHandler(inner, cfg)
@@ -58,8 +57,8 @@ func TestFilteredHandler_EmptyFilter(t *testing.T) {
 
 func TestFilteredHandler_AllowOnly_Pass(t *testing.T) {
 	inner := &mockActionHandler{name: testHandler, typ: ActionCommitStatus}
-	cfg := &config.ActionFilterConfig{
-		Pipelines: config.FilterList{
+	cfg := &FilterConfig{
+		Pipelines: FilterList{
 			Allow: []string{buildPipeline, testPipeline},
 		},
 	}
@@ -82,8 +81,8 @@ func TestFilteredHandler_AllowOnly_Pass(t *testing.T) {
 
 func TestFilteredHandler_AllowOnly_Drop(t *testing.T) {
 	inner := &mockActionHandler{name: testHandler, typ: ActionCommitStatus}
-	cfg := &config.ActionFilterConfig{
-		Pipelines: config.FilterList{
+	cfg := &FilterConfig{
+		Pipelines: FilterList{
 			Allow: []string{buildPipeline, testPipeline},
 		},
 	}
@@ -106,8 +105,8 @@ func TestFilteredHandler_AllowOnly_Drop(t *testing.T) {
 
 func TestFilteredHandler_DenyOnly_Pass(t *testing.T) {
 	inner := &mockActionHandler{name: testHandler, typ: ActionCommitStatus}
-	cfg := &config.ActionFilterConfig{
-		Pipelines: config.FilterList{
+	cfg := &FilterConfig{
+		Pipelines: FilterList{
 			Deny: []string{deployPipeline},
 		},
 	}
@@ -130,8 +129,8 @@ func TestFilteredHandler_DenyOnly_Pass(t *testing.T) {
 
 func TestFilteredHandler_DenyOnly_Drop(t *testing.T) {
 	inner := &mockActionHandler{name: testHandler, typ: ActionCommitStatus}
-	cfg := &config.ActionFilterConfig{
-		Pipelines: config.FilterList{
+	cfg := &FilterConfig{
+		Pipelines: FilterList{
 			Deny: []string{deployPipeline, testPipeline},
 		},
 	}
@@ -154,8 +153,8 @@ func TestFilteredHandler_DenyOnly_Drop(t *testing.T) {
 
 func TestFilteredHandler_BothAllowAndDeny_DenyWins(t *testing.T) {
 	inner := &mockActionHandler{name: testHandler, typ: ActionCommitStatus}
-	cfg := &config.ActionFilterConfig{
-		Pipelines: config.FilterList{
+	cfg := &FilterConfig{
+		Pipelines: FilterList{
 			Allow: []string{buildPipeline, testPipeline},
 			Deny:  []string{buildPipeline},
 		},
@@ -179,8 +178,8 @@ func TestFilteredHandler_BothAllowAndDeny_DenyWins(t *testing.T) {
 
 func TestFilteredHandler_CaseInsensitive(t *testing.T) {
 	inner := &mockActionHandler{name: testHandler, typ: ActionCommitStatus}
-	cfg := &config.ActionFilterConfig{
-		Pipelines: config.FilterList{
+	cfg := &FilterConfig{
+		Pipelines: FilterList{
 			Allow: []string{"Build-Pipeline", "TEST-pipeline"},
 		},
 	}
@@ -237,8 +236,8 @@ func TestFilteredHandler_CaseInsensitive(t *testing.T) {
 //nolint:dupl // Test pattern repetition is acceptable
 func TestFilteredHandler_TaskRun(t *testing.T) {
 	inner := &mockActionHandler{name: testHandler, typ: ActionCommitStatus}
-	cfg := &config.ActionFilterConfig{
-		Tasks: config.FilterList{
+	cfg := &FilterConfig{
+		Tasks: FilterList{
 			Allow: []string{unitTest, "integration-test"},
 		},
 	}
@@ -284,8 +283,8 @@ func TestFilteredHandler_TaskRun(t *testing.T) {
 
 func TestFilteredHandler_CustomRun(t *testing.T) {
 	inner := &mockActionHandler{name: testHandler, typ: ActionCommitStatus}
-	cfg := &config.ActionFilterConfig{
-		CustomRuns: config.FilterList{
+	cfg := &FilterConfig{
+		CustomRuns: FilterList{
 			Deny: []string{"skip-custom"},
 		},
 	}
@@ -332,8 +331,8 @@ func TestFilteredHandler_CustomRun(t *testing.T) {
 //nolint:dupl // Test pattern repetition is acceptable
 func TestFilteredHandler_EventListener(t *testing.T) {
 	inner := &mockActionHandler{name: testHandler, typ: ActionCommitStatus}
-	cfg := &config.ActionFilterConfig{
-		EventListeners: config.FilterList{
+	cfg := &FilterConfig{
+		EventListeners: FilterList{
 			Allow: []string{"github-listener", "gitlab-listener"},
 		},
 	}
@@ -379,8 +378,8 @@ func TestFilteredHandler_EventListener(t *testing.T) {
 
 func TestFilteredHandler_EmptyName(t *testing.T) {
 	inner := &mockActionHandler{name: testHandler, typ: ActionCommitStatus}
-	cfg := &config.ActionFilterConfig{
-		Pipelines: config.FilterList{
+	cfg := &FilterConfig{
+		Pipelines: FilterList{
 			Allow: []string{buildPipeline},
 		},
 	}
@@ -404,8 +403,8 @@ func TestFilteredHandler_EmptyName(t *testing.T) {
 
 func TestFilteredHandler_UnknownResourceType(t *testing.T) {
 	inner := &mockActionHandler{name: testHandler, typ: ActionCommitStatus}
-	cfg := &config.ActionFilterConfig{
-		Pipelines: config.FilterList{
+	cfg := &FilterConfig{
+		Pipelines: FilterList{
 			Allow: []string{buildPipeline},
 		},
 	}
@@ -444,17 +443,17 @@ func TestFilteredHandler_NameTypeDelegation(t *testing.T) {
 
 func TestFilteredHandler_MultipleResourceTypes(t *testing.T) {
 	inner := &mockActionHandler{name: testHandler, typ: ActionCommitStatus}
-	cfg := &config.ActionFilterConfig{
-		Tasks: config.FilterList{
+	cfg := &FilterConfig{
+		Tasks: FilterList{
 			Allow: []string{unitTest},
 		},
-		Pipelines: config.FilterList{
+		Pipelines: FilterList{
 			Allow: []string{buildPipeline},
 		},
-		CustomRuns: config.FilterList{
+		CustomRuns: FilterList{
 			Deny: []string{"skip-custom"},
 		},
-		EventListeners: config.FilterList{
+		EventListeners: FilterList{
 			Allow: []string{"github-listener"},
 		},
 	}

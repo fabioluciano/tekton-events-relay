@@ -20,15 +20,19 @@ type StatusReporter struct {
 }
 
 // NewStatusReporter creates a new GitLab commit status reporter.
-func NewStatusReporter(token, baseURL, name string, insecureSkipVerify bool, log *zap.Logger) notifier.ActionHandler {
+func NewStatusReporter(token, baseURL, name string, insecureSkipVerify bool, log *zap.Logger) (notifier.ActionHandler, error) {
 	if log == nil {
 		log = zap.NewNop()
 	}
+	c, err := NewClient(token, baseURL, insecureSkipVerify, false, log)
+	if err != nil {
+		return nil, err
+	}
 	return &StatusReporter{
-		client: NewClient(token, baseURL, insecureSkipVerify, false, log),
+		client: c,
 		name:   name,
 		log:    log,
-	}
+	}, nil
 }
 
 // Name returns the handler name.
@@ -94,13 +98,4 @@ func mapStateToGitLab(state domain.State) gl.BuildStateValue {
 	default:
 		return gl.Pending
 	}
-}
-
-var gitlabStateMap = scm.StateMap{
-	domain.StatePending:  "pending",
-	domain.StateRunning:  "running",
-	domain.StateSuccess:  "success",
-	domain.StateFailure:  "failed",
-	domain.StateError:    "failed",
-	domain.StateCanceled: "canceled",
 }

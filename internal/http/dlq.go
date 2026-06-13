@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"sync"
 
 	"go.uber.org/zap"
 
@@ -13,7 +14,10 @@ import (
 	"github.com/fabioluciano/tekton-events-relay/internal/pipeline"
 )
 
-const dlqDefaultListLimit = 100
+const (
+	dlqDefaultListLimit  = 100
+	dlqReplayConcurrency = 10
+)
 
 // dlqListHandler serves GET /api/v1/dlq.
 func dlqListHandler(queue dlq.Queue, log *zap.Logger) http.HandlerFunc {
@@ -24,9 +28,13 @@ func dlqListHandler(queue dlq.Queue, log *zap.Logger) http.HandlerFunc {
 		}
 
 		limit := dlqDefaultListLimit
+		const dlqMaxListLimit = 1000
 		if raw := r.URL.Query().Get("limit"); raw != "" {
 			if v, err := strconv.Atoi(raw); err == nil && v > 0 {
 				limit = v
+				if limit > dlqMaxListLimit {
+					limit = dlqMaxListLimit
+				}
 			}
 		}
 
@@ -41,10 +49,12 @@ func dlqListHandler(queue dlq.Queue, log *zap.Logger) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
+		if err := json.NewEncoder(w).Encode(map[string]any{
 			"count":  len(entries),
 			"events": entries,
-		})
+		}); err != nil {
+			log.Error("dlq list encode failed", zap.Error(err))
+		}
 	}
 }
 
@@ -74,26 +84,42 @@ func dlqReplayHandler(queue dlq.Queue, chain pipeline.Handler, collectors *metri
 		}
 
 		var result dlqReplayResult
+		var mu sync.Mutex
+		sem := make(chan struct{}, dlqReplayConcurrency)
+		var wg sync.WaitGroup
+
 		for _, entry := range entries {
 			if entry.Envelope == nil {
 				_ = queue.Remove(r.Context(), entry.ID)
 				continue
 			}
-			if err := chain.Handle(r.Context(), entry.Envelope); err != nil {
-				result.Failed++
-				result.FailedID = append(result.FailedID, entry.ID)
-				log.Warn("dlq replay failed",
-					zap.String("ce_id", entry.ID),
-					zap.Error(err))
-				continue
-			}
-			if err := queue.Remove(r.Context(), entry.ID); err != nil {
-				log.Warn("dlq remove after replay failed",
-					zap.String("ce_id", entry.ID),
-					zap.Error(err))
-			}
-			result.Replayed++
+			wg.Add(1)
+			sem <- struct{}{}
+			go func(entry dlq.DeadEvent) {
+				defer wg.Done()
+				defer func() { <-sem }()
+
+				if err := chain.Handle(r.Context(), entry.Envelope); err != nil {
+					mu.Lock()
+					result.Failed++
+					result.FailedID = append(result.FailedID, entry.ID)
+					mu.Unlock()
+					log.Warn("dlq replay failed",
+						zap.String("ce_id", entry.ID),
+						zap.Error(err))
+					return
+				}
+				if err := queue.Remove(r.Context(), entry.ID); err != nil {
+					log.Warn("dlq remove after replay failed",
+						zap.String("ce_id", entry.ID),
+						zap.Error(err))
+				}
+				mu.Lock()
+				result.Replayed++
+				mu.Unlock()
+			}(entry)
 		}
+		wg.Wait()
 
 		updateDLQSizeGauge(r.Context(), queue, collectors)
 
@@ -102,7 +128,9 @@ func dlqReplayHandler(queue dlq.Queue, chain pipeline.Handler, collectors *metri
 			zap.Int("failed", result.Failed))
 
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(result)
+		if err := json.NewEncoder(w).Encode(result); err != nil {
+			log.Error("dlq replay encode failed", zap.Error(err))
+		}
 	}
 }
 

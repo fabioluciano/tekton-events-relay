@@ -19,4 +19,7 @@ const (
 
 	// Authorization header prefix
 	authBearerPrefix = "Bearer "
+
+	// GitHubBaseURL is the default GitHub API base URL.
+	GitHubBaseURL = "https://api.github.com"
 )

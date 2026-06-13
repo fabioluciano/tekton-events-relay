@@ -2,6 +2,7 @@
 package gitea
 
 import (
+	"fmt"
 	"time"
 
 	giteaSDK "code.gitea.io/sdk/gitea"
@@ -17,7 +18,7 @@ type Client struct {
 }
 
 // NewClient creates a new Gitea API client using the official SDK.
-func NewClient(token, baseURL string, insecureSkipVerify bool, debug bool, log *zap.Logger) *Client {
+func NewClient(token, baseURL string, insecureSkipVerify bool, debug bool, log *zap.Logger) (*Client, error) {
 	if log == nil {
 		log = zap.NewNop()
 	}
@@ -36,9 +37,8 @@ func NewClient(token, baseURL string, insecureSkipVerify bool, debug bool, log *
 		giteaSDK.SetHTTPClient(httpClient),
 	)
 	if err != nil {
-		log.Error("failed to create gitea SDK client", zap.Error(err))
-		return nil
+		return nil, fmt.Errorf("create gitea SDK client: %w", err)
 	}
 
-	return &Client{sdk: c, log: log}
+	return &Client{sdk: c, log: log}, nil
 }

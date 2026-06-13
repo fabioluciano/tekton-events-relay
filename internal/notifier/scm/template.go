@@ -12,11 +12,34 @@ import (
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
 )
 
-// DefaultFuncMap returns the common template.FuncMap used by all SCM comment handlers.
-// It starts from sprig.TxtFuncMap() to give templates access to upper/lower/trim/date/default/etc,
-// then overlays domain-specific helpers which take precedence over any sprig equivalents.
-func DefaultFuncMap() template.FuncMap {
+// dangerousFuncs lists sprig functions removed from the safe template map
+// to prevent environment variable exfiltration and cryptographic misuse.
+var dangerousFuncs = map[string]bool{
+	"env":               true,
+	"expandenv":         true,
+	"expand":            true,
+	"base64Encode":      true,
+	"base64Decode":      true,
+	"genPrivateKey":     true,
+	"genCA":             true,
+	"genSelfSignedCert": true,
+}
+
+// safeFuncMap returns a copy of sprig.TxtFuncMap() with dangerous functions removed.
+func safeFuncMap() template.FuncMap {
 	fm := sprig.TxtFuncMap()
+	for name := range dangerousFuncs {
+		delete(fm, name)
+	}
+	return fm
+}
+
+// DefaultFuncMap returns the common template.FuncMap used by all SCM comment handlers.
+// It starts from a safe subset of sprig.TxtFuncMap() to give templates access to
+// upper/lower/trim/date/default/etc, then overlays domain-specific helpers which
+// take precedence over any sprig equivalents.
+func DefaultFuncMap() template.FuncMap {
+	fm := safeFuncMap()
 	// Overlay domain-specific helpers — these take precedence over any sprig equivalents
 	fm["IssueRef"] = FormatIssueRef
 	fm["PRRef"] = FormatPRRef

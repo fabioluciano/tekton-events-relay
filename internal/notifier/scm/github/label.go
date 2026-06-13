@@ -91,7 +91,7 @@ func (h *LabelHandler) ensureLabelExists(ctx context.Context, owner, repo string
 		return nil // empty color: let issue-scoped endpoint create with random color
 	}
 
-	cacheKey := fmt.Sprintf("%s/%s/%s", owner, repo, label.Name)
+	cacheKey := owner + "/" + repo + "/" + label.Name
 
 	// Check cache first
 	h.cache.mu.RLock()

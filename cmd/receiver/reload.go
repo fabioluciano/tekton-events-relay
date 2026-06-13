@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"reflect"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -103,19 +102,37 @@ func (a *app) observeReload(result string) {
 
 // warnImmutableChanges flags config sections that only apply after restart.
 func warnImmutableChanges(old, next *config.Config, log *zap.Logger) {
-	if !reflect.DeepEqual(old.Server, next.Server) {
+	if old.Server.Addr != next.Server.Addr ||
+		old.Server.MetricsAddr != next.Server.MetricsAddr ||
+		old.Server.ReadTimeoutSec != next.Server.ReadTimeoutSec ||
+		old.Server.WriteTimeoutSec != next.Server.WriteTimeoutSec ||
+		old.Server.ShutdownTimeoutSec != next.Server.ShutdownTimeoutSec ||
+		old.Server.MaxBodySize != next.Server.MaxBodySize ||
+		old.Server.RateLimit.Enabled != next.Server.RateLimit.Enabled ||
+		old.Server.RateLimit.RequestsPerSecond != next.Server.RateLimit.RequestsPerSecond ||
+		old.Server.RateLimit.Burst != next.Server.RateLimit.Burst ||
+		old.Server.Auth.Enabled != next.Server.Auth.Enabled ||
+		old.Server.Auth.Type != next.Server.Auth.Type ||
+		old.Server.Auth.SecretFile != next.Server.Auth.SecretFile ||
+		old.Server.TLS.CertFile != next.Server.TLS.CertFile ||
+		old.Server.TLS.KeyFile != next.Server.TLS.KeyFile {
 		log.Warn("config reload: server section changed; changes require a restart")
 	}
-	if !reflect.DeepEqual(old.Store, next.Store) {
+	if old.Store.Backend != next.Store.Backend ||
+		old.Store.TTL != next.Store.TTL ||
+		old.Store.Valkey.Address != next.Store.Valkey.Address ||
+		old.Store.Olric.BindAddr != next.Store.Olric.BindAddr {
 		log.Warn("config reload: store section changed; changes require a restart")
 	}
-	if !reflect.DeepEqual(old.DLQ, next.DLQ) {
+	if old.DLQ.Enabled != next.DLQ.Enabled ||
+		old.DLQ.Path != next.DLQ.Path ||
+		old.DLQ.MaxSizeBytes != next.DLQ.MaxSizeBytes {
 		log.Warn("config reload: dlq section changed; changes require a restart")
 	}
-	if !reflect.DeepEqual(old.Logging, next.Logging) {
+	if old.Logging != next.Logging {
 		log.Warn("config reload: logging section changed; changes require a restart")
 	}
-	if !reflect.DeepEqual(old.Tracing, next.Tracing) {
+	if old.Tracing != next.Tracing {
 		log.Warn("config reload: tracing section changed; changes require a restart")
 	}
 }

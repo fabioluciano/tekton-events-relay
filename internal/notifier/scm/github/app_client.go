@@ -65,7 +65,7 @@ func (a *AppClient) refreshToken(ctx context.Context) error {
 
 	// Create a temporary client authenticated with the JWT to call the Apps API
 	jwtClient := gh.NewClient(nil).WithAuthToken(jwtToken)
-	if a.baseURL != "" && a.baseURL != "https://api.github.com" { //nolint:goconst
+	if a.baseURL != "" && a.baseURL != GitHubBaseURL {
 		jwtClient, err = jwtClient.WithEnterpriseURLs(a.baseURL, a.baseURL+"/api/graphql")
 		if err != nil {
 			return fmt.Errorf("configure enterprise URLs: %w", err)
@@ -128,7 +128,7 @@ func generateAppJWTFromPath(appID int64, keyPath string) (string, error) {
 		return "", fmt.Errorf("failed to parse private key as PKCS1 or PKCS8: %w", parseErr)
 	}
 
-	now := time.Now()
+	now := time.Now().UTC()
 	claims := jwt.RegisteredClaims{
 		IssuedAt:  jwt.NewNumericDate(now),
 		ExpiresAt: jwt.NewNumericDate(now.Add(10 * time.Minute)),

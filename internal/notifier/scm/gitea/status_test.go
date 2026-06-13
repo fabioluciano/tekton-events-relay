@@ -20,7 +20,7 @@ func giteaAPIServer(t *testing.T, calls *atomic.Int32, lastStatus *atomic.Value)
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/api/v1/version":
-			_ = json.NewEncoder(w).Encode(map[string]string{"version": "1.22.0"})
+			_ = json.NewEncoder(w).Encode(map[string]string{mockGiteaKey: mockGiteaVersion})
 		case r.Method == "POST" && strings.Contains(r.URL.Path, "/statuses/"):
 			calls.Add(1)
 			var payload map[string]any
@@ -47,7 +47,15 @@ func giteaStatusEvent() domain.Event {
 }
 
 func TestStatusReporter_NameAndType(t *testing.T) {
-	r := NewStatusReporter("token", "http://localhost", false, zap.NewNop())
+	var calls atomic.Int32
+	var last atomic.Value
+	srv := giteaAPIServer(t, &calls, &last)
+	defer srv.Close()
+
+	r, err := NewStatusReporter("token", srv.URL, false, zap.NewNop())
+	if err != nil {
+		t.Fatal(err)
+	}
 	if r.Name() != "gitea" {
 		t.Errorf("Name = %q, want gitea", r.Name())
 	}
@@ -62,7 +70,10 @@ func TestStatusReporter_SkipsWrongProvider(t *testing.T) {
 	srv := giteaAPIServer(t, &calls, &last)
 	defer srv.Close()
 
-	r := NewStatusReporter("token", srv.URL, false, zap.NewNop())
+	r, err := NewStatusReporter("token", srv.URL, false, zap.NewNop())
+	if err != nil {
+		t.Fatal(err)
+	}
 	e := giteaStatusEvent()
 	e.Provider = "github"
 	if err := r.Handle(context.Background(), e); err != nil {
@@ -79,7 +90,10 @@ func TestStatusReporter_SkipsMissingFields(t *testing.T) {
 	srv := giteaAPIServer(t, &calls, &last)
 	defer srv.Close()
 
-	r := NewStatusReporter("token", srv.URL, false, zap.NewNop())
+	r, err := NewStatusReporter("token", srv.URL, false, zap.NewNop())
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, mutate := range []func(*domain.Event){
 		func(e *domain.Event) { e.CommitSHA = "" },
 		func(e *domain.Event) { e.Repo.Owner = "" },
@@ -102,7 +116,10 @@ func TestStatusReporter_PostsMappedState(t *testing.T) {
 	srv := giteaAPIServer(t, &calls, &last)
 	defer srv.Close()
 
-	r := NewStatusReporter("token", srv.URL, false, zap.NewNop())
+	r, err := NewStatusReporter("token", srv.URL, false, zap.NewNop())
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := r.Handle(context.Background(), giteaStatusEvent()); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}

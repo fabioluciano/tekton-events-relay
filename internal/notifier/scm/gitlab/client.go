@@ -2,6 +2,7 @@
 package gitlab
 
 import (
+	"fmt"
 	"time"
 
 	gl "gitlab.com/gitlab-org/api/client-go"
@@ -17,7 +18,7 @@ type Client struct {
 }
 
 // NewClient creates a new GitLab API client with the given token and base URL.
-func NewClient(token, baseURL string, insecureSkipVerify bool, debug bool, log *zap.Logger) *Client {
+func NewClient(token, baseURL string, insecureSkipVerify bool, debug bool, log *zap.Logger) (*Client, error) {
 	if log == nil {
 		log = zap.NewNop()
 	}
@@ -42,13 +43,11 @@ func NewClient(token, baseURL string, insecureSkipVerify bool, debug bool, log *
 
 	glClient, err := gl.NewClient(token, opts...)
 	if err != nil {
-		log.Error("failed to create GitLab client", zap.Error(err))
-		// Fall back to default client to avoid nil pointer
-		glClient, _ = gl.NewClient(token)
+		return nil, fmt.Errorf("create GitLab client: %w", err)
 	}
 
 	return &Client{
 		gl:  glClient,
 		log: log,
-	}
+	}, nil
 }

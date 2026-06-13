@@ -14,6 +14,9 @@ import (
 	"go.uber.org/zap"
 )
 
+// SharedMaxIdleConnsPerHost is the default MaxIdleConnsPerHost for HTTP clients.
+const SharedMaxIdleConnsPerHost = 100
+
 type clientConfig struct {
 	timeout            time.Duration
 	debug              bool
@@ -59,7 +62,7 @@ func NewClient(opts ...Option) *http.Client {
 	}
 
 	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.MaxIdleConnsPerHost = 100
+	transport.MaxIdleConnsPerHost = SharedMaxIdleConnsPerHost
 
 	if cfg.insecureSkipVerify {
 		if transport.TLSClientConfig == nil {

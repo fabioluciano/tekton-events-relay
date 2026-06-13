@@ -2,7 +2,18 @@ package config
 
 import (
 	"testing"
+
+	"github.com/fabioluciano/tekton-events-relay/internal/cel"
+	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
 )
+
+func TestMain(m *testing.M) {
+	CELCompileFunc = func(expr string) error {
+		_, err := cel.Compile(expr)
+		return err
+	}
+	m.Run()
+}
 
 const invalidCELExpr = "invalid +++"
 
@@ -19,7 +30,7 @@ func TestValidateAll_ValidConfig(t *testing.T) {
 					Actions: []Action{
 						{
 							Name: "status", //nolint:goconst
-							Type: ActionTypeCommitStatus,
+							Type: notifier.ActionCommitStatus,
 							When: `event.State == "succeeded"`,
 						},
 					},
@@ -78,7 +89,7 @@ func TestValidateAll_InvalidCEL(t *testing.T) {
 					Actions: []Action{
 						{
 							Name: "status",
-							Type: ActionTypeCommitStatus,
+							Type: notifier.ActionCommitStatus,
 							When: "invalid cel +++",
 						},
 					},

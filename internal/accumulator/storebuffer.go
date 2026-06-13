@@ -70,7 +70,7 @@ func (b *StoreBuffer) Flush(uid string) (*RunState, bool) {
 	if !found {
 		return nil, false
 	}
-	return &RunState{UID: uid, Tasks: tasks, LastUpdate: time.Now()}, true
+	return &RunState{UID: uid, Tasks: tasks, LastUpdate: time.Now().UTC()}, true
 }
 
 // Close is a no-op; the underlying store lifecycle belongs to its owner.

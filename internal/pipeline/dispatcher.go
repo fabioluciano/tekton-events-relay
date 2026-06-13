@@ -71,7 +71,7 @@ func (d *Dispatcher) Handle(ctx context.Context, env *event.Envelope) error {
 		return d.Next(ctx, env)
 	}
 
-	var matched []notifier.ActionHandler
+	matched := make([]notifier.ActionHandler, 0, len(handlers))
 	for _, h := range handlers {
 		if env.Report.Provider != "" && env.Report.Provider != h.Name() && h.Type() != notifier.ActionNotify {
 			continue

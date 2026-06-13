@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -150,7 +151,7 @@ func (b *Base) Send(ctx context.Context, e domain.Event) error {
 	return nil
 }
 
-// DefaultHTTPClient returns an HTTP client with sensible defaults for notifiers.
-func DefaultHTTPClient() *http.Client {
+// DefaultHTTPClient returns a cached HTTP client with sensible defaults for notifiers.
+var DefaultHTTPClient = sync.OnceValue(func() *http.Client {
 	return &http.Client{Timeout: 10 * time.Second}
-}
+})

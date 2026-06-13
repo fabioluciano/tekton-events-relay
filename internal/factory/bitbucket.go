@@ -82,12 +82,12 @@ func resolveServerAuth(inst config.BitbucketInstance, log *zap.Logger) (string, 
 // buildHandler creates the appropriate handler based on action type and variant.
 func (f *BitbucketFactory) buildHandler(inst config.BitbucketInstance, action config.Action, username, appPassword, token string, log *zap.Logger) (notifier.ActionHandler, error) {
 	switch action.Type {
-	case config.ActionTypeCommitStatus:
+	case notifier.ActionCommitStatus:
 		if inst.Variant == config.BitbucketVariantCloud {
 			return bitbucket.NewCloudStatusReporter(username, appPassword, inst.BaseURL, inst.InsecureSkipVerify, log), nil
 		}
 		return bitbucket.NewServerStatusReporter(token, inst.BaseURL, inst.InsecureSkipVerify, log), nil
-	case config.ActionTypePRComment:
+	case notifier.ActionPRComment:
 		if inst.Variant == config.BitbucketVariantCloud {
 			return bitbucket.NewCloudCommentHandler(bitbucket.CloudCommentConfig{
 				Username:           username,

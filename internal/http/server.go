@@ -154,10 +154,10 @@ func BuildServer(cfg *config.Config, decoders *event.Registry, chain pipeline.Ha
 	}
 	handler = middleware.BodyLimitMiddleware(maxBodySize)(handler)
 
-	// 2. Panic recovery (always active - outermost for safety)
+	// 3. Panic recovery (always active - outermost for safety)
 	handler = middleware.PanicRecovery(log)(handler)
 
-	// 3. Rate limit (optional)
+	// 4. Rate limit (optional)
 	var rateLimiter *middleware.RateLimiter
 	if cfg.Server.RateLimit.Enabled {
 		rps := cfg.Server.RateLimit.RequestsPerSecond
@@ -172,21 +172,22 @@ func BuildServer(cfg *config.Config, decoders *event.Registry, chain pipeline.Ha
 		handler = rateLimiter.Middleware()(handler)
 	}
 
-	// 4. Auth (optional)
+	// 5. Auth (optional)
 	if authMW != nil {
 		handler = authMW(handler)
 	}
 
-	// 5. Observability (always active)
+	// 6. Observability (always active)
 	handler = tracing.HTTPMiddleware(handler)
 	handler = metrics.HTTPMiddlewareWithCollectors(collectors)(handler)
 
 	mux.Handle("/", handler)
 	srv := &http.Server{
-		Addr:         cfg.Server.Addr,
-		Handler:      mux,
-		ReadTimeout:  time.Duration(cfg.Server.ReadTimeoutSec) * time.Second,
-		WriteTimeout: time.Duration(cfg.Server.WriteTimeoutSec) * time.Second,
+		Addr:              cfg.Server.Addr,
+		Handler:           mux,
+		ReadTimeout:       time.Duration(cfg.Server.ReadTimeoutSec) * time.Second,
+		ReadHeaderTimeout: 10 * time.Second,
+		WriteTimeout:      time.Duration(cfg.Server.WriteTimeoutSec) * time.Second,
 	}
 	if rateLimiter != nil {
 		srv.RegisterOnShutdown(rateLimiter.Stop)

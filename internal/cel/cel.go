@@ -135,6 +135,8 @@ func stateInMacroExpander(eh parser.ExprHelper, _ ast.Expr, args []ast.Expr) (as
 	return eh.NewCall(operators.In, stateField, stateList), nil
 }
 
+var programCache sync.Map // map[string]*Program
+
 // Program wraps a compiled CEL expression.
 type Program struct {
 	prog cel.Program
@@ -142,10 +144,14 @@ type Program struct {
 }
 
 // Compile compiles a CEL expression against the domain.Event schema.
-// Returns error if expression is invalid or doesn't return bool.
+// Returns cached program if already compiled. Returns error if expression is invalid or doesn't return bool.
 func Compile(expr string) (*Program, error) {
 	if expr == "" {
 		return nil, fmt.Errorf("cel: empty expression")
+	}
+
+	if cached, ok := programCache.Load(expr); ok {
+		return cached.(*Program), nil
 	}
 
 	envOpts := []cel.EnvOption{
@@ -172,7 +178,9 @@ func Compile(expr string) (*Program, error) {
 		return nil, fmt.Errorf("cel: program error: %w", err)
 	}
 
-	return &Program{prog: prog, expr: expr}, nil
+	p := &Program{prog: prog, expr: expr}
+	programCache.Store(expr, p)
+	return p, nil
 }
 
 // Eval evaluates the compiled program against an event.

@@ -295,7 +295,7 @@ func TestCELIntegration_BuildActionHandlersFlow(t *testing.T) {
 					Actions: []config.Action{
 						{
 							Name:     "pr-comment",
-							Type:     config.ActionTypePRComment,
+							Type:     notifier.ActionPRComment,
 							Enabled:  true,
 							When:     `event.Resource == "pipelinerun" && stateIn("failure")`,
 							Template: "Test template",

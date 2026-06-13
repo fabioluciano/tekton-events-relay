@@ -7,85 +7,59 @@ import (
 
 	"github.com/itchyny/gojq"
 
-	"github.com/fabioluciano/tekton-events-relay/internal/cel"
+	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
 )
 
 // Common validation rules
 
-func requireBaseURL(prefix string, inst interface{}) []ValidationError {
+// CELCompileFunc is the function signature for CEL expression compilation.
+// It is set by the caller to decouple config validation from the cel package.
+var CELCompileFunc func(expr string) error
+
+// baseURLProvider is implemented by config instances that have a base URL.
+type baseURLProvider interface {
+	GetBaseURL() string
+}
+
+// actionProvider is implemented by SCM config instances that have actions.
+type actionProvider interface {
+	GetActions() []Action
+}
+
+// celWhenProvider is implemented by notifier config instances that have a CEL when expression.
+type celWhenProvider interface {
+	GetWhen() string
+}
+
+// templateProvider is implemented by notifier config instances that have a Go template.
+type templateProvider interface {
+	GetTemplate() string
+}
+
+func requireBaseURL(prefix string, inst any) []ValidationError {
 	type hasEnabled interface {
 		isEnabled() bool
 	}
 	if h, ok := inst.(hasEnabled); !ok || !h.isEnabled() {
 		return nil
 	}
-
-	switch v := inst.(type) {
-	case GitHubInstance:
-		if v.BaseURL == "" {
+	if p, ok := inst.(baseURLProvider); ok {
+		if p.GetBaseURL() == "" {
 			return []ValidationError{{Path: prefix + ".base_url", Message: ValidationMsgBaseURLRequired}}
 		}
-		if _, err := url.ParseRequestURI(v.BaseURL); err != nil {
-			return []ValidationError{{Path: prefix + ".base_url", Message: fmt.Sprintf("invalid URL: %v", err)}}
-		}
-	case GitLabInstance:
-		if v.BaseURL == "" {
-			return []ValidationError{{Path: prefix + ".base_url", Message: ValidationMsgBaseURLRequired}}
-		}
-		if _, err := url.ParseRequestURI(v.BaseURL); err != nil {
-			return []ValidationError{{Path: prefix + ".base_url", Message: fmt.Sprintf("invalid URL: %v", err)}}
-		}
-	case GiteaInstance:
-		if v.BaseURL == "" {
-			return []ValidationError{{Path: prefix + ".base_url", Message: ValidationMsgBaseURLRequired}}
-		}
-		if _, err := url.ParseRequestURI(v.BaseURL); err != nil {
-			return []ValidationError{{Path: prefix + ".base_url", Message: fmt.Sprintf("invalid URL: %v", err)}}
-		}
-	case BitbucketInstance:
-		if v.BaseURL == "" {
-			return []ValidationError{{Path: prefix + ".base_url", Message: ValidationMsgBaseURLRequired}}
-		}
-		if _, err := url.ParseRequestURI(v.BaseURL); err != nil {
-			return []ValidationError{{Path: prefix + ".base_url", Message: fmt.Sprintf("invalid URL: %v", err)}}
-		}
-	case AzureInstance:
-		if v.BaseURL == "" {
-			return []ValidationError{{Path: prefix + ".base_url", Message: ValidationMsgBaseURLRequired}}
-		}
-		if _, err := url.ParseRequestURI(v.BaseURL); err != nil {
-			return []ValidationError{{Path: prefix + ".base_url", Message: fmt.Sprintf("invalid URL: %v", err)}}
-		}
-	case SourceHutInstance:
-		if v.BaseURL == "" {
-			return []ValidationError{{Path: prefix + ".base_url", Message: ValidationMsgBaseURLRequired}}
-		}
-		if _, err := url.ParseRequestURI(v.BaseURL); err != nil {
+		if _, err := url.ParseRequestURI(p.GetBaseURL()); err != nil {
 			return []ValidationError{{Path: prefix + ".base_url", Message: fmt.Sprintf("invalid URL: %v", err)}}
 		}
 	}
 	return nil
 }
 
-func validateActions(prefix string, inst interface{}) []ValidationError {
-	var actions []Action
-	switch v := inst.(type) {
-	case GitHubInstance:
-		actions = v.Actions
-	case GitLabInstance:
-		actions = v.Actions
-	case GiteaInstance:
-		actions = v.Actions
-	case BitbucketInstance:
-		actions = v.Actions
-	case AzureInstance:
-		actions = v.Actions
-	case SourceHutInstance:
-		actions = v.Actions
-	default:
+func validateActions(prefix string, inst any) []ValidationError {
+	p, ok := inst.(actionProvider)
+	if !ok {
 		return nil
 	}
-
+	actions := p.GetActions()
 	var errs []ValidationError
 	for j, action := range actions {
 		actionPrefix := fmt.Sprintf("%s.actions[%d]", prefix, j)
@@ -102,14 +76,14 @@ func validateAction(prefix string, action Action) []ValidationError {
 	if action.Type != "" {
 		// Validate action type against known types
 		validTypes := map[ActionType]bool{
-			ActionTypeCommitStatus:      true,
-			ActionTypeCommitComment:     true,
-			ActionTypePRComment:         true,
-			ActionTypeIssueComment:      true,
-			ActionTypeLabel:             true,
-			ActionTypeDiscussionComment: true,
-			ActionTypeCheckRun:          true,
-			ActionTypeDeploymentStatus:  true,
+			notifier.ActionCommitStatus:      true,
+			notifier.ActionCommitComment:     true,
+			notifier.ActionPRComment:         true,
+			notifier.ActionIssueComment:      true,
+			notifier.ActionLabel:             true,
+			notifier.ActionDiscussionComment: true,
+			notifier.ActionCheckRun:          true,
+			notifier.ActionDeploymentStatus:  true,
 		}
 		if !validTypes[action.Type] {
 			errs = append(errs, ValidationError{
@@ -120,7 +94,7 @@ func validateAction(prefix string, action Action) []ValidationError {
 	}
 
 	// A label action with no effect declared is a configuration mistake.
-	if action.Type == ActionTypeLabel && (action.Labels == nil || (len(action.Labels.Add) == 0 && len(action.Labels.Remove) == 0)) {
+	if action.Type == notifier.ActionLabel && (action.Labels == nil || (len(action.Labels.Add) == 0 && len(action.Labels.Remove) == 0)) {
 		errs = append(errs, ValidationError{
 			Path:    prefix + ".labels",
 			Message: "label actions require a labels block with at least one add or remove entry",
@@ -128,11 +102,13 @@ func validateAction(prefix string, action Action) []ValidationError {
 	}
 
 	if action.When != "" {
-		if _, err := cel.Compile(action.When); err != nil {
-			errs = append(errs, ValidationError{
-				Path:    prefix + ".when",
-				Message: fmt.Sprintf("invalid CEL: %v", err),
-			})
+		if CELCompileFunc != nil {
+			if err := CELCompileFunc(action.When); err != nil {
+				errs = append(errs, ValidationError{
+					Path:    prefix + ".when",
+					Message: fmt.Sprintf("invalid CEL: %v", err),
+				})
+			}
 		}
 	}
 
@@ -148,49 +124,31 @@ func validateAction(prefix string, action Action) []ValidationError {
 	return errs
 }
 
-func validateCELWhen(prefix string, inst interface{}) []ValidationError {
-	var when string
-	switch v := inst.(type) {
-	case SlackInstance:
-		when = v.When
-	case TeamsInstance:
-		when = v.When
-	case DiscordInstance:
-		when = v.When
-	case PagerDutyInstance:
-		when = v.When
-	case DatadogInstance:
-		when = v.When
-	case WebhookInstance:
-		when = v.When
-	case EmailInstance:
-		when = v.When
+func validateCELWhen(prefix string, inst any) []ValidationError {
+	p, ok := inst.(celWhenProvider)
+	if !ok {
+		return nil
 	}
-
+	when := p.GetWhen()
 	if when != "" {
-		if _, err := cel.Compile(when); err != nil {
-			return []ValidationError{{
-				Path:    prefix + ".when",
-				Message: fmt.Sprintf("invalid CEL: %v", err),
-			}}
+		if CELCompileFunc != nil {
+			if err := CELCompileFunc(when); err != nil {
+				return []ValidationError{{
+					Path:    prefix + ".when",
+					Message: fmt.Sprintf("invalid CEL: %v", err),
+				}}
+			}
 		}
 	}
 	return nil
 }
 
-func validateTemplate(prefix string, inst interface{}) []ValidationError {
-	var tmpl string
-	switch v := inst.(type) {
-	case SlackInstance:
-		tmpl = v.Template
-	case TeamsInstance:
-		tmpl = v.Template
-	case DiscordInstance:
-		tmpl = v.Template
-	case EmailInstance:
-		tmpl = v.Template
+func validateTemplate(prefix string, inst any) []ValidationError {
+	p, ok := inst.(templateProvider)
+	if !ok {
+		return nil
 	}
-
+	tmpl := p.GetTemplate()
 	if tmpl != "" {
 		if _, err := template.New("test").Parse(tmpl); err != nil {
 			return []ValidationError{{
@@ -202,7 +160,7 @@ func validateTemplate(prefix string, inst interface{}) []ValidationError {
 	return nil
 }
 
-func validateWebhookAuth(prefix string, inst interface{}) []ValidationError {
+func validateWebhookAuth(prefix string, inst any) []ValidationError {
 	type hasEnabled interface {
 		isEnabled() bool
 	}
@@ -259,7 +217,7 @@ func validateWebhookAuth(prefix string, inst interface{}) []ValidationError {
 	return nil
 }
 
-func validateTransform(prefix string, inst interface{}) []ValidationError {
+func validateTransform(prefix string, inst any) []ValidationError {
 	type hasEnabled interface {
 		isEnabled() bool
 	}
@@ -587,6 +545,43 @@ func validateWebhookInstance(prefix string, inst WebhookInstance) []ValidationEr
 	return errs
 }
 
+func validateGrafanaInstance(prefix string, inst GrafanaInstance) []ValidationError {
+	var errs []ValidationError
+	// Name validation handled by validate:"required" struct tag
+
+	if inst.Enabled {
+		if inst.URL == "" {
+			errs = append(errs, ValidationError{Path: prefix + ".url", Message: ValidationMsgBaseURLRequired})
+		}
+		if inst.Auth == nil || inst.Auth.TokenFile == "" {
+			errs = append(errs, ValidationError{Path: prefix + ValidationPathAuth, Message: ValidationMsgAuthRequired})
+		}
+	}
+
+	errs = append(errs, validateCELWhen(prefix, inst)...)
+	errs = append(errs, validateTemplate(prefix, inst)...)
+
+	return errs
+}
+
+func validateSentryInstance(prefix string, inst SentryInstance) []ValidationError {
+	var errs []ValidationError
+	// Name validation handled by validate:"required" struct tag
+
+	if inst.Enabled {
+		if inst.Auth == nil || inst.Auth.TokenFile == "" {
+			errs = append(errs, ValidationError{Path: prefix + ValidationPathAuth, Message: ValidationMsgAuthRequired})
+		}
+		if inst.Org == "" {
+			errs = append(errs, ValidationError{Path: prefix + ".org", Message: ValidationMsgRequired})
+		}
+	}
+
+	errs = append(errs, validateCELWhen(prefix, inst)...)
+
+	return errs
+}
+
 // Orchestration methods for validator.go
 
 //nolint:dupl // validateSCM and validateNotifiers share structure but operate on different config sections
@@ -597,7 +592,7 @@ func (c *Config) validateSCM(names map[string]map[string]bool) error {
 		}
 		errs := validateGitHubInstance(fmt.Sprintf("scm.github[%d]", i), inst)
 		if len(errs) > 0 {
-			return fmt.Errorf("%s", errs[0].Error())
+			return errs[0]
 		}
 	}
 
@@ -607,7 +602,7 @@ func (c *Config) validateSCM(names map[string]map[string]bool) error {
 		}
 		errs := validateGitLabInstance(fmt.Sprintf("scm.gitlab[%d]", i), inst)
 		if len(errs) > 0 {
-			return fmt.Errorf("%s", errs[0].Error())
+			return errs[0]
 		}
 	}
 
@@ -617,7 +612,7 @@ func (c *Config) validateSCM(names map[string]map[string]bool) error {
 		}
 		errs := validateGiteaInstance(fmt.Sprintf("scm.gitea[%d]", i), inst)
 		if len(errs) > 0 {
-			return fmt.Errorf("%s", errs[0].Error())
+			return errs[0]
 		}
 	}
 
@@ -627,7 +622,7 @@ func (c *Config) validateSCM(names map[string]map[string]bool) error {
 		}
 		errs := validateBitbucketInstance(fmt.Sprintf("scm.bitbucket[%d]", i), inst)
 		if len(errs) > 0 {
-			return fmt.Errorf("%s", errs[0].Error())
+			return errs[0]
 		}
 	}
 
@@ -637,7 +632,7 @@ func (c *Config) validateSCM(names map[string]map[string]bool) error {
 		}
 		errs := validateAzureInstance(fmt.Sprintf("scm.azure_devops[%d]", i), inst)
 		if len(errs) > 0 {
-			return fmt.Errorf("%s", errs[0].Error())
+			return errs[0]
 		}
 	}
 
@@ -647,7 +642,7 @@ func (c *Config) validateSCM(names map[string]map[string]bool) error {
 		}
 		errs := validateSourceHutInstance(fmt.Sprintf("scm.sourcehut[%d]", i), inst)
 		if len(errs) > 0 {
-			return fmt.Errorf("%s", errs[0].Error())
+			return errs[0]
 		}
 	}
 
@@ -688,7 +683,7 @@ func (c *Config) validateNotifiers(names map[string]map[string]bool) error {
 		}
 		errs := validateSlackInstance(fmt.Sprintf("notifiers.slack[%d]", i), inst)
 		if len(errs) > 0 {
-			return fmt.Errorf("%s", errs[0].Error())
+			return errs[0]
 		}
 	}
 
@@ -698,7 +693,7 @@ func (c *Config) validateNotifiers(names map[string]map[string]bool) error {
 		}
 		errs := validateTeamsInstance(fmt.Sprintf("notifiers.teams[%d]", i), inst)
 		if len(errs) > 0 {
-			return fmt.Errorf("%s", errs[0].Error())
+			return errs[0]
 		}
 	}
 
@@ -708,7 +703,7 @@ func (c *Config) validateNotifiers(names map[string]map[string]bool) error {
 		}
 		errs := validateEmailInstance(fmt.Sprintf("notifiers.email[%d]", i), inst)
 		if len(errs) > 0 {
-			return fmt.Errorf("%s", errs[0].Error())
+			return errs[0]
 		}
 	}
 
@@ -718,7 +713,7 @@ func (c *Config) validateNotifiers(names map[string]map[string]bool) error {
 		}
 		errs := validateDiscordInstance(fmt.Sprintf("notifiers.discord[%d]", i), inst)
 		if len(errs) > 0 {
-			return fmt.Errorf("%s", errs[0].Error())
+			return errs[0]
 		}
 	}
 
@@ -728,7 +723,7 @@ func (c *Config) validateNotifiers(names map[string]map[string]bool) error {
 		}
 		errs := validatePagerDutyInstance(fmt.Sprintf("notifiers.pagerduty[%d]", i), inst)
 		if len(errs) > 0 {
-			return fmt.Errorf("%s", errs[0].Error())
+			return errs[0]
 		}
 	}
 
@@ -738,7 +733,7 @@ func (c *Config) validateNotifiers(names map[string]map[string]bool) error {
 		}
 		errs := validateDatadogInstance(fmt.Sprintf("notifiers.datadog[%d]", i), inst)
 		if len(errs) > 0 {
-			return fmt.Errorf("%s", errs[0].Error())
+			return errs[0]
 		}
 	}
 
@@ -748,7 +743,7 @@ func (c *Config) validateNotifiers(names map[string]map[string]bool) error {
 		}
 		errs := validateWebhookInstance(fmt.Sprintf("notifiers.webhook[%d]", i), inst)
 		if len(errs) > 0 {
-			return fmt.Errorf("%s", errs[0].Error())
+			return errs[0]
 		}
 	}
 

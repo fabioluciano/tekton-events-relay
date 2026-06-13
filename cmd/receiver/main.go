@@ -19,6 +19,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/accumulator"
+	"github.com/fabioluciano/tekton-events-relay/internal/cel"
 	"github.com/fabioluciano/tekton-events-relay/internal/config"
 	"github.com/fabioluciano/tekton-events-relay/internal/dlq"
 	"github.com/fabioluciano/tekton-events-relay/internal/event"
@@ -50,9 +51,18 @@ type app struct {
 }
 
 func newApp(configPath string) (*app, error) {
+	config.CELCompileFunc = func(expr string) error {
+		_, err := cel.Compile(expr)
+		return err
+	}
+
 	cfg, err := config.Load(configPath)
 	if err != nil {
-		bootLog, _ := logging.New("info", logging.VerboseOpts{})
+		bootLog, bootErr := logging.New("info", logging.VerboseOpts{})
+		if bootErr != nil {
+			fmt.Fprintf(os.Stderr, "failed to init logger: %v\n", bootErr)
+			os.Exit(1)
+		}
 		bootLog.Error("load config", zap.Error(err))
 		return nil, fmt.Errorf("load config: %w", err)
 	}
@@ -62,7 +72,7 @@ func newApp(configPath string) (*app, error) {
 		return nil, fmt.Errorf("initialize logger: %w", err)
 	}
 
-	tp, cleanupTracer, err := tracing.InitGlobal(context.Background(), cfg.Tracing.Endpoint, cfg.Tracing.ServiceName, log)
+	tp, cleanupTracer, err := tracing.InitGlobal(context.Background(), cfg.Tracing.Endpoint, cfg.Tracing.ServiceName, cfg.Tracing.Insecure, log)
 	if err != nil {
 		_ = log.Sync()
 		return nil, fmt.Errorf("init tracing: %w", err)

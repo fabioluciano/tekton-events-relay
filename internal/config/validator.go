@@ -3,8 +3,11 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/go-playground/validator/v10"
 	"go.uber.org/zap"
@@ -46,19 +49,6 @@ func NewValidator() *validator.Validate {
 	})
 
 	// Register custom struct-level validators for conditional validation
-	v.RegisterStructValidation(validateGitHubInstanceStruct, GitHubInstance{})
-	v.RegisterStructValidation(validateGitLabInstanceStruct, GitLabInstance{})
-	v.RegisterStructValidation(validateGiteaInstanceStruct, GiteaInstance{})
-	v.RegisterStructValidation(validateBitbucketInstanceStruct, BitbucketInstance{})
-	v.RegisterStructValidation(validateAzureInstanceStruct, AzureInstance{})
-	v.RegisterStructValidation(validateSourceHutInstanceStruct, SourceHutInstance{})
-	v.RegisterStructValidation(validateSlackInstanceStruct, SlackInstance{})
-	v.RegisterStructValidation(validateTeamsInstanceStruct, TeamsInstance{})
-	v.RegisterStructValidation(validateDiscordInstanceStruct, DiscordInstance{})
-	v.RegisterStructValidation(validatePagerDutyInstanceStruct, PagerDutyInstance{})
-	v.RegisterStructValidation(validateDatadogInstanceStruct, DatadogInstance{})
-	v.RegisterStructValidation(validateWebhookInstanceStruct, WebhookInstance{})
-	v.RegisterStructValidation(validateActionStruct, Action{})
 	v.RegisterStructValidation(validateServerAuthStruct, AuthConfig{})
 
 	return v
@@ -143,6 +133,16 @@ func ValidateAll(cfg *Config) []ValidationError {
 		errs = append(errs, validateWebhookInstance(prefix, inst)...)
 	}
 
+	for i, inst := range cfg.Notifiers.Grafana {
+		prefix := fmt.Sprintf("notifiers.grafana[%d]", i)
+		errs = append(errs, validateGrafanaInstance(prefix, inst)...)
+	}
+
+	for i, inst := range cfg.Notifiers.Sentry {
+		prefix := fmt.Sprintf("notifiers.sentry[%d]", i)
+		errs = append(errs, validateSentryInstance(prefix, inst)...)
+	}
+
 	return errs
 }
 
@@ -200,68 +200,51 @@ func validateServerAuthStruct(sl validator.StructLevel) {
 	}
 }
 
-func validateGitHubInstanceStruct(_ validator.StructLevel) {
-	// Complex conditional validation handled by validateGitHubInstance via ValidateAll
-}
-
-func validateGitLabInstanceStruct(_ validator.StructLevel) {
-	// Complex conditional validation handled by validateGitLabInstance via ValidateAll
-}
-
-func validateGiteaInstanceStruct(_ validator.StructLevel) {
-	// Complex conditional validation handled by validateGiteaInstance via ValidateAll
-}
-
-func validateBitbucketInstanceStruct(_ validator.StructLevel) {
-	// Complex conditional validation handled by validateBitbucketInstance via ValidateAll
-}
-
-func validateAzureInstanceStruct(_ validator.StructLevel) {
-	// Complex conditional validation handled by validateAzureInstance via ValidateAll
-}
-
-func validateSourceHutInstanceStruct(_ validator.StructLevel) {
-	// Complex conditional validation handled by validateSourceHutInstance via ValidateAll
-}
-
-func validateSlackInstanceStruct(_ validator.StructLevel) {
-	// Complex conditional validation handled by validateSlackInstance via ValidateAll
-}
-
-func validateTeamsInstanceStruct(_ validator.StructLevel) {
-	// Complex conditional validation handled by validateTeamsInstance via ValidateAll
-}
-
-func validateDiscordInstanceStruct(_ validator.StructLevel) {
-	// Complex conditional validation handled by validateDiscordInstance via ValidateAll
-}
-
-func validatePagerDutyInstanceStruct(_ validator.StructLevel) {
-	// Complex conditional validation handled by validatePagerDutyInstance via ValidateAll
-}
-
-func validateDatadogInstanceStruct(_ validator.StructLevel) {
-	// Complex conditional validation handled by validateDatadogInstance via ValidateAll
-}
-
-func validateWebhookInstanceStruct(_ validator.StructLevel) {
-	// Complex conditional validation handled by validateWebhookInstance via ValidateAll
-}
-
-func validateActionStruct(_ validator.StructLevel) {
-	// Complex conditional validation handled by validateAction in instance_validators.go
-}
-
 // Validate performs runtime validation checks on the configuration.
 func (c *Config) Validate() error {
+	if err := c.validateLogging(); err != nil {
+		return err
+	}
+	if err := c.validateServer(); err != nil {
+		return err
+	}
+	if err := c.validateStore(); err != nil {
+		return err
+	}
+	if err := c.validateRetry(); err != nil {
+		return err
+	}
+	if err := c.validateLimits(); err != nil {
+		return err
+	}
+	if err := c.validateTracing(); err != nil {
+		return err
+	}
+	if err := c.validateTLS(); err != nil {
+		return err
+	}
+
+	names := make(map[string]map[string]bool)
+	if err := c.validateSCM(names); err != nil {
+		return err
+	}
+	if err := c.validateNotifiers(names); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *Config) validateLogging() error {
 	if (c.Logging.Verbose.Caller || c.Logging.Verbose.HTTPCalls || c.Logging.Verbose.Payloads) && c.Logging.Level != "debug" {
 		return fmt.Errorf("logging.verbose: verbose options (caller, http_calls, payloads) require logging.level to be 'debug', current level is '%s'", c.Logging.Level)
 	}
+	return nil
+}
 
+func (c *Config) validateServer() error {
 	if c.MaxConcurrency != 0 && (c.MaxConcurrency < 1 || c.MaxConcurrency > 500) {
 		return fmt.Errorf("max_concurrency: must be between 1 and 500 (or 0 for default), got %d", c.MaxConcurrency)
 	}
-
 	if c.Server.Auth.Enabled {
 		switch c.Server.Auth.Type {
 		case "hmac-sha256", AuthTypeBearer:
@@ -272,7 +255,10 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("server.auth: enabled but missing 'secret_file'")
 		}
 	}
+	return nil
+}
 
+func (c *Config) validateStore() error {
 	switch c.Store.Backend {
 	case "", "memory", "olric":
 	case "valkey":
@@ -282,17 +268,57 @@ func (c *Config) Validate() error {
 	default:
 		return fmt.Errorf("store.backend: unsupported backend '%s' (must be 'memory', 'valkey' or 'olric')", c.Store.Backend)
 	}
-
-	names := make(map[string]map[string]bool)
-
-	if err := c.validateSCM(names); err != nil {
-		return err
+	for i, peer := range c.Store.Olric.Peers {
+		host, port, err := net.SplitHostPort(peer)
+		if err != nil || host == "" || port == "" {
+			return fmt.Errorf("store.olric.peers[%d]: '%s' must be in host:port format", i, peer)
+		}
 	}
+	return nil
+}
 
-	if err := c.validateNotifiers(names); err != nil {
-		return err
+func (c *Config) validateRetry() error {
+	if c.Retry.MaxAttempts < 0 {
+		return fmt.Errorf("retry.max_attempts: must be non-negative")
 	}
+	if c.Retry.InitialBackoff < 0 || c.Retry.MaxBackoff < 0 {
+		return fmt.Errorf("retry: backoff values must be non-negative")
+	}
+	if c.Retry.InitialBackoff > c.Retry.MaxBackoff && c.Retry.MaxBackoff > 0 {
+		return fmt.Errorf("retry: initial_backoff must be <= max_backoff")
+	}
+	return nil
+}
 
+func (c *Config) validateLimits() error {
+	if c.DedupeSize > 1000000 {
+		return fmt.Errorf("dedupe_size: maximum is 1000000")
+	}
+	if c.DLQ.Enabled && c.DLQ.MaxSizeBytes < 1024 {
+		return fmt.Errorf("dlq.max_size_bytes: minimum is 1024")
+	}
+	if c.HandlerTimeout > 0 && c.Server.WriteTimeoutSec > 0 && c.HandlerTimeout > time.Duration(c.Server.WriteTimeoutSec)*time.Second {
+		return fmt.Errorf("handler_timeout must be less than write_timeout")
+	}
+	return nil
+}
+
+func (c *Config) validateTracing() error {
+	if c.Tracing.Endpoint != "" {
+		if _, err := url.ParseRequestURI(c.Tracing.Endpoint); err != nil {
+			return fmt.Errorf("tracing.endpoint: invalid URL '%s': %w", c.Tracing.Endpoint, err)
+		}
+	}
+	return nil
+}
+
+func (c *Config) validateTLS() error {
+	if c.Server.TLS.CertFile != "" && c.Server.TLS.KeyFile == "" {
+		return fmt.Errorf("server.tls: cert_file set but missing key_file")
+	}
+	if c.Server.TLS.KeyFile != "" && c.Server.TLS.CertFile == "" {
+		return fmt.Errorf("server.tls: key_file set but missing cert_file")
+	}
 	return nil
 }
 

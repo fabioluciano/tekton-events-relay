@@ -58,7 +58,7 @@ func (b *LRUBuffer) Add(uid string, event *domain.Event) {
 	if event.Resource == domain.ResourceTaskRun {
 		state.Tasks[event.RunName] = event
 	}
-	state.LastUpdate = time.Now()
+	state.LastUpdate = time.Now().UTC()
 	b.cache.Add(uid, state)
 }
 

@@ -51,8 +51,13 @@ func NewPRCommentHandler(cfg PRCommentConfig) (notifier.ActionHandler, error) {
 		log = zap.NewNop()
 	}
 
+	c, err := NewClient(cfg.Token, cfg.BaseURL, cfg.InsecureSkipVerify, false, cfg.Log)
+	if err != nil {
+		return nil, err
+	}
+
 	return &PRCommentHandler{
-		client:   NewClient(cfg.Token, cfg.BaseURL, cfg.InsecureSkipVerify, false, cfg.Log),
+		client:   c,
 		template: tmpl,
 		mode:     mode,
 		log:      log,

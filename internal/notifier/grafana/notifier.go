@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"text/template"
 	"time"
@@ -38,8 +39,26 @@ type Config struct {
 	Log      *zap.Logger
 }
 
+// validateURL checks that a URL has an http or https scheme.
+func validateURL(urlStr string) error {
+	u, err := url.Parse(urlStr)
+	if err != nil {
+		return fmt.Errorf("invalid URL: %w", err)
+	}
+	switch u.Scheme {
+	case "http", "https":
+		return nil
+	default:
+		return fmt.Errorf("unsupported URL scheme %q: only http and https are allowed", u.Scheme)
+	}
+}
+
 // New creates a Grafana annotations notifier.
 func New(cfg Config) (*Notifier, error) {
+	if err := validateURL(cfg.URL); err != nil {
+		return nil, fmt.Errorf("invalid Grafana URL: %w", err)
+	}
+
 	tmplSrc := cfg.Template
 	if tmplSrc == "" {
 		tmplSrc = defaultText

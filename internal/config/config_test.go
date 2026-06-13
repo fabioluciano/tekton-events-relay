@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"go.uber.org/zap"
+
+	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
 )
 
 func TestLoad(t *testing.T) {
@@ -306,7 +308,7 @@ func TestActionConfigUnmarshal(t *testing.T) {
 	gh := cfg.SCM.GitHub[0].Actions
 	// Find pr_comment action (index 0)
 	prComment := gh[0]
-	if !prComment.Enabled || prComment.Type != ActionTypePRComment {
+	if !prComment.Enabled || prComment.Type != notifier.ActionPRComment {
 		t.Error("expected enabled GitHub PR comment action")
 	}
 	if prComment.Template != "Pipeline {{.State}} for {{.RunName}}" {
@@ -315,13 +317,13 @@ func TestActionConfigUnmarshal(t *testing.T) {
 
 	// issue_comment action (index 1)
 	issueComment := gh[1]
-	if !issueComment.Enabled || issueComment.Type != ActionTypeIssueComment {
+	if !issueComment.Enabled || issueComment.Type != notifier.ActionIssueComment {
 		t.Error("expected enabled GitHub issue comment action")
 	}
 
 	// label action (index 2)
 	labelAction := gh[2]
-	if !labelAction.Enabled || labelAction.Type != ActionTypeLabel {
+	if !labelAction.Enabled || labelAction.Type != notifier.ActionLabel {
 		t.Error("expected enabled GitHub label action")
 	}
 	if labelAction.Labels == nil || len(labelAction.Labels.Add) != 1 || labelAction.Labels.Add[0].Name != "ci:passed" {
@@ -333,7 +335,7 @@ func TestActionConfigUnmarshal(t *testing.T) {
 
 	// commit_status action (index 3)
 	commitStatus := gh[3]
-	if !commitStatus.Enabled || commitStatus.Type != ActionTypeCommitStatus {
+	if !commitStatus.Enabled || commitStatus.Type != notifier.ActionCommitStatus {
 		t.Error("expected enabled GitHub commit status action")
 	}
 	if commitStatus.When != "event.State == 'success'" {
@@ -345,13 +347,13 @@ func TestActionConfigUnmarshal(t *testing.T) {
 		t.Fatal("expected Gitea actions config")
 	}
 	giteaActions := cfg.SCM.Gitea[0].Actions
-	if !giteaActions[0].Enabled || giteaActions[0].Type != ActionTypeCommitStatus {
+	if !giteaActions[0].Enabled || giteaActions[0].Type != notifier.ActionCommitStatus {
 		t.Error("expected enabled Gitea commit status action")
 	}
 	if giteaActions[0].When != "" {
 		t.Errorf("expected empty when field for Gitea commit_status, got: %s", giteaActions[0].When)
 	}
-	if !giteaActions[1].Enabled || giteaActions[1].Type != ActionTypePRComment {
+	if !giteaActions[1].Enabled || giteaActions[1].Type != notifier.ActionPRComment {
 		t.Error("expected enabled Gitea PR comment action")
 	}
 
@@ -359,7 +361,7 @@ func TestActionConfigUnmarshal(t *testing.T) {
 	if len(cfg.SCM.GitLab) == 0 || len(cfg.SCM.GitLab[0].Actions) == 0 {
 		t.Fatal("expected GitLab actions config")
 	}
-	if !cfg.SCM.GitLab[0].Actions[0].Enabled || cfg.SCM.GitLab[0].Actions[0].Type != ActionTypeLabel {
+	if !cfg.SCM.GitLab[0].Actions[0].Enabled || cfg.SCM.GitLab[0].Actions[0].Type != notifier.ActionLabel {
 		t.Error("expected enabled GitLab label action")
 	}
 
@@ -367,7 +369,7 @@ func TestActionConfigUnmarshal(t *testing.T) {
 	if len(cfg.SCM.Azure) == 0 || len(cfg.SCM.Azure[0].Actions) == 0 {
 		t.Fatal("expected Azure DevOps actions config")
 	}
-	if !cfg.SCM.Azure[0].Actions[0].Enabled || cfg.SCM.Azure[0].Actions[0].Type != ActionTypeLabel {
+	if !cfg.SCM.Azure[0].Actions[0].Enabled || cfg.SCM.Azure[0].Actions[0].Type != notifier.ActionLabel {
 		t.Error("expected enabled Azure DevOps label action")
 	}
 }
@@ -458,7 +460,7 @@ func TestWebhookAuthValidation(t *testing.T) {
       enabled: true
       url_file: "https://example.com/webhook"
       auth:
-        type: ` + AuthTypeBasic + `
+        type: ` + "basic" + `
         username_file: "user"
         password_file: "pass"`,
 			wantErr: false,
@@ -471,7 +473,7 @@ func TestWebhookAuthValidation(t *testing.T) {
       enabled: true
       url_file: "https://example.com/webhook"
       auth:
-        type: ` + AuthTypeAPIKey + `
+        type: ` + "apikey" + `
         token_file: "key-123"
         header: "X-API-Key"`,
 			wantErr: false,
@@ -484,7 +486,7 @@ func TestWebhookAuthValidation(t *testing.T) {
       enabled: true
       url_file: "https://example.com/webhook"
       auth:
-        type: ` + AuthTypeHMAC + `
+        type: ` + "hmac" + `
         secret_file: "my-secret"`,
 			wantErr: false,
 		},
@@ -522,7 +524,7 @@ func TestWebhookAuthValidation(t *testing.T) {
       enabled: true
       url_file: "https://example.com/webhook"
       auth:
-        type: ` + AuthTypeBasic + `
+        type: ` + "basic" + `
         username_file: "user"`,
 			wantErr:     true,
 			errContains: "type 'basic' requires 'username_file' and 'password_file'",
@@ -535,7 +537,7 @@ func TestWebhookAuthValidation(t *testing.T) {
       enabled: true
       url_file: "https://example.com/webhook"
       auth:
-        type: ` + AuthTypeAPIKey + `
+        type: ` + "apikey" + `
         token_file: "key"`,
 			wantErr:     true,
 			errContains: "type 'apikey' requires 'token_file' and 'header'",
@@ -548,7 +550,7 @@ func TestWebhookAuthValidation(t *testing.T) {
       enabled: true
       url_file: "https://example.com/webhook"
       auth:
-        type: ` + AuthTypeHMAC + ``,
+        type: ` + "hmac" + ``,
 			wantErr:     true,
 			errContains: "type 'hmac' requires 'secret_file'",
 		},
@@ -560,7 +562,7 @@ func TestWebhookAuthValidation(t *testing.T) {
       enabled: true
       url_file: "https://example.com/webhook"
       auth:
-        type: ` + AuthTypeHMAC + `
+        type: ` + "hmac" + `
         secret_file: "key"
         token_file: "invalid"`,
 			wantErr:     true,

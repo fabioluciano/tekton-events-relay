@@ -408,7 +408,7 @@ mise run helm-security       # all security checks (kubelinter, kubesec, trivy, 
 - Chart at `charts/tekton-events-relay/`, OCI image: `ghcr.io/fabioluciano/tekton-events-relay`
 - Template files (`charts/*/templates/*.yaml`) **excluded** from yamllint and check-yaml hooks
 - 15 default Go templates in `configmap-templates.yaml` (accumulator, per-provider comment formats)
-- Secrets mounted at `/etc/secrets/{provider}/{instance}/` — config references via `secretName`/`secretKey`
+- Secrets mounted at `/etc/secrets/{provider}/{instance}/` — config references via `secretRef.name`/`secretRef.key`
 - Safety guard: refuses multi-replica + memory store unless `unsafe.allowMemoryStoreWithMultipleReplicas=true`
 - Config checksum annotation forces pod restart on ConfigMap change
 - Values structure mirrors Go config: `config.server`, `config.filter`, `config.store`, `config.scm.github[]`, `config.notifiers.slack[]`, etc.
@@ -757,8 +757,8 @@ config:
         enabled: false
         auth:
           secretRef:
-            secretName: github-token
-            secretKey: token
+            name: github-token
+            key: token
         actions:
           - name: commit-status
             type: commit_status
@@ -767,10 +767,10 @@ config:
     slack:
       - name: slack
         enabled: false
-        auth:
+        webhook_url:
           secretRef:
-            secretName: slack-webhook
-            secretKey: webhook-url
+            name: slack-webhook
+            key: webhook_url
         channel: "#ci"
 securityContext:
   runAsNonRoot: true
@@ -781,7 +781,7 @@ securityContext:
     drop: [ALL]
 ```
 
-Secret mount pattern: `secretRef.secretName` + `secretKey` → mounted at `/etc/secrets/{provider}/{instance}/{key}` → config references via `{provider}.{instance}.auth.{field}_file`.
+Secret mount pattern: `secretRef.name` + `secretRef.key` → mounted at `/etc/secrets/{provider}/{instance}/{key}` → config references via `{provider}.{instance}.auth.{field}_file`.
 
 ## Cross-package dependency graph
 

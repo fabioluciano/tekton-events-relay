@@ -232,7 +232,12 @@ config:
       enabled: false
       type: "hmac-sha256" # or "bearer"
       # -- Reference to webhook secret for HMAC validation
-      secret_file: "${WEBHOOK_SECRET}"
+      # Use secretRef for K8s Secret, or value for inline/env var expansion
+      secret:
+        value: "${WEBHOOK_SECRET}"
+        # secretRef:
+        #   name: webhook-secret
+        #   key: hmac-key
       # -- Replay protection: require an X-Webhook-Timestamp header (unix
       # seconds) within timestamp_tolerance of the server clock
       validate_timestamp: false
@@ -297,9 +302,10 @@ config:
       # auto-populated with the embedded service address.
       address: ""
       # -- Reference to a Kubernetes Secret containing the Valkey password (optional)
-      password_secretRef:
-        secretName: ""
-        secretKey: password
+      password:
+        secretRef:
+          name: ""
+          key: password
       # -- Valkey logical database
       db: 0
       # -- Prefix applied to all keys
@@ -390,14 +396,15 @@ config:
           # Token-based auth (recommended for simple setup):
           # -- Kubernetes Secret containing credentials
           secretRef:
-            secretName: github-default-token # optional: defaults to /etc/secrets/github/default/token
-            secretKey: token  # optional, defaults to "token"
+            name: github-default-token
+            key: token
           # GitHub App auth (for advanced features):
           # app_id: 123456
           # installation_id: 789012
-          # Note: private key must be mounted at /etc/github-app/private-key.pem
-          # Create secret: kubectl create secret generic github-app-private-key
-          # --from-file=private-key.pem=path/to/private-key.pem
+          # private_key:
+          #   secretRef:
+          #     name: github-app-private-key
+          #     key: private-key.pem
         actions:
           - name: commit-status
             # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
@@ -503,15 +510,17 @@ config:
         # -- Authentication configuration (PAT or OAuth2, mutually exclusive)
         # auth:
         #   secretRef:
-        #     secretName: gitlab-cloud-token
-        #     secretKey: token
-        #   oauth2:                               # OAuth2 client credentials
-        #     client_id_secretRef:
-        #       secretName: gitlab-oauth2-creds
-        #       secretKey: client_id
-        #     client_secret_secretRef:
-        #       secretName: gitlab-oauth2-creds
-        #       secretKey: client_secret
+        #     name: gitlab-cloud-token
+        #     key: token
+        #   oauth2:
+        #     client_id:
+        #       configmapRef:
+        #         name: gitlab-oauth2-creds
+        #         key: client_id
+        #     client_secret:
+        #       secretRef:
+        #         name: gitlab-oauth2-creds
+        #         key: client_secret
         #     token_url: "https://gitlab.com/oauth/token"
         # -- Actions to perform when events are received
         actions:
@@ -571,15 +580,17 @@ config:
         # -- Authentication configuration (PAT or OAuth2, mutually exclusive)
         # auth:
         #   secretRef:
-        #     secretName: gitlab-server-token
-        #     secretKey: token
-        #   oauth2:                               # OAuth2 client credentials
-        #     client_id_secretRef:
-        #       secretName: gitlab-oauth2-creds
-        #       secretKey: client_id
-        #     client_secret_secretRef:
-        #       secretName: gitlab-oauth2-creds
-        #       secretKey: client_secret
+        #     name: gitlab-server-token
+        #     key: token
+        #   oauth2:
+        #     client_id:
+        #       configmapRef:
+        #         name: gitlab-oauth2-creds
+        #         key: client_id
+        #     client_secret:
+        #       secretRef:
+        #         name: gitlab-oauth2-creds
+        #         key: client_secret
         #     token_url: "https://gitlab.company.example.com/oauth/token"
         # -- Actions to perform when events are received
         actions:
@@ -639,19 +650,23 @@ config:
         enabled: false
         # -- Authentication configuration (variant=cloud: username/app_password or oauth2)
         # auth:
-        #   username_secretRef:
-        #     secretName: bitbucket-cloud-creds
-        #     secretKey: username
-        #   app_password_secretRef:
-        #     secretName: bitbucket-cloud-creds
-        #     secretKey: app_password
-        #   oauth2:                                     # OAuth2 client credentials
-        #     client_id_secretRef:
-        #       secretName: bitbucket-oauth2-creds
-        #       secretKey: client_id
-        #     client_secret_secretRef:
-        #       secretName: bitbucket-oauth2-creds
-        #       secretKey: client_secret
+        #   username:
+        #     configmapRef:
+        #       name: bitbucket-cloud-creds
+        #       key: username
+        #   app_password:
+        #     secretRef:
+        #       name: bitbucket-cloud-creds
+        #       key: app_password
+        #   oauth2:
+        #     client_id:
+        #       configmapRef:
+        #         name: bitbucket-oauth2-creds
+        #         key: client_id
+        #     client_secret:
+        #       secretRef:
+        #         name: bitbucket-oauth2-creds
+        #         key: client_secret
         #     token_url: "https://bitbucket.org/site/oauth2/access_token"
         # -- Actions to perform when events are received
         actions:
@@ -671,8 +686,8 @@ config:
         # -- Authentication configuration (variant=server: token)
         # auth:
         #   secretRef:
-        #     secretName: bitbucket-server-token
-        #     secretKey: token
+        #     name: bitbucket-server-token
+        #     key: token
         # -- Actions to perform when events are received
         actions:
           - name: commit-status
@@ -694,8 +709,8 @@ config:
         # -- Skip TLS verification (not recommended for production)
         insecure_skip_verify: false
         # secretRef:
-        #   secretName: azure-devops-token
-        #   secretKey: token
+        #   name: azure-devops-token
+        #   key: token
         # -- Actions to perform when events are received
         actions:
           - name: commit-status
@@ -727,15 +742,17 @@ config:
         # -- Authentication configuration (PAT or OAuth2, mutually exclusive)
         # auth:
         #   secretRef:
-        #     secretName: gitea-token
-        #     secretKey: token
-        #   oauth2:                               # OAuth2 client credentials
-        #     client_id_secretRef:
-        #       secretName: gitea-oauth2-creds
-        #       secretKey: client_id
-        #     client_secret_secretRef:
-        #       secretName: gitea-oauth2-creds
-        #       secretKey: client_secret
+        #     name: gitea-token
+        #     key: token
+        #   oauth2:
+        #     client_id:
+        #       configmapRef:
+        #         name: gitea-oauth2-creds
+        #         key: client_id
+        #     client_secret:
+        #       secretRef:
+        #         name: gitea-oauth2-creds
+        #         key: client_secret
         #     token_url: "https://gitea.company.example.com/login/oauth/access_token"
         # -- Actions to perform when events are received
         actions:
@@ -792,8 +809,8 @@ config:
         # -- Enable or disable this SCM provider instance
         enabled: false
         # secretRef:
-        #   secretName: sourcehut-token
-        #   secretKey: token
+        #   name: sourcehut-token
+        #   key: token
         # -- Actions to perform when events are received
         actions:
           - name: commit-status
@@ -826,14 +843,16 @@ config:
         # -- Enable or disable this Slack notifier instance
         enabled: false
         # Webhook mode:
-        # secretRef:
-        #   secretName: slack-webhook
-        #   secretKey: webhook_url
+        # webhook_url:
+        #   secretRef:
+        #     name: slack-webhook
+        #     key: webhook_url
         # Bot token mode:
-        # secretRef:
-        #   secretName: slack-bot-token
-        #   secretKey: token
         # bot_token:
+        #   token:
+        #     secretRef:
+        #       name: slack-bot-token
+        #       key: token
         #   channel_id: "C12345"
         # -- Slack channel to post notifications (e.g., #ci-notifications, @username)
         channel: "#ci-notifications"
@@ -859,9 +878,10 @@ config:
       - name: main-channel
         # -- Enable or disable this Teams notifier instance
         enabled: false
-        # secretRef:
-        #   secretName: teams-webhook
-        #   secretKey: webhook_url
+        # webhook_url:
+        #   secretRef:
+        #     name: teams-webhook
+        #     key: webhook_url
         # -- CEL expression to filter which events trigger notifications
         when: 'event.State == "success" || event.State == "failure" || event.State == "error"'
         # -- Go template for the Teams message body. Available variables: .State, .RunName, .Namespace, .CommitSHA, .TargetURL
@@ -884,14 +904,16 @@ config:
         # -- Enable or disable this Discord notifier instance
         enabled: false
         # Webhook mode:
-        # secretRef:
-        #   secretName: discord-webhook
-        #   secretKey: webhook_url
+        # webhook_url:
+        #   secretRef:
+        #     name: discord-webhook
+        #     key: webhook_url
         # Bot token mode:
-        # secretRef:
-        #   secretName: discord-bot-token
-        #   secretKey: token
         # bot_token:
+        #   token:
+        #     secretRef:
+        #       name: discord-bot-token
+        #       key: token
         #   channel_id: "123456789012345678"
         # -- Display name for the bot posting messages
         username: "Tekton CI"
@@ -915,9 +937,10 @@ config:
       - name: main-service
         # -- Enable or disable this PagerDuty notifier instance
         enabled: false
-        # secretRef:
-        #   secretName: pagerduty-integration-key
-        #   secretKey: integration_key
+        # integration_key:
+        #   secretRef:
+        #     name: pagerduty-integration-key
+        #     key: integration_key
         # -- Incident severity level (critical, error, warning, info)
         severity: "critical"
         # -- CEL expression to filter which events trigger incidents
@@ -932,9 +955,10 @@ config:
       - name: main-instance
         # -- Enable or disable this Datadog notifier instance
         enabled: false
-        # secretRef:
-        #   secretName: datadog-api-key
-        #   secretKey: api_key
+        # api_key:
+        #   secretRef:
+        #     name: datadog-api-key
+        #     key: api_key
         # -- Datadog site (datadoghq.com, datadoghq.eu, us3.datadoghq.com, etc.)
         site: "datadoghq.com"
         # Custom tags appended to auto-generated tags (state, context, namespace, etc.)
@@ -955,9 +979,10 @@ config:
       - name: main-webhook
         # -- Enable or disable this webhook notifier instance
         enabled: false
-        # secretRef:
-        #   secretName: custom-webhook
-        #   secretKey: url
+        # url:
+        #   secretRef:
+        #     name: custom-webhook
+        #     key: url
         # -- CEL expression to filter which events trigger webhook calls
         when: 'event.State == "success" || event.State == "failure" || event.State == "error"'
         # Custom HTTP headers for authentication and routing
@@ -973,9 +998,10 @@ config:
       # - name: deploy-markers
       #   enabled: false
       #   url: https://grafana.company.example.com
-      #   secretRef:
-      #     secretName: grafana-token
-      #     secretKey: token
+      #   token:
+      #     secretRef:
+      #       name: grafana-token
+      #       key: token
       #   templateRef:
       #     configmapName: grafana-templates
       #     configmapKey: deploy-marker.tmpl
@@ -988,9 +1014,10 @@ config:
       # - name: main
       #   enabled: false
       #   org: acme
-      #   secretRef:
-      #     secretName: sentry-token
-      #     secretKey: token
+      #   token:
+      #     secretRef:
+      #       name: sentry-token
+      #       key: token
 
     # -------------------------------------------------------------------------
     # Email (SMTP)
@@ -1011,9 +1038,10 @@ config:
         encryption: starttls
         # SMTP credentials. Omit auth entirely for unauthenticated relays.
         # Password comes from the mounted secret (key: password).
-        # secretRef:
-        #   secretName: email-default-credentials
-        #   secretKey: password
+        # password:
+        #   secretRef:
+        #     name: email-default-credentials
+        #     key: password
         # username: ci@example.com
         # -- Sender address
         from: "tekton@example.com"
@@ -1030,10 +1058,15 @@ config:
         # -- CEL expression to filter which events are emailed
         when: 'event.Resource == "pipelinerun" && stateIn("failure", "error")'
 
-# Secret references use Tekton-style nested schema:
+# Secret references use Kubernetes-native nested schema:
 #   secretRef:
-#     secretName: <kubernetes-secret-name>
-#     secretKey: <key-within-secret>
+#     name: <kubernetes-secret-name>
+#     key: <key-within-secret>
+#
+# ConfigMap references use the same pattern:
+#   configmapRef:
+#     name: <kubernetes-configmap-name>
+#     key: <key-within-configmap>
 #
 # Template references use the same pattern:
 #   templateRef:
@@ -1045,12 +1078,12 @@ config:
 #
 # Then in config.scm.github[0].auth:
 #   secretRef:
-#     secretName: github-default-token
-#     secretKey: token
+#     name: github-default-token
+#     key: token
 #
 # The chart will automatically mount it at /etc/secrets/github/default/token
 #
-# Standard secretKey values by provider:
+# Standard secretRef key values by provider:
 #   github, gitlab, azure_devops, gitea, sourcehut: token
 #   bitbucket cloud: username, app_password
 #   bitbucket server: token

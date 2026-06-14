@@ -140,13 +140,12 @@ spec:
               name: valkey-default-secret
               readOnly: true
             {{- end }}
+            {{- $configmapMounts := list }}
             {{- range $provider, $instances := .Values.config.scm }}
             {{- range $inst := $instances }}
             {{- range $action := $inst.actions }}
             {{- if and $action.template (kindIs "map" $action.template) $action.template.configmapRef }}
-            - mountPath: /etc/templates/{{ $action.template.configmapRef.name }}
-              name: tpl-{{ $action.template.configmapRef.name }}
-              readOnly: true
+            {{- $configmapMounts = append $configmapMounts $action.template.configmapRef.name }}
             {{- end }}
             {{- end }}
             {{- end }}
@@ -154,32 +153,29 @@ spec:
             {{- range $provider, $instances := .Values.config.notifiers }}
             {{- range $inst := $instances }}
             {{- if and $inst.template (kindIs "map" $inst.template) $inst.template.configmapRef }}
-            - mountPath: /etc/templates/{{ $inst.template.configmapRef.name }}
-              name: tpl-{{ $inst.template.configmapRef.name }}
-              readOnly: true
+            {{- $configmapMounts = append $configmapMounts $inst.template.configmapRef.name }}
             {{- end }}
             {{- end }}
             {{- end }}
             {{- range $inst := .Values.config.jira }}
             {{- range $action := $inst.actions }}
             {{- if and $action.template (kindIs "map" $action.template) $action.template.configmapRef }}
-            - mountPath: /etc/templates/{{ $action.template.configmapRef.name }}
-              name: tpl-{{ $action.template.configmapRef.name }}
-              readOnly: true
+            {{- $configmapMounts = append $configmapMounts $action.template.configmapRef.name }}
             {{- end }}
             {{- end }}
             {{- end }}
             {{- range $inst := .Values.config.notifiers.email }}
             {{- if and $inst.template (kindIs "map" $inst.template) $inst.template.configmapRef }}
-            - mountPath: /etc/templates/{{ $inst.template.configmapRef.name }}
-              name: tpl-{{ $inst.template.configmapRef.name }}
-              readOnly: true
+            {{- $configmapMounts = append $configmapMounts $inst.template.configmapRef.name }}
             {{- end }}
             {{- if and $inst.subject $inst.subject.configmapRef }}
-            - mountPath: /etc/templates/{{ $inst.subject.configmapRef.name }}
-              name: tpl-{{ $inst.subject.configmapRef.name }}
-              readOnly: true
+            {{- $configmapMounts = append $configmapMounts $inst.subject.configmapRef.name }}
             {{- end }}
+            {{- end }}
+            {{- range $cmName := uniq $configmapMounts }}
+            - mountPath: /etc/templates/{{ $cmName }}
+              name: tpl-{{ $cmName }}
+              readOnly: true
             {{- end }}
             - mountPath: /etc/templates
               name: templates
@@ -254,13 +250,12 @@ spec:
         {{- if and .Values.config.store.valkey.password (include "tekton-events-relay.hasRef" .Values.config.store.valkey.password) (include "tekton-events-relay.refName" .Values.config.store.valkey.password) }}
         {{- include "tekton-events-relay.valueFromVolume" (dict "name" "valkey-default-secret" "field" .Values.config.store.valkey.password) | nindent 8 }}
         {{- end }}
+        {{- $configmapRefs := list }}
         {{- range $provider, $instances := .Values.config.scm }}
         {{- range $inst := $instances }}
         {{- range $action := $inst.actions }}
         {{- if and $action.template (kindIs "map" $action.template) $action.template.configmapRef }}
-        - configMap:
-            name: {{ $action.template.configmapRef.name }}
-          name: tpl-{{ $action.template.configmapRef.name }}
+        {{- $configmapRefs = append $configmapRefs $action.template.configmapRef.name }}
         {{- end }}
         {{- end }}
         {{- end }}
@@ -268,32 +263,29 @@ spec:
         {{- range $provider, $instances := .Values.config.notifiers }}
         {{- range $inst := $instances }}
         {{- if and $inst.template (kindIs "map" $inst.template) $inst.template.configmapRef }}
-        - configMap:
-            name: {{ $inst.template.configmapRef.name }}
-          name: tpl-{{ $inst.template.configmapRef.name }}
+        {{- $configmapRefs = append $configmapRefs $inst.template.configmapRef.name }}
         {{- end }}
         {{- end }}
         {{- end }}
         {{- range $inst := .Values.config.jira }}
         {{- range $action := $inst.actions }}
         {{- if and $action.template (kindIs "map" $action.template) $action.template.configmapRef }}
-        - configMap:
-            name: {{ $action.template.configmapRef.name }}
-          name: tpl-{{ $action.template.configmapRef.name }}
+        {{- $configmapRefs = append $configmapRefs $action.template.configmapRef.name }}
         {{- end }}
         {{- end }}
         {{- end }}
         {{- range $inst := .Values.config.notifiers.email }}
         {{- if and $inst.template (kindIs "map" $inst.template) $inst.template.configmapRef }}
-        - configMap:
-            name: {{ $inst.template.configmapRef.name }}
-          name: tpl-{{ $inst.template.configmapRef.name }}
+        {{- $configmapRefs = append $configmapRefs $inst.template.configmapRef.name }}
         {{- end }}
         {{- if and $inst.subject $inst.subject.configmapRef }}
-        - configMap:
-            name: {{ $inst.subject.configmapRef.name }}
-          name: tpl-{{ $inst.subject.configmapRef.name }}
+        {{- $configmapRefs = append $configmapRefs $inst.subject.configmapRef.name }}
         {{- end }}
+        {{- end }}
+        {{- range $cmName := uniq $configmapRefs }}
+        - configMap:
+            name: {{ $cmName }}
+          name: tpl-{{ $cmName }}
         {{- end }}
         - configMap:
             name: {{ include "tekton-events-relay.fullname" . }}-templates

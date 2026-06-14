@@ -693,25 +693,28 @@
                     ]
                   },
                   "template": {
-                    "type": "string",
-                    "description": "Go template for the Slack message body. Available variables: .State, .RunName, .CommitSHA, .TargetURL"
-                  },
-                  "templateRef": {
-                    "type": "object",
-                    "description": "Reference to a ConfigMap containing the template",
-                    "properties": {
-                      "configmapName": {
+                    "oneOf": [
+                      {
                         "type": "string",
-                        "description": "Name of the Kubernetes ConfigMap"
+                        "description": "Go template for the Slack message body. Available variables: .State, .RunName, .CommitSHA, .TargetURL"
                       },
-                      "configmapKey": {
-                        "type": "string",
-                        "description": "Key within the ConfigMap"
+                      {
+                        "type": "object",
+                        "description": "Reference to a ConfigMap containing the template",
+                        "properties": {
+                          "configmapRef": {
+                            "type": "object",
+                            "properties": {
+                              "name": {
+                                "type": "string"
+                              },
+                              "key": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        }
                       }
-                    },
-                    "required": [
-                      "configmapName",
-                      "configmapKey"
                     ]
                   }
                 },
@@ -761,25 +764,28 @@
                     ]
                   },
                   "template": {
-                    "type": "string",
-                    "description": "Go template for the Teams message body. Available variables: .State, .RunName, .Namespace, .CommitSHA, .TargetURL"
-                  },
-                  "templateRef": {
-                    "type": "object",
-                    "description": "Reference to a ConfigMap containing the template",
-                    "properties": {
-                      "configmapName": {
+                    "oneOf": [
+                      {
                         "type": "string",
-                        "description": "Name of the Kubernetes ConfigMap"
+                        "description": "Go template for the Teams message body. Available variables: .State, .RunName, .Namespace, .CommitSHA, .TargetURL"
                       },
-                      "configmapKey": {
-                        "type": "string",
-                        "description": "Key within the ConfigMap"
+                      {
+                        "type": "object",
+                        "description": "Reference to a ConfigMap containing the template",
+                        "properties": {
+                          "configmapRef": {
+                            "type": "object",
+                            "properties": {
+                              "name": {
+                                "type": "string"
+                              },
+                              "key": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        }
                       }
-                    },
-                    "required": [
-                      "configmapName",
-                      "configmapKey"
                     ]
                   }
                 },
@@ -866,25 +872,28 @@
                     ]
                   },
                   "template": {
-                    "type": "string",
-                    "description": "Go template for the Discord message body. Available variables: .State, .RunName, .Namespace, .CommitSHA, .TargetURL"
-                  },
-                  "templateRef": {
-                    "type": "object",
-                    "description": "Reference to a ConfigMap containing the template",
-                    "properties": {
-                      "configmapName": {
+                    "oneOf": [
+                      {
                         "type": "string",
-                        "description": "Name of the Kubernetes ConfigMap"
+                        "description": "Go template for the Discord message body. Available variables: .State, .RunName, .Namespace, .CommitSHA, .TargetURL"
                       },
-                      "configmapKey": {
-                        "type": "string",
-                        "description": "Key within the ConfigMap"
+                      {
+                        "type": "object",
+                        "description": "Reference to a ConfigMap containing the template",
+                        "properties": {
+                          "configmapRef": {
+                            "type": "object",
+                            "properties": {
+                              "name": {
+                                "type": "string"
+                              },
+                              "key": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        }
                       }
-                    },
-                    "required": [
-                      "configmapName",
-                      "configmapKey"
                     ]
                   }
                 },
@@ -1069,25 +1078,28 @@
                     "description": "CEL expression to filter events"
                   },
                   "template": {
-                    "type": "string",
-                    "description": "Go template for the annotation text"
-                  },
-                  "templateRef": {
-                    "type": "object",
-                    "description": "Reference to a ConfigMap containing the template",
-                    "properties": {
-                      "configmapName": {
+                    "oneOf": [
+                      {
                         "type": "string",
-                        "description": "Name of the Kubernetes ConfigMap"
+                        "description": "Go template for the annotation text"
                       },
-                      "configmapKey": {
-                        "type": "string",
-                        "description": "Key within the ConfigMap"
+                      {
+                        "type": "object",
+                        "description": "Reference to a ConfigMap containing the template",
+                        "properties": {
+                          "configmapRef": {
+                            "type": "object",
+                            "properties": {
+                              "name": {
+                                "type": "string"
+                              },
+                              "key": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        }
                       }
-                    },
-                    "required": [
-                      "configmapName",
-                      "configmapKey"
                     ]
                   }
                 },
@@ -1443,24 +1455,6 @@
                         }
                       }
                     }
-                  },
-                  "templateRef": {
-                    "type": "object",
-                    "description": "Reference to a ConfigMap containing the template",
-                    "properties": {
-                      "configmapName": {
-                        "type": "string",
-                        "description": "Name of the Kubernetes ConfigMap"
-                      },
-                      "configmapKey": {
-                        "type": "string",
-                        "description": "Key within the ConfigMap"
-                      }
-                    },
-                    "required": [
-                      "configmapName",
-                      "configmapKey"
-                    ]
                   },
                   "html": {
                     "type": "boolean",
@@ -2524,25 +2518,28 @@
           "default": ""
         },
         "template": {
-          "type": "string",
-          "description": "Go template for the notification body"
-        },
-        "templateRef": {
-          "type": "object",
-          "description": "Reference to a ConfigMap containing the template",
-          "properties": {
-            "configmapName": {
+          "oneOf": [
+            {
               "type": "string",
-              "description": "Name of the Kubernetes ConfigMap"
+              "description": "Go template for the notification body"
             },
-            "configmapKey": {
-              "type": "string",
-              "description": "Key within the ConfigMap"
+            {
+              "type": "object",
+              "description": "Reference to a ConfigMap containing the template",
+              "properties": {
+                "configmapRef": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "key": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
             }
-          },
-          "required": [
-            "configmapName",
-            "configmapKey"
           ]
         },
         "mode": {

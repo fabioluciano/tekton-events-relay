@@ -143,9 +143,9 @@ spec:
             {{- range $provider, $instances := .Values.config.scm }}
             {{- range $inst := $instances }}
             {{- range $action := $inst.actions }}
-            {{- if $action.templateRef }}
-            - mountPath: /etc/templates/{{ $action.templateRef.configmapName }}
-              name: tpl-{{ $action.templateRef.configmapName }}
+            {{- if and $action.template (kindIs "map" $action.template) $action.template.configmapRef }}
+            - mountPath: /etc/templates/{{ $action.template.configmapRef.name }}
+              name: tpl-{{ $action.template.configmapRef.name }}
               readOnly: true
             {{- end }}
             {{- end }}
@@ -153,16 +153,16 @@ spec:
             {{- end }}
             {{- range $provider, $instances := .Values.config.notifiers }}
             {{- range $inst := $instances }}
-            {{- if $inst.templateRef }}
-            - mountPath: /etc/templates/{{ $inst.templateRef.configmapName }}
-              name: tpl-{{ $inst.templateRef.configmapName }}
+            {{- if and $inst.template (kindIs "map" $inst.template) $inst.template.configmapRef }}
+            - mountPath: /etc/templates/{{ $inst.template.configmapRef.name }}
+              name: tpl-{{ $inst.template.configmapRef.name }}
               readOnly: true
             {{- end }}
             {{- end }}
             {{- end }}
             {{- range $inst := .Values.config.jira }}
             {{- range $action := $inst.actions }}
-            {{- if and $action.template $action.template.configmapRef }}
+            {{- if and $action.template (kindIs "map" $action.template) $action.template.configmapRef }}
             - mountPath: /etc/templates/{{ $action.template.configmapRef.name }}
               name: tpl-{{ $action.template.configmapRef.name }}
               readOnly: true
@@ -170,7 +170,7 @@ spec:
             {{- end }}
             {{- end }}
             {{- range $inst := .Values.config.notifiers.email }}
-            {{- if and $inst.template $inst.template.configmapRef }}
+            {{- if and $inst.template (kindIs "map" $inst.template) $inst.template.configmapRef }}
             - mountPath: /etc/templates/{{ $inst.template.configmapRef.name }}
               name: tpl-{{ $inst.template.configmapRef.name }}
               readOnly: true
@@ -257,26 +257,26 @@ spec:
         {{- range $provider, $instances := .Values.config.scm }}
         {{- range $inst := $instances }}
         {{- range $action := $inst.actions }}
-        {{- if $action.templateRef }}
+        {{- if and $action.template (kindIs "map" $action.template) $action.template.configmapRef }}
         - configMap:
-            name: {{ $action.templateRef.configmapName }}
-          name: tpl-{{ $action.templateRef.configmapName }}
+            name: {{ $action.template.configmapRef.name }}
+          name: tpl-{{ $action.template.configmapRef.name }}
         {{- end }}
         {{- end }}
         {{- end }}
         {{- end }}
         {{- range $provider, $instances := .Values.config.notifiers }}
         {{- range $inst := $instances }}
-        {{- if $inst.templateRef }}
+        {{- if and $inst.template (kindIs "map" $inst.template) $inst.template.configmapRef }}
         - configMap:
-            name: {{ $inst.templateRef.configmapName }}
-          name: tpl-{{ $inst.templateRef.configmapName }}
+            name: {{ $inst.template.configmapRef.name }}
+          name: tpl-{{ $inst.template.configmapRef.name }}
         {{- end }}
         {{- end }}
         {{- end }}
         {{- range $inst := .Values.config.jira }}
         {{- range $action := $inst.actions }}
-        {{- if and $action.template $action.template.configmapRef }}
+        {{- if and $action.template (kindIs "map" $action.template) $action.template.configmapRef }}
         - configMap:
             name: {{ $action.template.configmapRef.name }}
           name: tpl-{{ $action.template.configmapRef.name }}
@@ -284,7 +284,7 @@ spec:
         {{- end }}
         {{- end }}
         {{- range $inst := .Values.config.notifiers.email }}
-        {{- if and $inst.template $inst.template.configmapRef }}
+        {{- if and $inst.template (kindIs "map" $inst.template) $inst.template.configmapRef }}
         - configMap:
             name: {{ $inst.template.configmapRef.name }}
           name: tpl-{{ $inst.template.configmapRef.name }}

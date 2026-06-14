@@ -167,11 +167,15 @@ data:
               {{- if .context_per_task }}
               context_per_task: true
               {{- end }}
-              {{- if .templateRef }}
-              template_file: "/etc/templates/{{ .templateRef.configmapName }}/{{ .templateRef.configmapKey }}"
+              {{- if and .template (kindIs "map" .template) .template.configmapRef }}
+              template_file: "/etc/templates/{{ .template.configmapRef.name }}/{{ .template.configmapRef.key }}"
               {{- else if .template }}
               template: |
+{{- if kindIs "map" .template }}
+{{ .template.value | nindent 16 }}
+{{- else }}
 {{ .template | nindent 16 }}
+{{- end }}
               {{- end }}
               {{- if .labels }}
               labels:
@@ -400,11 +404,15 @@ data:
               {{- if .context_per_task }}
               context_per_task: true
               {{- end }}
-              {{- if .templateRef }}
-              template_file: "/etc/templates/{{ .templateRef.configmapName }}/{{ .templateRef.configmapKey }}"
+              {{- if and .template (kindIs "map" .template) .template.configmapRef }}
+              template_file: "/etc/templates/{{ .template.configmapRef.name }}/{{ .template.configmapRef.key }}"
               {{- else if .template }}
               template: |
+{{- if kindIs "map" .template }}
+{{ .template.value | nindent 16 }}
+{{- else }}
 {{ .template | nindent 16 }}
+{{- end }}
               {{- end }}
               {{- if .labels }}
               labels:
@@ -493,11 +501,15 @@ data:
           {{- if .when }}
           when: {{ .when | quote }}
           {{- end }}
-          {{- if .templateRef }}
-          template_file: "/etc/templates/{{ .templateRef.configmapName }}/{{ .templateRef.configmapKey }}"
+          {{- if and .template (kindIs "map" .template) .template.configmapRef }}
+          template_file: "/etc/templates/{{ .template.configmapRef.name }}/{{ .template.configmapRef.key }}"
           {{- else if .template }}
           template: |
+{{- if kindIs "map" .template }}
+{{ .template.value | nindent 12 }}
+{{- else }}
 {{ .template | nindent 12 }}
+{{- end }}
           {{- end }}
         {{- end }}
       {{- end }}
@@ -513,11 +525,15 @@ data:
           {{- if .when }}
           when: {{ .when | quote }}
           {{- end }}
-          {{- if .templateRef }}
-          template_file: "/etc/templates/{{ .templateRef.configmapName }}/{{ .templateRef.configmapKey }}"
+          {{- if and .template (kindIs "map" .template) .template.configmapRef }}
+          template_file: "/etc/templates/{{ .template.configmapRef.name }}/{{ .template.configmapRef.key }}"
           {{- else if .template }}
           template: |
+{{- if kindIs "map" .template }}
+{{ .template.value | nindent 12 }}
+{{- else }}
 {{ .template | nindent 12 }}
+{{- end }}
           {{- end }}
         {{- end }}
       {{- end }}
@@ -545,11 +561,15 @@ data:
           {{- if .when }}
           when: {{ .when | quote }}
           {{- end }}
-          {{- if .templateRef }}
-          template_file: "/etc/templates/{{ .templateRef.configmapName }}/{{ .templateRef.configmapKey }}"
+          {{- if and .template (kindIs "map" .template) .template.configmapRef }}
+          template_file: "/etc/templates/{{ .template.configmapRef.name }}/{{ .template.configmapRef.key }}"
           {{- else if .template }}
           template: |
+{{- if kindIs "map" .template }}
+{{ .template.value | nindent 12 }}
+{{- else }}
 {{ .template | nindent 12 }}
+{{- end }}
           {{- end }}
         {{- end }}
       {{- end }}
@@ -612,11 +632,15 @@ data:
           {{- if .when }}
           when: {{ .when | quote }}
           {{- end }}
-          {{- if .templateRef }}
-          template_file: "/etc/templates/{{ .templateRef.configmapName }}/{{ .templateRef.configmapKey }}"
+          {{- if and .template (kindIs "map" .template) .template.configmapRef }}
+          template_file: "/etc/templates/{{ .template.configmapRef.name }}/{{ .template.configmapRef.key }}"
           {{- else if .template }}
           template: |
+{{- if kindIs "map" .template }}
+{{ .template.value | nindent 12 }}
+{{- else }}
 {{ .template | nindent 12 }}
+{{- end }}
           {{- end }}
         {{- end }}
       {{- end }}
@@ -684,7 +708,7 @@ data:
           {{- if .when }}
           when: {{ .when | quote }}
           {{- end }}
-          {{- if and .template .template.configmapRef }}
+          {{- if and .template (kindIs "map" .template) .template.configmapRef }}
           template: "/etc/templates/{{ .template.configmapRef.name }}/{{ .template.configmapRef.key }}"
           {{- else if and .template .template.value }}
           template: |
@@ -729,11 +753,15 @@ data:
           headers:
             {{- .headers | toYaml | nindent 12 }}
           {{- end }}
-          {{- if .templateRef }}
-          template_file: "/etc/templates/{{ .templateRef.configmapName }}/{{ .templateRef.configmapKey }}"
+          {{- if and .template (kindIs "map" .template) .template.configmapRef }}
+          template_file: "/etc/templates/{{ .template.configmapRef.name }}/{{ .template.configmapRef.key }}"
           {{- else if .template }}
           template: |
+{{- if kindIs "map" .template }}
+{{ .template.value | nindent 12 }}
+{{- else }}
 {{ .template | nindent 12 }}
+{{- end }}
           {{- end }}
         {{- end }}
       {{- end }}
@@ -767,7 +795,7 @@ data:
             {{- if .transition }}
             transition: {{ .transition | quote }}
             {{- end }}
-            {{- if and .template .template.configmapRef }}
+            {{- if and .template (kindIs "map" .template) .template.configmapRef }}
             template: "/etc/templates/{{ .template.configmapRef.name }}/{{ .template.configmapRef.key }}"
             {{- else if and .template .template.value }}
             template: |

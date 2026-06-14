@@ -424,9 +424,10 @@ config:
               **Namespace:** {{.Namespace}}
               {{if .TargetURL}}[View Logs]({{.TargetURL}}){{end}}
             # OR reference a ConfigMap:
-            # templateRef:
-            #   configmapName: my-templates
-            #   configmapKey: check-run.tmpl
+            # template:
+            #   configmapRef:
+            #     name: my-templates
+            #     key: check-run.tmpl
           # Feature 5: Deployment Status - track deployments by environment
           - name: deployment-status
             # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
@@ -474,9 +475,10 @@ config:
               **Commit:** {{.CommitSHA}}
               {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
             # OR reference a ConfigMap:
-            # templateRef:
-            #   configmapName: my-templates
-            #   configmapKey: discussion-comment.tmpl
+            # template:
+            #   configmapRef:
+            #     name: my-templates
+            #     key: discussion-comment.tmpl
           - name: label
             # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
             type: label
@@ -541,9 +543,10 @@ config:
               **Commit:** {{.CommitSHA}}
               {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
             # OR reference a ConfigMap:
-            # templateRef:
-            #   configmapName: my-templates
-            #   configmapKey: pr-comment.tmpl
+            # template:
+            #   configmapRef:
+            #     name: my-templates
+            #     key: pr-comment.tmpl
           - name: issue-comment
             # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
             type: issue_comment
@@ -554,9 +557,10 @@ config:
               Pipeline {{.Context}} finished with state: **{{.State}}**
               {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
             # OR reference a ConfigMap:
-            # templateRef:
-            #   configmapName: my-templates
-            #   configmapKey: issue-comment.tmpl
+            # template:
+            #   configmapRef:
+            #     name: my-templates
+            #     key: issue-comment.tmpl
           - name: label
             # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
             type: label
@@ -611,9 +615,10 @@ config:
               **Commit:** {{.CommitSHA}}
               {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
             # OR reference a ConfigMap:
-            # templateRef:
-            #   configmapName: my-templates
-            #   configmapKey: pr-comment.tmpl
+            # template:
+            #   configmapRef:
+            #     name: my-templates
+            #     key: pr-comment.tmpl
           - name: issue-comment
             # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
             type: issue_comment
@@ -624,9 +629,10 @@ config:
               Pipeline {{.Context}} finished with state: **{{.State}}**
               {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
             # OR reference a ConfigMap:
-            # templateRef:
-            #   configmapName: my-templates
-            #   configmapKey: issue-comment.tmpl
+            # template:
+            #   configmapRef:
+            #     name: my-templates
+            #     key: issue-comment.tmpl
           - name: label
             # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
             type: label
@@ -773,9 +779,10 @@ config:
               **Commit:** {{.CommitSHA}}
               {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
             # OR reference a ConfigMap:
-            # templateRef:
-            #   configmapName: my-templates
-            #   configmapKey: pr-comment.tmpl
+            # template:
+            #   configmapRef:
+            #     name: my-templates
+            #     key: pr-comment.tmpl
           - name: issue-comment
             # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
             type: issue_comment
@@ -786,9 +793,10 @@ config:
               Pipeline {{.Context}} finished: **{{.State}}**
               {{if .TargetURL}}[Results]({{.TargetURL}}){{end}}
             # OR reference a ConfigMap:
-            # templateRef:
-            #   configmapName: my-templates
-            #   configmapKey: issue-comment.tmpl
+            # template:
+            #   configmapRef:
+            #     name: my-templates
+            #     key: issue-comment.tmpl
           - name: label
             # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
             type: label
@@ -999,9 +1007,10 @@ config:
       #     secretRef:
       #       name: grafana-token
       #       key: token
-      #   templateRef:
-      #     configmapName: grafana-templates
-      #     configmapKey: deploy-marker.tmpl
+      #   template:
+      #     configmapRef:
+      #       name: grafana-templates
+      #       key: deploy-marker.tmpl
 
     # -------------------------------------------------------------------------
     # Sentry
@@ -1121,9 +1130,10 @@ config:
 #     key: <key-within-configmap>
 #
 # Template references use the same pattern:
-#   templateRef:
-#     configmapName: <kubernetes-configmap-name>
-#     configmapKey: <key-within-configmap>
+#   template:
+#     configmapRef:
+#       name: <kubernetes-configmap-name>
+#       key: <key-within-configmap>
 #
 # Example: Create a secret for GitHub
 #   kubectl create secret generic github-default-token --from-literal=token="ghp_xxx"

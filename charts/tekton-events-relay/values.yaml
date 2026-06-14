@@ -293,7 +293,9 @@ config:
     valkey:
       # -- Deploy an embedded Valkey instance as a subchart (disabled by default;
       # use this for single-cluster dev/test setups; for production, use an
-      # external Valkey/KeyDB and set address directly)
+      # external Valkey/KeyDB and set address directly).
+      # IMPORTANT: when enabling embedded valkey, you must first add the
+      # Valkey Helm repo: helm repo add valkey https://valkey.io/valkey-helm/
       embedded:
         enabled: false
       # -- Valkey server address (host:port); required when backend=valkey

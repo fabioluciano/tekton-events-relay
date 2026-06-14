@@ -308,6 +308,11 @@ jobs:
         with:
           version: "v3.16.3"
 
+      - name: Add Helm repos and build dependencies
+        run: |
+          helm repo add valkey https://valkey.io/valkey-helm/
+          helm dependency build charts/tekton-events-relay
+
       - name: Install Cosign
         uses: sigstore/cosign-installer@v4.1.2
 

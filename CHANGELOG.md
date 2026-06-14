@@ -4,6 +4,12 @@ All notable changes to tekton-events-relay are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0](https://github.com/fabioluciano/tekton-events-relay/compare/v0.6.0...v0.7.0) (2026-06-14)
+
+### Features
+
+* enhance configuration for Valkey integration and secret references ([#9](https://github.com/fabioluciano/tekton-events-relay/issues/9)) ([cd1b544](https://github.com/fabioluciano/tekton-events-relay/commit/cd1b54426a52a1d8fc194476f59a4099e649c8c1))
+
 ## [0.6.0](https://github.com/fabioluciano/tekton-events-relay/compare/v0.5.0...v0.6.0) (2026-06-13)
 
 ### Features

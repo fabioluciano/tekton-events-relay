@@ -1,6 +1,6 @@
 # tekton-events-relay
 
-![Version: 0.6.0](https://img.shields.io/badge/Version-0.6.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.6.0](https://img.shields.io/badge/AppVersion-0.6.0-informational?style=flat-square)
+![Version: 0.7.0](https://img.shields.io/badge/Version-0.7.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.7.0](https://img.shields.io/badge/AppVersion-0.7.0-informational?style=flat-square)
 
 **Your pipelines run. Your platforms get updated. You write zero notification code.**
 
@@ -25,7 +25,7 @@ Tekton Events Relay turns the CloudEvents your Tekton pipelines already emit int
 ```bash
 helm install tekton-events-relay \
   oci://ghcr.io/fabioluciano/charts/tekton-events-relay \
-  --version 0.6.0 \
+  --version 0.7.0 \
   --namespace tekton-events-relay --create-namespace \
   -f values.yaml
 ```
@@ -42,9 +42,7 @@ config:
       - name: github                       # matched by the scm.provider annotation
         enabled: true
         auth:
-          secretRef:
-            name: github-token              # Secret with key "token"
-            key: token
+          secret_name: github-token        # Secret with key "token"
         actions:
           - name: ci-status
             type: commit_status
@@ -59,10 +57,7 @@ config:
     slack:
       - name: prod-alerts
         enabled: true
-        webhook_url:
-          secretRef:
-            name: slack-webhook            # Secret with key "webhook_url"
-            key: webhook_url
+        secret_name: slack-webhook         # Secret with key "webhook_url"
         channel: "#prod-alerts"
         when: 'event.Namespace == "production" && stateIn("failure", "error")'
 ```
@@ -94,12 +89,12 @@ Images and charts are signed with [Cosign](https://github.com/sigstore/cosign) (
 cosign verify \
   --certificate-identity-regexp='https://github.com/fabioluciano/tekton-events-relay' \
   --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
-  ghcr.io/fabioluciano/tekton-events-relay:0.6.0
+  ghcr.io/fabioluciano/tekton-events-relay:0.7.0
 
 cosign verify \
   --certificate-identity-regexp='https://github.com/fabioluciano/tekton-events-relay' \
   --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
-  oci://ghcr.io/fabioluciano/charts/tekton-events-relay:0.6.0
+  oci://ghcr.io/fabioluciano/charts/tekton-events-relay:0.7.0
 ```
 
 ## Scaling note
@@ -160,6 +155,13 @@ The default in-memory state backend is per-pod: run **one replica**, or set `con
 | config.filter.allow_taskrun | bool | `true` | Process TaskRun events |
 | config.filter.ignore_unknown | bool | `true` | Ignore unknown event types |
 | config.handler_timeout | string | `"10s"` | Per-handler execution deadline; one slow provider cannot stall the whole event dispatch (Go duration format) |
+| config.jira | list | `[{"actions":[{"enabled":true,"name":"result-comment","type":"comment","when":"event.Resource == \"pipelinerun\" && stateIn(\"success\", \"failure\", \"error\")"},{"enabled":false,"name":"mark-done","transition":"Done","type":"transition","when":"event.Resource == \"pipelinerun\" && event.State == \"success\""}],"auth":{},"base_url":"https://yourorg.atlassian.net","enabled":false,"name":"default"}]` | Jira integration instances (Cloud or Data Center) |
+| config.jira[0] | object | `{"actions":[{"enabled":true,"name":"result-comment","type":"comment","when":"event.Resource == \"pipelinerun\" && stateIn(\"success\", \"failure\", \"error\")"},{"enabled":false,"name":"mark-done","transition":"Done","type":"transition","when":"event.Resource == \"pipelinerun\" && event.State == \"success\""}],"auth":{},"base_url":"https://yourorg.atlassian.net","enabled":false,"name":"default"}` | Unique identifier for this Jira instance |
+| config.jira[0].actions | list | `[{"enabled":true,"name":"result-comment","type":"comment","when":"event.Resource == \"pipelinerun\" && stateIn(\"success\", \"failure\", \"error\")"},{"enabled":false,"name":"mark-done","transition":"Done","type":"transition","when":"event.Resource == \"pipelinerun\" && event.State == \"success\""}]` | Skip TLS verification (self-hosted Data Center only) insecure_skip_verify: false |
+| config.jira[0].actions[0] | object | `{"enabled":true,"name":"result-comment","type":"comment","when":"event.Resource == \"pipelinerun\" && stateIn(\"success\", \"failure\", \"error\")"}` | Comment on the linked issue when the pipeline finishes |
+| config.jira[0].actions[1] | object | `{"enabled":false,"name":"mark-done","transition":"Done","type":"transition","when":"event.Resource == \"pipelinerun\" && event.State == \"success\""}` | Move the card when the pipeline succeeds (disabled by default) |
+| config.jira[0].base_url | string | `"https://yourorg.atlassian.net"` | Jira base URL (Cloud: https://yourorg.atlassian.net) |
+| config.jira[0].enabled | bool | `false` | Enable or disable this Jira instance |
 | config.logging | object | `{"level":"info","verbose":{"caller":false,"http_calls":false,"payloads":false}}` | Logging configuration |
 | config.logging.level | string | `"info"` | Log level (debug, info, warn, error) |
 | config.logging.verbose | object | `{"caller":false,"http_calls":false,"payloads":false}` | Verbose logging options |
@@ -178,15 +180,14 @@ The default in-memory state backend is per-pod: run **one replica**, or set `con
 | config.notifiers.discord[0].template | string | `"**Pipeline {{.State}}** in `{{.Namespace}}`\n```\nRun:    {{.RunName}}\nCommit: {{.CommitSHA}}\n```\n{{if .TargetURL}}[View in Dashboard]({{.TargetURL}}){{end}}\n"` | Go template for the Discord message body. Available variables: .State, .RunName, .Namespace, .CommitSHA, .TargetURL |
 | config.notifiers.discord[0].username | string | `"Tekton CI"` | Display name for the bot posting messages |
 | config.notifiers.discord[0].when | string | `"event.Namespace == \"staging\" || event.Namespace == \"production\""` | CEL expression to filter which events trigger notifications |
-| config.notifiers.email | list | `[{"enabled":false,"encryption":"starttls","from":"tekton@example.com","host":"smtp.example.com","html":false,"name":"default","port":587,"subject":"[tekton] {{ if .PipelineName }}{{ .PipelineName }}{{ else }}{{ .RunName }}{{ end }} — {{ .State }}","to":["platform-team@example.com"],"when":"event.Resource == \"pipelinerun\" && stateIn(\"failure\", \"error\")"}]` | SMTP email notifier instances. The most universal channel: any relay (corporate SMTP, SES, Mailgun, in-cluster Postfix) works. |
-| config.notifiers.email[0] | object | `{"enabled":false,"encryption":"starttls","from":"tekton@example.com","host":"smtp.example.com","html":false,"name":"default","port":587,"subject":"[tekton] {{ if .PipelineName }}{{ .PipelineName }}{{ else }}{{ .RunName }}{{ end }} — {{ .State }}","to":["platform-team@example.com"],"when":"event.Resource == \"pipelinerun\" && stateIn(\"failure\", \"error\")"}` | Unique identifier for this email instance |
+| config.notifiers.email | list | `[{"enabled":false,"encryption":"starttls","from":"tekton@example.com","host":"smtp.example.com","html":false,"name":"default","port":587,"to":["platform-team@example.com"],"when":"event.Resource == \"pipelinerun\" && stateIn(\"failure\", \"error\")"}]` | SMTP email notifier instances. The most universal channel: any relay (corporate SMTP, SES, Mailgun, in-cluster Postfix) works. |
+| config.notifiers.email[0] | object | `{"enabled":false,"encryption":"starttls","from":"tekton@example.com","host":"smtp.example.com","html":false,"name":"default","port":587,"to":["platform-team@example.com"],"when":"event.Resource == \"pipelinerun\" && stateIn(\"failure\", \"error\")"}` | Unique identifier for this email instance |
 | config.notifiers.email[0].enabled | bool | `false` | Enable or disable this email notifier instance |
 | config.notifiers.email[0].encryption | string | `"starttls"` | Connection security: starttls (default), tls or none. NOTE: with "none", AUTH is only attempted against localhost relays. |
 | config.notifiers.email[0].from | string | `"tekton@example.com"` | Sender address |
 | config.notifiers.email[0].host | string | `"smtp.example.com"` | SMTP server hostname |
 | config.notifiers.email[0].html | bool | `false` | Send body as text/html instead of text/plain |
 | config.notifiers.email[0].port | int | `587` | SMTP port (587 STARTTLS, 465 implicit TLS, 25 plain relays) |
-| config.notifiers.email[0].subject | string | `"[tekton] {{ if .PipelineName }}{{ .PipelineName }}{{ else }}{{ .RunName }}{{ end }} — {{ .State }}"` | Subject Go template (CR/LF stripped to prevent header injection) |
 | config.notifiers.email[0].to | list | `["platform-team@example.com"]` | Recipient list |
 | config.notifiers.email[0].when | string | `"event.Resource == \"pipelinerun\" && stateIn(\"failure\", \"error\")"` | CEL expression to filter which events are emailed |
 | config.notifiers.grafana | list | `[]` | ----------------------------------------------------------------------- |
@@ -310,7 +311,7 @@ The default in-memory state backend is per-pod: run **one replica**, or set `con
 | config.server | object | `{"addr":":8080","auth":{"enabled":false,"secret":{"secretRef":{"key":"hmac-key","name":"webhook-secret"}},"timestamp_tolerance":"5m","type":"hmac-sha256","validate_timestamp":false},"max_body_size":1048576,"metrics_addr":"","rate_limit":{"burst":200,"enabled":false,"requests_per_second":100},"read_timeout_sec":10,"shutdown_timeout_sec":30,"tls":{"cert_file":"","key_file":""},"write_timeout_sec":10}` | HTTP server configuration |
 | config.server.addr | string | `":8080"` | Server listen address and port |
 | config.server.auth | object | `{"enabled":false,"secret":{"secretRef":{"key":"hmac-key","name":"webhook-secret"}},"timestamp_tolerance":"5m","type":"hmac-sha256","validate_timestamp":false}` | Webhook authentication configuration |
-| config.server.auth.secret | object | `{"secretRef":{"key":"hmac-key","name":"webhook-secret"}}` | Reference to webhook secret for HMAC validation. Use secretRef to mount K8s Secret as file |
+| config.server.auth.secret | object | `{"secretRef":{"key":"hmac-key","name":"webhook-secret"}}` | Reference to webhook secret for HMAC validation Use secretRef for K8s Secret mount |
 | config.server.auth.timestamp_tolerance | string | `"5m"` | Accepted clock skew for replay protection (Go duration format) |
 | config.server.auth.validate_timestamp | bool | `false` | Replay protection: require an X-Webhook-Timestamp header (unix seconds) within timestamp_tolerance of the server clock |
 | config.server.max_body_size | int | `1048576` | Maximum request body size in bytes |
@@ -334,7 +335,7 @@ The default in-memory state backend is per-pod: run **one replica**, or set `con
 | config.store.valkey | object | `{"address":"","db":0,"embedded":{"enabled":false},"key_prefix":"tekton-events-relay","password":{"secretRef":{"key":"password","name":""}}}` | Valkey backend settings (backend: valkey) |
 | config.store.valkey.address | string | `""` | Valkey server address (host:port); required when backend=valkey and embedded is disabled. When embedded.enabled is true, this is auto-populated with the embedded service address. |
 | config.store.valkey.db | int | `0` | Valkey logical database |
-| config.store.valkey.embedded | object | `{"enabled":false}` | Deploy an embedded Valkey instance as a subchart (disabled by default; use this for single-cluster dev/test setups; for production, use an external Valkey/KeyDB and set address directly) |
+| config.store.valkey.embedded | object | `{"enabled":false}` | Deploy an embedded Valkey instance as a subchart (disabled by default; use this for single-cluster dev/test setups; for production, use an external Valkey/KeyDB and set address directly). IMPORTANT: when enabling embedded valkey, you must first add the Valkey Helm repo: helm repo add valkey https://valkey.io/valkey-helm/ |
 | config.store.valkey.key_prefix | string | `"tekton-events-relay"` | Prefix applied to all keys |
 | config.store.valkey.password | object | `{"secretRef":{"key":"password","name":""}}` | Reference to a Kubernetes Secret containing the Valkey password (optional) |
 | config.tracing | object | `{"endpoint":"","insecure":false,"service_name":"tekton-events-relay"}` | OpenTelemetry tracing configuration |

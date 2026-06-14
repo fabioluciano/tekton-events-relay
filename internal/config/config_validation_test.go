@@ -841,7 +841,7 @@ func TestConfig_AuthTypes(t *testing.T) {
 					Auth: AuthConfig{ //nolint:gosec // test data
 						Enabled:    true,
 						Type:       tt.authType,
-						SecretFile: "${WEBHOOK_SECRET}",
+						SecretFile: "/etc/secrets/server/auth/secret",
 					},
 				},
 			}

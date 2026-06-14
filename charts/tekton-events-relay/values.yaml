@@ -232,12 +232,11 @@ config:
       enabled: false
       type: "hmac-sha256" # or "bearer"
       # -- Reference to webhook secret for HMAC validation
-      # Use secretRef for K8s Secret, or value for inline/env var expansion
+      # Use secretRef for K8s Secret mount
       secret:
-        value: "${WEBHOOK_SECRET}"
-        # secretRef:
-        #   name: webhook-secret
-        #   key: hmac-key
+        secretRef:
+          name: webhook-secret
+          key: hmac-key
       # -- Replay protection: require an X-Webhook-Timestamp header (unix
       # seconds) within timestamp_tolerance of the server clock
       validate_timestamp: false
@@ -827,11 +826,9 @@ config:
   # Each notifier supports: name, enabled, when (CEL), template (Go template).
   #
   # NOTE on secrets in Helm context:
-  #   Use Helm template syntax (e.g., {{ .Values.secrets.slackWebhookUrl }}) for
-  #   values injected at deploy time. Runtime env var expansion (${ENV_VAR}) is
-  #   used when the binary reads the config at startup.
-  #   In this values.yaml, we use ${ENV_VAR} syntax because the config is rendered
-  #   into a ConfigMap and expanded at runtime by the application.
+  #   Use secretRef to reference Kubernetes Secrets. Secrets are mounted as
+  #   files at /etc/secrets/{provider}/{instance}/{key}.
+  #   Never store secrets in ConfigMaps or environment variables.
   notifiers:
     # -------------------------------------------------------------------------
     # Slack

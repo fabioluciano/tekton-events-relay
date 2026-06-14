@@ -182,7 +182,7 @@ Expression must return `bool`. Example: `'isPipelineRun() && stateIn("running", 
 
 ### Config
 
-`internal/config/config.go` — YAML loaded with `${UPPERCASE_VAR}` env expansion. Secrets use file-based resolution (`_file` suffix fields, e.g., `auth.secret_file`). `secrets.ResolveOrInfer()` resolves explicit path or infers `/etc/secrets/{provider}/{instance}/{key}`. Validated at load time; hot-reload validates before atomic swap.
+`internal/config/config.go` — YAML loaded directly. Secrets use file-based resolution (`_file` suffix fields, e.g., `auth.secret_file`). `secrets.ResolveOrInfer()` resolves explicit path or infers `/etc/secrets/{provider}/{instance}/{key}`. Validated at load time; hot-reload validates before atomic swap.
 
 Config structure (top-level keys):
 
@@ -418,7 +418,7 @@ mise run helm-security       # all security checks (kubelinter, kubesec, trivy, 
 - `GOFLAGS="-mod=readonly"` is set in `.mise.toml` — run `go mod tidy` explicitly when deps change.
 - **Wiki is a git submodule** at `wiki/` — `git submodule update --init` after clone.
 - Docker image is **distroless nonroot** — no shell, no package manager.
-- Config supports `${UPPERCASE_VAR}` expansion for non-secret operational values; secrets use file-based resolution.
+- Config supports file-based secret resolution; never use environment variables for secrets.
 - `go.mod` has a `replace` directive: `github.com/armon/go-metrics => github.com/hashicorp/go-metrics`
 
 ## Pipeline chain handlers — detailed behavior
@@ -951,9 +951,8 @@ Thread-safe registry indexed by name and type:
 ## Config loading — detailed flow (`internal/config/config.go`)
 
 1. `os.ReadFile(path)` — read YAML file
-2. `expandEnv(raw)` — replace `${UPPERCASE_VAR}` with env vars (regex: `\$\{([A-Z_][A-Z0-9_]*)\}`)
-3. `yaml.Unmarshal` — parse into `Config` struct
-4. `applyDefaults(&cfg)` — fill zero-value fields with defaults:
+2. `yaml.Unmarshal` — parse into `Config` struct
+3. `applyDefaults(&cfg)` — fill zero-value fields with defaults:
    - `Server.Addr` → `:8080`, `ReadTimeoutSec` → 10, `WriteTimeoutSec` → 10, `ShutdownTimeoutSec` → 30
    - `DedupeSize` → 10000, `MaxConcurrency` → 100, `HandlerTimeout` → 10s
    - `Retry.MaxAttempts` → 4, `InitialBackoff` → 250ms, `MaxBackoff` → 30s

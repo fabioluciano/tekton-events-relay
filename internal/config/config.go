@@ -4,7 +4,6 @@ package config
 import (
 	"fmt"
 	"os"
-	"regexp"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -760,10 +759,8 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("read config: %w", err)
 	}
 
-	expanded := expandEnv(string(raw))
-
 	var cfg Config
-	if err := yaml.Unmarshal([]byte(expanded), &cfg); err != nil {
+	if err := yaml.Unmarshal(raw, &cfg); err != nil {
 		return nil, fmt.Errorf("parse yaml: %w", err)
 	}
 
@@ -774,16 +771,6 @@ func Load(path string) (*Config, error) {
 	}
 
 	return &cfg, nil
-}
-
-var envRe = regexp.MustCompile(`\$\{([A-Z_][A-Z0-9_]*)\}`)
-
-// expandEnv handles ${UPPERCASE_VAR} for non-secret operational config.
-// For secrets, use file-based resolution via secrets.Resolve.
-func expandEnv(s string) string {
-	return envRe.ReplaceAllStringFunc(s, func(match string) string {
-		return os.Getenv(match[2 : len(match)-1])
-	})
 }
 
 func applyDefaults(c *Config) {

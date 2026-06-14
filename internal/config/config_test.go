@@ -15,7 +15,6 @@ func TestLoad(t *testing.T) {
 	tests := []struct {
 		name        string
 		fileContent string
-		envVars     map[string]string
 		wantErr     bool
 	}{
 		{
@@ -23,17 +22,6 @@ func TestLoad(t *testing.T) {
 			fileContent: `server:
   addr: ":8080"
 notifiers: {}`,
-			wantErr: false,
-		},
-		{
-			name: "config with env expansion",
-			fileContent: `server:
-  addr: "${LISTEN_ADDR}"
-dashboard_url: "${DASHBOARD_URL}"`,
-			envVars: map[string]string{
-				"LISTEN_ADDR":   ":9090",
-				"DASHBOARD_URL": "http://localhost:8080",
-			},
 			wantErr: false,
 		},
 		{
@@ -56,10 +44,6 @@ dashboard_url: "${DASHBOARD_URL}"`,
 				t.Fatal(err)
 			}
 
-			for k, v := range tt.envVars {
-				t.Setenv(k, v)
-			}
-
 			cfg, err := Load(cfgPath)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Load() error = %v, wantErr %v", err, tt.wantErr)
@@ -76,52 +60,6 @@ func TestLoadNonExistent(t *testing.T) {
 	_, err := Load("/nonexistent/path/config.yaml")
 	if err == nil {
 		t.Error("expected error for nonexistent file")
-	}
-}
-
-func TestExpandEnv(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		envVars  map[string]string
-		expected string
-	}{
-		{
-			name:     "single var",
-			input:    "value is ${VAR}",
-			envVars:  map[string]string{"VAR": "test"},
-			expected: "value is test",
-		},
-		{
-			name:     "multiple vars",
-			input:    "${A} and ${B}",
-			envVars:  map[string]string{"A": "foo", "B": "bar"},
-			expected: "foo and bar",
-		},
-		{
-			name:     "no vars",
-			input:    "plain text",
-			envVars:  nil,
-			expected: "plain text",
-		},
-		{
-			name:     "undefined var",
-			input:    "${UNDEFINED}",
-			envVars:  nil,
-			expected: "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			for k, v := range tt.envVars {
-				t.Setenv(k, v)
-			}
-			result := expandEnv(tt.input)
-			if result != tt.expected {
-				t.Errorf("expandEnv() = %q, want %q", result, tt.expected)
-			}
-		})
 	}
 }
 
@@ -155,13 +93,13 @@ func TestConfig_ValidateTokenReferences_Warns(t *testing.T) {
 			expectWarn: true,
 		},
 		{
-			name: "env var reference no warning",
+			name: "file path no warning",
 			fileContent: `scm:
   github:
     - name: test
       enabled: true
       auth:
-        secret_file: "${GITHUB_TOKEN}"
+        secret_file: "/etc/secrets/github/token"
       base_url: "https://api.github.com"`,
 			expectWarn: false,
 		},
@@ -175,22 +113,18 @@ func TestConfig_ValidateTokenReferences_Warns(t *testing.T) {
 			expectWarn: true,
 		},
 		{
-			name: "env var webhook url no warning",
+			name: "file path webhook url no warning",
 			fileContent: `notifiers:
   slack:
     - name: test
       enabled: false
-      webhook_url: "${SLACK_WEBHOOK}"`,
+      webhook_url: "/etc/secrets/slack/webhook-url"`,
 			expectWarn: false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Set dummy env vars so expansion doesn't produce empty values
-			t.Setenv("GITHUB_TOKEN", "dummy_token")
-			t.Setenv("SLACK_WEBHOOK", "https://dummy.slack.com/webhook")
-
 			tmpDir := t.TempDir()
 			cfgPath := filepath.Join(tmpDir, "config.yaml")
 			if err := os.WriteFile(cfgPath, []byte(tt.fileContent), 0600); err != nil {

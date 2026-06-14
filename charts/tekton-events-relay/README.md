@@ -307,10 +307,10 @@ The default in-memory state backend is per-pod: run **one replica**, or set `con
 | config.scm.sourcehut[0].actions[0].enabled | bool | `false` | Enable or disable this SCM provider instance |
 | config.scm.sourcehut[0].actions[0].type | string | `"commit_status"` | Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status) |
 | config.scm.sourcehut[0].enabled | bool | `false` | Enable or disable this SCM provider instance |
-| config.server | object | `{"addr":":8080","auth":{"enabled":false,"secret":{"value":"${WEBHOOK_SECRET}"},"timestamp_tolerance":"5m","type":"hmac-sha256","validate_timestamp":false},"max_body_size":1048576,"metrics_addr":"","rate_limit":{"burst":200,"enabled":false,"requests_per_second":100},"read_timeout_sec":10,"shutdown_timeout_sec":30,"tls":{"cert_file":"","key_file":""},"write_timeout_sec":10}` | HTTP server configuration |
+| config.server | object | `{"addr":":8080","auth":{"enabled":false,"secret":{"secretRef":{"key":"hmac-key","name":"webhook-secret"}},"timestamp_tolerance":"5m","type":"hmac-sha256","validate_timestamp":false},"max_body_size":1048576,"metrics_addr":"","rate_limit":{"burst":200,"enabled":false,"requests_per_second":100},"read_timeout_sec":10,"shutdown_timeout_sec":30,"tls":{"cert_file":"","key_file":""},"write_timeout_sec":10}` | HTTP server configuration |
 | config.server.addr | string | `":8080"` | Server listen address and port |
-| config.server.auth | object | `{"enabled":false,"secret":{"value":"${WEBHOOK_SECRET}"},"timestamp_tolerance":"5m","type":"hmac-sha256","validate_timestamp":false}` | Webhook authentication configuration |
-| config.server.auth.secret | object | `{"value":"${WEBHOOK_SECRET}"}` | Reference to webhook secret for HMAC validation Use secretRef for K8s Secret, or value for inline/env var expansion |
+| config.server.auth | object | `{"enabled":false,"secret":{"secretRef":{"key":"hmac-key","name":"webhook-secret"}},"timestamp_tolerance":"5m","type":"hmac-sha256","validate_timestamp":false}` | Webhook authentication configuration |
+| config.server.auth.secret | object | `{"secretRef":{"key":"hmac-key","name":"webhook-secret"}}` | Reference to webhook secret for HMAC validation. Use secretRef to mount K8s Secret as file |
 | config.server.auth.timestamp_tolerance | string | `"5m"` | Accepted clock skew for replay protection (Go duration format) |
 | config.server.auth.validate_timestamp | bool | `false` | Replay protection: require an X-Webhook-Timestamp header (unix seconds) within timestamp_tolerance of the server clock |
 | config.server.max_body_size | int | `1048576` | Maximum request body size in bytes |

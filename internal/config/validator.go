@@ -328,10 +328,10 @@ func (c *Config) ValidateTokenReferences(log *zap.Logger) {
 		if token == "" {
 			return
 		}
-		if !strings.Contains(token, "${") {
-			log.Warn("token appears to be a literal value, not an env var reference",
+		if !strings.HasPrefix(token, "/") {
+			log.Warn("token should be an absolute file path, not a literal value",
 				zap.String("field", name),
-				zap.String("hint", "use ${ENV_VAR} format to reference environment variables"))
+				zap.String("hint", "use absolute path like /etc/secrets/provider/instance/key"))
 		}
 	}
 

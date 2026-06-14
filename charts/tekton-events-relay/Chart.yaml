@@ -2,8 +2,8 @@ apiVersion: v2
 name: tekton-events-relay
 description: CloudEvents receiver that reports pipeline execution status to multiple SCM providers
 type: application
-version: 0.7.0
-appVersion: "0.7.0"
+version: 0.7.1
+appVersion: "0.7.1"
 dependencies:
   - name: valkey
     version: 0.9.4
@@ -15,7 +15,7 @@ annotations:
   artifacthub.io/license: MIT
   artifacthub.io/images: |
     - name: tekton-events-relay
-      image: ghcr.io/fabioluciano/tekton-events-relay:0.7.0
+      image: ghcr.io/fabioluciano/tekton-events-relay:0.7.1
       platforms:
         - linux/amd64
         - linux/arm64

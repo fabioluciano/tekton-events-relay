@@ -65,6 +65,9 @@ func newOlricStore(cfg config.StoreConfig, opts Options) (*olricStore, error) {
 		return nil, fmt.Errorf("store.olric: configure: %w", err)
 	}
 
+	_, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	startErr := make(chan error, 1)
 	go func() {
 		// Start blocks for the lifetime of the cluster member.
@@ -76,6 +79,10 @@ func newOlricStore(cfg config.StoreConfig, opts Options) (*olricStore, error) {
 	case err := <-startErr:
 		return nil, fmt.Errorf("store.olric: start: %w", err)
 	case <-time.After(olricStartTimeout):
+		cancel()
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
+		_ = db.Shutdown(shutdownCtx)
 		return nil, fmt.Errorf("store.olric: start timed out after %s", olricStartTimeout)
 	}
 

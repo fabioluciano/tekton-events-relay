@@ -144,6 +144,16 @@ webhook-default.tmpl
 {{- end }}
 
 {{/*
+Fail fast when the embedded Valkey subchart is enabled but the store backend
+is not set to "valkey". The embedded instance would be deployed but unused.
+*/}}
+{{- define "tekton-events-relay.validateEmbeddedValkey" -}}
+{{- if and (index .Values "config" "store" "valkey" "embedded" "enabled") (ne (.Values.config.store.backend | default "memory") "valkey") -}}
+{{- fail "config.store.valkey.embedded.enabled=true requires config.store.backend=valkey" -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Fail fast when the per-pod memory store is combined with multiple replicas:
 deduplication and accumulator state would diverge between pods, producing
 duplicate or fragmented notifications. Set config.store.backend to valkey
@@ -157,3 +167,274 @@ unsafe.allowMemoryStoreWithMultipleReplicas=true.
 {{- fail (printf "tekton-events-relay: replicaCount=%d / autoscaling.enabled=%t with config.store.backend=memory is unsafe: dedupe and accumulator state are per-pod, causing duplicate or fragmented notifications. Set config.store.backend to 'valkey' or 'olric', reduce replicas to 1, or set unsafe.allowMemoryStoreWithMultipleReplicas=true to override." (int .Values.replicaCount) .Values.autoscaling.enabled) -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+=============================================================================
+  value/secretRef/configmapRef HELPERS
+=============================================================================
+*/}}
+
+{{/*
+Resolve a value/secretRef/configmapRef field to an inline string for config rendering.
+- If .value is set, returns the inline value directly.
+- If .secretRef is set, returns the mount path (/etc/secrets/{provider}/{instance}/{key}).
+- If .configmapRef is set, returns the mount path (/etc/secrets/{provider}/{instance}/{key}).
+Usage: {{ include "tekton-events-relay.resolveValue" (dict "field" .auth "provider" "github" "instance" .name "key" "token") }}
+       where .auth has .secretRef or .value
+*/}}
+{{- define "tekton-events-relay.resolveValue" -}}
+{{- if .field.value }}
+{{- .field.value | quote }}
+{{- else if .field.secretRef }}
+{{- printf "/etc/secrets/%s/%s/%s" .provider .instance .key | quote }}
+{{- else if .field.configmapRef }}
+{{- printf "/etc/secrets/%s/%s/%s" .provider .instance .key | quote }}
+{{- end }}
+{{- end }}
+
+{{/*
+Resolve a value/secretRef/configmapRef field to an inline string with a custom mount base.
+Usage: {{ include "tekton-events-relay.resolveValueWithBase" (dict "field" .auth "base" "/etc/github-app" "instance" .name "key" "private-key.pem") }}
+*/}}
+{{- define "tekton-events-relay.resolveValueWithBase" -}}
+{{- if .field.value }}
+{{- .field.value | quote }}
+{{- else if .field.secretRef }}
+{{- printf "%s/%s/%s" .base .instance .key | quote }}
+{{- else if .field.configmapRef }}
+{{- printf "%s/%s/%s" .base .instance .key | quote }}
+{{- end }}
+{{- end }}
+
+{{/*
+Check if a field has a secretRef or configmapRef that requires a volume mount.
+Returns "true" if the field has a reference.
+Usage: {{ include "tekton-events-relay.hasRef" .auth.secretRef }}
+*/}}
+{{- define "tekton-events-relay.hasRef" -}}
+{{- if or .secretRef .configmapRef -}}true{{- end -}}
+{{- end }}
+
+{{/*
+Extract the Secret/ConfigMap name from a secretRef or configmapRef field.
+Usage: {{ include "tekton-events-relay.refName" .auth.secretRef }}
+*/}}
+{{- define "tekton-events-relay.refName" -}}
+{{- if .secretRef }}
+{{- .secretRef.name }}
+{{- else if .configmapRef }}
+{{- .configmapRef.name }}
+{{- end }}
+{{- end }}
+
+{{/*
+Extract the key within the Secret/ConfigMap from a secretRef or configmapRef field.
+Usage: {{ include "tekton-events-relay.refKey" .auth.secretRef }}
+*/}}
+{{- define "tekton-events-relay.refKey" -}}
+{{- if .secretRef }}
+{{- .secretRef.key }}
+{{- else if .configmapRef }}
+{{- .configmapRef.key }}
+{{- end }}
+{{- end }}
+
+{{/*
+Check if the source is a secretRef (vs configmapRef).
+Returns "true" if secretRef.
+Usage: {{ include "tekton-events-relay.isSecretRef" .auth.secretRef }}
+*/}}
+{{- define "tekton-events-relay.isSecretRef" -}}
+{{- if .secretRef -}}true{{- end -}}
+{{- end }}
+
+{{/*
+Render a volume from a secretRef or configmapRef field.
+Usage: {{ include "tekton-events-relay.valueFromVolume" (dict "name" "vol-name" "field" .auth.secretRef) }}
+*/}}
+{{- define "tekton-events-relay.valueFromVolume" -}}
+{{- if .field.secretRef }}
+- name: {{ .name }}
+  secret:
+    secretName: {{ .field.secretRef.name }}
+{{- else if .field.configmapRef }}
+- name: {{ .name }}
+  configMap:
+    name: {{ .field.configmapRef.name }}
+{{- end }}
+{{- end }}
+
+{{/*
+Render a volume from a secretRef or configmapRef field with items (specific key).
+Usage: {{ include "tekton-events-relay.valueFromVolumeWithKey" (dict "name" "vol-name" "field" .auth.private_key "path" "private-key.pem") }}
+*/}}
+{{- define "tekton-events-relay.valueFromVolumeWithKey" -}}
+{{- if .field.secretRef }}
+- name: {{ .name }}
+  secret:
+    secretName: {{ .field.secretRef.name }}
+    items:
+      - key: {{ .field.secretRef.key }}
+        path: {{ .path }}
+{{- else if .field.configmapRef }}
+- name: {{ .name }}
+  configMap:
+    name: {{ .field.configmapRef.name }}
+    items:
+      - key: {{ .field.configmapRef.key }}
+        path: {{ .path }}
+{{- end }}
+{{- end }}
+
+{{/*
+Render volume mounts for an SCM provider instance.
+Checks each potential secretRef/configmapRef field and emits mounts as needed.
+Usage: {{ include "tekton-events-relay.scmVolumeMounts" (dict "provider" "github" "instance" $inst) }}
+*/}}
+{{- define "tekton-events-relay.scmVolumeMounts" -}}
+{{- $p := .provider }}
+{{- $i := .instance }}
+{{- if and $i.auth (include "tekton-events-relay.hasRef" $i.auth) }}
+- mountPath: /etc/secrets/{{ $p }}/{{ $i.name }}
+  name: {{ $p }}-{{ $i.name }}-secret
+  readOnly: true
+{{- end }}
+{{- if and $i.auth $i.auth.private_key (include "tekton-events-relay.hasRef" $i.auth.private_key) }}
+- mountPath: /etc/github-app/{{ $i.name }}
+  name: {{ $p }}-{{ $i.name }}-app-key
+  readOnly: true
+{{- end }}
+{{- if and $i.auth $i.auth.oauth2 }}
+- mountPath: /etc/secrets/{{ $p }}/{{ $i.name }}
+  name: {{ $p }}-{{ $i.name }}-oauth2
+  readOnly: true
+{{- end }}
+{{- if and $i.auth $i.auth.username (include "tekton-events-relay.hasRef" $i.auth.username) }}
+- mountPath: /etc/secrets/{{ $p }}/{{ $i.name }}
+  name: {{ $p }}-{{ $i.name }}-secret
+  readOnly: true
+{{- end }}
+{{- if and $i.auth $i.auth.app_password (include "tekton-events-relay.hasRef" $i.auth.app_password) }}
+- mountPath: /etc/secrets/{{ $p }}/{{ $i.name }}
+  name: {{ $p }}-{{ $i.name }}-secret
+  readOnly: true
+{{- end }}
+{{- end }}
+
+{{/*
+Render volumes for an SCM provider instance.
+Usage: {{ include "tekton-events-relay.scmVolumes" (dict "provider" "github" "instance" $inst) }}
+*/}}
+{{- define "tekton-events-relay.scmVolumes" -}}
+{{- $p := .provider }}
+{{- $i := .instance }}
+{{- if and $i.auth (include "tekton-events-relay.hasRef" $i.auth) }}
+- name: {{ $p }}-{{ $i.name }}-secret
+  secret:
+    secretName: {{ include "tekton-events-relay.refName" $i.auth }}
+{{- end }}
+{{- if and $i.auth $i.auth.private_key (include "tekton-events-relay.hasRef" $i.auth.private_key) }}
+{{- include "tekton-events-relay.valueFromVolumeWithKey" (dict "name" (printf "%s-%s-app-key" $p $i.name) "field" $i.auth.private_key "path" "private-key.pem") }}
+{{- end }}
+{{- if and $i.auth $i.auth.oauth2 }}
+- name: {{ $p }}-{{ $i.name }}-oauth2
+  secret:
+    secretName: {{ include "tekton-events-relay.refName" $i.auth.oauth2.client_secret }}
+{{- end }}
+{{- if and $i.auth $i.auth.username (include "tekton-events-relay.hasRef" $i.auth.username) }}
+- name: {{ $p }}-{{ $i.name }}-secret
+  secret:
+    secretName: {{ include "tekton-events-relay.refName" $i.auth.username }}
+{{- end }}
+{{- if and $i.auth $i.auth.app_password (include "tekton-events-relay.hasRef" $i.auth.app_password) }}
+- name: {{ $p }}-{{ $i.name }}-secret
+  secret:
+    secretName: {{ include "tekton-events-relay.refName" $i.auth.app_password }}
+{{- end }}
+{{- end }}
+
+{{/*
+Render volume mounts for a notifier instance.
+Usage: {{ include "tekton-events-relay.notifierVolumeMounts" (dict "provider" "slack" "instance" $inst) }}
+*/}}
+{{- define "tekton-events-relay.notifierVolumeMounts" -}}
+{{- $p := .provider }}
+{{- $i := .instance }}
+{{- if and $i.webhook_url (include "tekton-events-relay.hasRef" $i.webhook_url) }}
+- mountPath: /etc/secrets/{{ $p }}/{{ $i.name }}
+  name: {{ $p }}-{{ $i.name }}-secret
+  readOnly: true
+{{- else if and $i.token (include "tekton-events-relay.hasRef" $i.token) }}
+- mountPath: /etc/secrets/{{ $p }}/{{ $i.name }}
+  name: {{ $p }}-{{ $i.name }}-secret
+  readOnly: true
+{{- else if and $i.integration_key (include "tekton-events-relay.hasRef" $i.integration_key) }}
+- mountPath: /etc/secrets/{{ $p }}/{{ $i.name }}
+  name: {{ $p }}-{{ $i.name }}-secret
+  readOnly: true
+{{- else if and $i.api_key (include "tekton-events-relay.hasRef" $i.api_key) }}
+- mountPath: /etc/secrets/{{ $p }}/{{ $i.name }}
+  name: {{ $p }}-{{ $i.name }}-secret
+  readOnly: true
+{{- else if and $i.password (include "tekton-events-relay.hasRef" $i.password) }}
+- mountPath: /etc/secrets/{{ $p }}/{{ $i.name }}
+  name: {{ $p }}-{{ $i.name }}-secret
+  readOnly: true
+{{- else if and $i.url (include "tekton-events-relay.hasRef" $i.url) }}
+- mountPath: /etc/secrets/{{ $p }}/{{ $i.name }}
+  name: {{ $p }}-{{ $i.name }}-secret
+  readOnly: true
+{{- else if and $i.bot_token $i.bot_token.token (include "tekton-events-relay.hasRef" $i.bot_token.token) }}
+- mountPath: /etc/secrets/{{ $p }}/{{ $i.name }}
+  name: {{ $p }}-{{ $i.name }}-secret
+  readOnly: true
+{{- else if and $i.auth $i.auth.token (include "tekton-events-relay.hasRef" $i.auth.token) }}
+- mountPath: /etc/secrets/{{ $p }}/{{ $i.name }}
+  name: {{ $p }}-{{ $i.name }}-secret
+  readOnly: true
+{{- else if and $i.auth $i.auth.password (include "tekton-events-relay.hasRef" $i.auth.password) }}
+- mountPath: /etc/secrets/{{ $p }}/{{ $i.name }}
+  name: {{ $p }}-{{ $i.name }}-secret
+  readOnly: true
+{{- else if and $i.auth $i.auth.hmac_secret (include "tekton-events-relay.hasRef" $i.auth.hmac_secret) }}
+- mountPath: /etc/secrets/{{ $p }}/{{ $i.name }}
+  name: {{ $p }}-{{ $i.name }}-secret
+  readOnly: true
+{{- else if and $i.auth $i.auth.username (include "tekton-events-relay.hasRef" $i.auth.username) }}
+- mountPath: /etc/secrets/{{ $p }}/{{ $i.name }}
+  name: {{ $p }}-{{ $i.name }}-secret
+  readOnly: true
+{{- end }}
+{{- end }}
+
+{{/*
+Render volumes for a notifier instance.
+Usage: {{ include "tekton-events-relay.notifierVolumes" (dict "provider" "slack" "instance" $inst) }}
+*/}}
+{{- define "tekton-events-relay.notifierVolumes" -}}
+{{- $p := .provider }}
+{{- $i := .instance }}
+{{- if and $i.webhook_url (include "tekton-events-relay.hasRef" $i.webhook_url) }}
+{{- include "tekton-events-relay.valueFromVolume" (dict "name" (printf "%s-%s-secret" $p $i.name) "field" $i.webhook_url) }}
+{{- else if and $i.token (include "tekton-events-relay.hasRef" $i.token) }}
+{{- include "tekton-events-relay.valueFromVolume" (dict "name" (printf "%s-%s-secret" $p $i.name) "field" $i.token) }}
+{{- else if and $i.integration_key (include "tekton-events-relay.hasRef" $i.integration_key) }}
+{{- include "tekton-events-relay.valueFromVolume" (dict "name" (printf "%s-%s-secret" $p $i.name) "field" $i.integration_key) }}
+{{- else if and $i.api_key (include "tekton-events-relay.hasRef" $i.api_key) }}
+{{- include "tekton-events-relay.valueFromVolume" (dict "name" (printf "%s-%s-secret" $p $i.name) "field" $i.api_key) }}
+{{- else if and $i.password (include "tekton-events-relay.hasRef" $i.password) }}
+{{- include "tekton-events-relay.valueFromVolume" (dict "name" (printf "%s-%s-secret" $p $i.name) "field" $i.password) }}
+{{- else if and $i.url (include "tekton-events-relay.hasRef" $i.url) }}
+{{- include "tekton-events-relay.valueFromVolume" (dict "name" (printf "%s-%s-secret" $p $i.name) "field" $i.url) }}
+{{- else if and $i.bot_token $i.bot_token.token (include "tekton-events-relay.hasRef" $i.bot_token.token) }}
+{{- include "tekton-events-relay.valueFromVolume" (dict "name" (printf "%s-%s-secret" $p $i.name) "field" $i.bot_token.token) }}
+{{- else if and $i.auth $i.auth.token (include "tekton-events-relay.hasRef" $i.auth.token) }}
+{{- include "tekton-events-relay.valueFromVolume" (dict "name" (printf "%s-%s-secret" $p $i.name) "field" $i.auth.token) }}
+{{- else if and $i.auth $i.auth.password (include "tekton-events-relay.hasRef" $i.auth.password) }}
+{{- include "tekton-events-relay.valueFromVolume" (dict "name" (printf "%s-%s-secret" $p $i.name) "field" $i.auth.password) }}
+{{- else if and $i.auth $i.auth.hmac_secret (include "tekton-events-relay.hasRef" $i.auth.hmac_secret) }}
+{{- include "tekton-events-relay.valueFromVolume" (dict "name" (printf "%s-%s-secret" $p $i.name) "field" $i.auth.hmac_secret) }}
+{{- else if and $i.auth $i.auth.username (include "tekton-events-relay.hasRef" $i.auth.username) }}
+{{- include "tekton-events-relay.valueFromVolume" (dict "name" (printf "%s-%s-secret" $p $i.name) "field" $i.auth.username) }}
+{{- end }}
+{{- end }}

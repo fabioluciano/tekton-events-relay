@@ -24,4 +24,8 @@ spec:
       port: {{ .Values.config.store.olric.memberlist_port }}
       targetPort: {{ .Values.config.store.olric.memberlist_port }}
       protocol: TCP
+    - name: gossip-udp
+      port: {{ .Values.config.store.olric.memberlist_port }}
+      targetPort: {{ .Values.config.store.olric.memberlist_port }}
+      protocol: UDP
 {{- end }}

@@ -52,16 +52,16 @@ func (f *GitHubFactory) Build(inst config.GitHubInstance, log *zap.Logger) ([]no
 // buildHandler creates the appropriate handler based on action type.
 func (f *GitHubFactory) buildHandler(inst config.GitHubInstance, action config.Action, client github.HTTPDoer, log *zap.Logger) (notifier.ActionHandler, error) {
 	switch action.Type {
-	case config.ActionTypeCommitStatus:
+	case notifier.ActionCommitStatus:
 		return github.NewStatusReporter(client, log), nil
-	case config.ActionTypeCommitComment:
+	case notifier.ActionCommitComment:
 		return github.NewCommitCommentHandler(github.CommitCommentConfig{
 			Token:              client.Token(),
 			BaseURL:            client.BaseURL(),
 			Template:           action.Template,
 			InsecureSkipVerify: inst.InsecureSkipVerify,
 		}, log)
-	case config.ActionTypePRComment:
+	case notifier.ActionPRComment:
 		return github.NewPRCommentHandler(github.PRCommentConfig{
 			Token:              client.Token(),
 			BaseURL:            client.BaseURL(),
@@ -69,7 +69,7 @@ func (f *GitHubFactory) buildHandler(inst config.GitHubInstance, action config.A
 			Mode:               action.Mode,
 			InsecureSkipVerify: inst.InsecureSkipVerify,
 		}, log)
-	case config.ActionTypeIssueComment:
+	case notifier.ActionIssueComment:
 		return github.NewIssueCommentHandler(github.IssueCommentConfig{
 			Token:              client.Token(),
 			BaseURL:            client.BaseURL(),
@@ -77,21 +77,21 @@ func (f *GitHubFactory) buildHandler(inst config.GitHubInstance, action config.A
 			Mode:               action.Mode,
 			InsecureSkipVerify: inst.InsecureSkipVerify,
 		}, log)
-	case config.ActionTypeDiscussionComment:
+	case notifier.ActionDiscussionComment:
 		return github.NewDiscussionCommentHandler(github.DiscussionCommentConfig{
 			Token:              client.Token(),
 			BaseURL:            client.BaseURL(),
 			Template:           action.Template,
 			InsecureSkipVerify: inst.InsecureSkipVerify,
 		}, log)
-	case config.ActionTypeLabel:
+	case notifier.ActionLabel:
 		return github.NewLabelHandler(github.LabelConfig{
 			Token:              client.Token(),
 			BaseURL:            client.BaseURL(),
 			Labels:             labelSet(action),
 			InsecureSkipVerify: inst.InsecureSkipVerify,
 		}, log), nil
-	case config.ActionTypeCheckRun:
+	case notifier.ActionCheckRun:
 		return github.NewCheckRunHandler(github.CheckRunConfig{
 			Token:              client.Token(),
 			BaseURL:            client.BaseURL(),
@@ -99,7 +99,7 @@ func (f *GitHubFactory) buildHandler(inst config.GitHubInstance, action config.A
 			Template:           action.Template,
 			InsecureSkipVerify: inst.InsecureSkipVerify,
 		}, log)
-	case config.ActionTypeDeploymentStatus:
+	case notifier.ActionDeploymentStatus:
 		return github.NewDeploymentStatusHandler(github.DeploymentStatusConfig{
 			Token:              client.Token(),
 			BaseURL:            client.BaseURL(),

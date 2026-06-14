@@ -232,7 +232,11 @@ config:
       enabled: false
       type: "hmac-sha256" # or "bearer"
       # -- Reference to webhook secret for HMAC validation
-      secret_file: "${WEBHOOK_SECRET}"
+      # Use secretRef for K8s Secret mount
+      secret:
+        secretRef:
+          name: webhook-secret
+          key: hmac-key
       # -- Replay protection: require an X-Webhook-Timestamp header (unix
       # seconds) within timestamp_tolerance of the server clock
       validate_timestamp: false
@@ -287,10 +291,22 @@ config:
     ttl: 1h
     # -- Valkey backend settings (backend: valkey)
     valkey:
+      # -- Deploy an embedded Valkey instance as a subchart (disabled by default;
+      # use this for single-cluster dev/test setups; for production, use an
+      # external Valkey/KeyDB and set address directly).
+      # IMPORTANT: when enabling embedded valkey, you must first add the
+      # Valkey Helm repo: helm repo add valkey https://valkey.io/valkey-helm/
+      embedded:
+        enabled: false
       # -- Valkey server address (host:port); required when backend=valkey
+      # and embedded is disabled. When embedded.enabled is true, this is
+      # auto-populated with the embedded service address.
       address: ""
-      # -- File containing the Valkey password (optional)
-      password_file: ""
+      # -- Reference to a Kubernetes Secret containing the Valkey password (optional)
+      password:
+        secretRef:
+          name: ""
+          key: password
       # -- Valkey logical database
       db: 0
       # -- Prefix applied to all keys
@@ -363,6 +379,8 @@ config:
     endpoint: ""
     # -- Service name reported in traces
     service_name: "tekton-events-relay"
+    # -- When false, uses HTTPS for OTLP export. Set to true for plaintext HTTP.
+    insecure: false
 
   # SCM providers with action-based handlers
   scm:
@@ -378,14 +396,16 @@ config:
         auth:
           # Token-based auth (recommended for simple setup):
           # -- Kubernetes Secret containing credentials
-          secret_name: github-default-token # optional: defaults to /etc/secrets/github/default/token
-          # secret_key: token  # optional: override default key "token"
+          secretRef:
+            name: github-default-token
+            key: token
           # GitHub App auth (for advanced features):
           # app_id: 123456
           # installation_id: 789012
-          # Note: private key must be mounted at /etc/github-app/private-key.pem
-          # Create secret: kubectl create secret generic github-app-private-key
-          # --from-file=private-key.pem=path/to/private-key.pem
+          # private_key:
+          #   secretRef:
+          #     name: github-app-private-key
+          #     key: private-key.pem
         actions:
           - name: commit-status
             # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
@@ -405,6 +425,11 @@ config:
               **Run:** {{.RunName}}
               **Namespace:** {{.Namespace}}
               {{if .TargetURL}}[View Logs]({{.TargetURL}}){{end}}
+            # OR reference a ConfigMap:
+            # template:
+            #   configmapRef:
+            #     name: my-templates
+            #     key: check-run.tmpl
           # Feature 5: Deployment Status - track deployments by environment
           - name: deployment-status
             # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
@@ -451,6 +476,11 @@ config:
               **Run:** {{.RunName}}
               **Commit:** {{.CommitSHA}}
               {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
+            # OR reference a ConfigMap:
+            # template:
+            #   configmapRef:
+            #     name: my-templates
+            #     key: discussion-comment.tmpl
           - name: label
             # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
             type: label
@@ -482,11 +512,18 @@ config:
         base_url: "https://gitlab.com/api/v4"
         # -- Authentication configuration (PAT or OAuth2, mutually exclusive)
         # auth:
-        #   secret_name: gitlab-cloud-token        # PAT token secret
-        #   secret_key: token                      # optional: key within secret
-        #   oauth2:                               # OAuth2 client credentials
-        #     client_id_secret_name: gitlab-oauth2-creds
-        #     client_secret_secret_name: gitlab-oauth2-creds
+        #   secretRef:
+        #     name: gitlab-cloud-token
+        #     key: token
+        #   oauth2:
+        #     client_id:
+        #       configmapRef:
+        #         name: gitlab-oauth2-creds
+        #         key: client_id
+        #     client_secret:
+        #       secretRef:
+        #         name: gitlab-oauth2-creds
+        #         key: client_secret
         #     token_url: "https://gitlab.com/oauth/token"
         # -- Actions to perform when events are received
         actions:
@@ -507,6 +544,11 @@ config:
               **Run:** {{.RunName}}
               **Commit:** {{.CommitSHA}}
               {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
+            # OR reference a ConfigMap:
+            # template:
+            #   configmapRef:
+            #     name: my-templates
+            #     key: pr-comment.tmpl
           - name: issue-comment
             # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
             type: issue_comment
@@ -516,6 +558,11 @@ config:
             template: |
               Pipeline {{.Context}} finished with state: **{{.State}}**
               {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
+            # OR reference a ConfigMap:
+            # template:
+            #   configmapRef:
+            #     name: my-templates
+            #     key: issue-comment.tmpl
           - name: label
             # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
             type: label
@@ -537,11 +584,18 @@ config:
         base_url: "https://gitlab.company.example.com/api/v4"
         # -- Authentication configuration (PAT or OAuth2, mutually exclusive)
         # auth:
-        #   secret_name: gitlab-server-token       # PAT token secret
-        #   secret_key: token                      # optional: key within secret
-        #   oauth2:                               # OAuth2 client credentials
-        #     client_id_secret_name: gitlab-oauth2-creds
-        #     client_secret_secret_name: gitlab-oauth2-creds
+        #   secretRef:
+        #     name: gitlab-server-token
+        #     key: token
+        #   oauth2:
+        #     client_id:
+        #       configmapRef:
+        #         name: gitlab-oauth2-creds
+        #         key: client_id
+        #     client_secret:
+        #       secretRef:
+        #         name: gitlab-oauth2-creds
+        #         key: client_secret
         #     token_url: "https://gitlab.company.example.com/oauth/token"
         # -- Actions to perform when events are received
         actions:
@@ -562,6 +616,11 @@ config:
               **Run:** {{.RunName}}
               **Commit:** {{.CommitSHA}}
               {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
+            # OR reference a ConfigMap:
+            # template:
+            #   configmapRef:
+            #     name: my-templates
+            #     key: pr-comment.tmpl
           - name: issue-comment
             # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
             type: issue_comment
@@ -571,6 +630,11 @@ config:
             template: |
               Pipeline {{.Context}} finished with state: **{{.State}}**
               {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
+            # OR reference a ConfigMap:
+            # template:
+            #   configmapRef:
+            #     name: my-templates
+            #     key: issue-comment.tmpl
           - name: label
             # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
             type: label
@@ -593,11 +657,23 @@ config:
         enabled: false
         # -- Authentication configuration (variant=cloud: username/app_password or oauth2)
         # auth:
-        #   username_secret_name: bitbucket-cloud-creds
-        #   app_password_secret_name: bitbucket-cloud-creds
-        #   oauth2:                                     # OAuth2 client credentials
-        #     client_id_secret_name: bitbucket-oauth2-creds
-        #     client_secret_secret_name: bitbucket-oauth2-creds
+        #   username:
+        #     configmapRef:
+        #       name: bitbucket-cloud-creds
+        #       key: username
+        #   app_password:
+        #     secretRef:
+        #       name: bitbucket-cloud-creds
+        #       key: app_password
+        #   oauth2:
+        #     client_id:
+        #       configmapRef:
+        #         name: bitbucket-oauth2-creds
+        #         key: client_id
+        #     client_secret:
+        #       secretRef:
+        #         name: bitbucket-oauth2-creds
+        #         key: client_secret
         #     token_url: "https://bitbucket.org/site/oauth2/access_token"
         # -- Actions to perform when events are received
         actions:
@@ -616,8 +692,9 @@ config:
         base_url: "https://bitbucket.company.example.com"
         # -- Authentication configuration (variant=server: token)
         # auth:
-        #   secret_name: bitbucket-server-token
-        #   # secret_key: token  # optional, default: token
+        #   secretRef:
+        #     name: bitbucket-server-token
+        #     key: token
         # -- Actions to perform when events are received
         actions:
           - name: commit-status
@@ -638,7 +715,9 @@ config:
         base_url: "https://dev.azure.com"
         # -- Skip TLS verification (not recommended for production)
         insecure_skip_verify: false
-        # secret_name: azure-devops-token
+        # secretRef:
+        #   name: azure-devops-token
+        #   key: token
         # -- Actions to perform when events are received
         actions:
           - name: commit-status
@@ -669,11 +748,18 @@ config:
         base_url: "https://gitea.company.example.com"
         # -- Authentication configuration (PAT or OAuth2, mutually exclusive)
         # auth:
-        #   secret_name: gitea-token               # PAT token secret
-        #   secret_key: token                      # optional: key within secret
-        #   oauth2:                               # OAuth2 client credentials
-        #     client_id_secret_name: gitea-oauth2-creds
-        #     client_secret_secret_name: gitea-oauth2-creds
+        #   secretRef:
+        #     name: gitea-token
+        #     key: token
+        #   oauth2:
+        #     client_id:
+        #       configmapRef:
+        #         name: gitea-oauth2-creds
+        #         key: client_id
+        #     client_secret:
+        #       secretRef:
+        #         name: gitea-oauth2-creds
+        #         key: client_secret
         #     token_url: "https://gitea.company.example.com/login/oauth/access_token"
         # -- Actions to perform when events are received
         actions:
@@ -694,6 +780,11 @@ config:
               **Run:** {{.RunName}}
               **Commit:** {{.CommitSHA}}
               {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
+            # OR reference a ConfigMap:
+            # template:
+            #   configmapRef:
+            #     name: my-templates
+            #     key: pr-comment.tmpl
           - name: issue-comment
             # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
             type: issue_comment
@@ -703,6 +794,11 @@ config:
             template: |
               Pipeline {{.Context}} finished: **{{.State}}**
               {{if .TargetURL}}[Results]({{.TargetURL}}){{end}}
+            # OR reference a ConfigMap:
+            # template:
+            #   configmapRef:
+            #     name: my-templates
+            #     key: issue-comment.tmpl
           - name: label
             # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
             type: label
@@ -721,7 +817,9 @@ config:
       - name: default
         # -- Enable or disable this SCM provider instance
         enabled: false
-        # secret_name: sourcehut-token
+        # secretRef:
+        #   name: sourcehut-token
+        #   key: token
         # -- Actions to perform when events are received
         actions:
           - name: commit-status
@@ -738,11 +836,9 @@ config:
   # Each notifier supports: name, enabled, when (CEL), template (Go template).
   #
   # NOTE on secrets in Helm context:
-  #   Use Helm template syntax (e.g., {{ .Values.secrets.slackWebhookUrl }}) for
-  #   values injected at deploy time. Runtime env var expansion (${ENV_VAR}) is
-  #   used when the binary reads the config at startup.
-  #   In this values.yaml, we use ${ENV_VAR} syntax because the config is rendered
-  #   into a ConfigMap and expanded at runtime by the application.
+  #   Use secretRef to reference Kubernetes Secrets. Secrets are mounted as
+  #   files at /etc/secrets/{provider}/{instance}/{key}.
+  #   Never store secrets in ConfigMaps or environment variables.
   notifiers:
     # -------------------------------------------------------------------------
     # Slack
@@ -753,10 +849,17 @@ config:
       - name: main-channel
         # -- Enable or disable this Slack notifier instance
         enabled: false
-        # Webhook mode: secret_name: slack-webhook (key: webhook_url)
-        # Bot token mode: secret_name: slack-bot-token (key: token), bot_token.channel_id required
-        # secret_name: slack-webhook
+        # Webhook mode:
+        # webhook_url:
+        #   secretRef:
+        #     name: slack-webhook
+        #     key: webhook_url
+        # Bot token mode:
         # bot_token:
+        #   token:
+        #     secretRef:
+        #       name: slack-bot-token
+        #       key: token
         #   channel_id: "C12345"
         # -- Slack channel to post notifications (e.g., #ci-notifications, @username)
         channel: "#ci-notifications"
@@ -782,7 +885,10 @@ config:
       - name: main-channel
         # -- Enable or disable this Teams notifier instance
         enabled: false
-        # secret_name: teams-webhook (key: webhook_url)
+        # webhook_url:
+        #   secretRef:
+        #     name: teams-webhook
+        #     key: webhook_url
         # -- CEL expression to filter which events trigger notifications
         when: 'event.State == "success" || event.State == "failure" || event.State == "error"'
         # -- Go template for the Teams message body. Available variables: .State, .RunName, .Namespace, .CommitSHA, .TargetURL
@@ -804,10 +910,17 @@ config:
       - name: main-channel
         # -- Enable or disable this Discord notifier instance
         enabled: false
-        # Webhook mode: secret_name: discord-webhook (key: webhook_url)
-        # Bot token mode: secret_name: discord-bot-token (key: token), bot_token.channel_id required
-        # secret_name: discord-webhook
+        # Webhook mode:
+        # webhook_url:
+        #   secretRef:
+        #     name: discord-webhook
+        #     key: webhook_url
+        # Bot token mode:
         # bot_token:
+        #   token:
+        #     secretRef:
+        #       name: discord-bot-token
+        #       key: token
         #   channel_id: "123456789012345678"
         # -- Display name for the bot posting messages
         username: "Tekton CI"
@@ -831,7 +944,10 @@ config:
       - name: main-service
         # -- Enable or disable this PagerDuty notifier instance
         enabled: false
-        # secret_name: pagerduty-integration-key (key: integration_key)
+        # integration_key:
+        #   secretRef:
+        #     name: pagerduty-integration-key
+        #     key: integration_key
         # -- Incident severity level (critical, error, warning, info)
         severity: "critical"
         # -- CEL expression to filter which events trigger incidents
@@ -846,7 +962,10 @@ config:
       - name: main-instance
         # -- Enable or disable this Datadog notifier instance
         enabled: false
-        # secret_name: datadog-api-key
+        # api_key:
+        #   secretRef:
+        #     name: datadog-api-key
+        #     key: api_key
         # -- Datadog site (datadoghq.com, datadoghq.eu, us3.datadoghq.com, etc.)
         site: "datadoghq.com"
         # Custom tags appended to auto-generated tags (state, context, namespace, etc.)
@@ -867,13 +986,46 @@ config:
       - name: main-webhook
         # -- Enable or disable this webhook notifier instance
         enabled: false
-        # url_secret_name: custom-webhook (key: url)
+        # url:
+        #   secretRef:
+        #     name: custom-webhook
+        #     key: url
         # -- CEL expression to filter which events trigger webhook calls
         when: 'event.State == "success" || event.State == "failure" || event.State == "error"'
         # Custom HTTP headers for authentication and routing
         # -- Custom HTTP headers sent with the webhook request (e.g., authentication tokens, routing keys)
         headers:
           X-Source: "tekton-events-relay"
+
+    # -------------------------------------------------------------------------
+    # Grafana
+    # -------------------------------------------------------------------------
+    grafana:
+      []
+      # - name: deploy-markers
+      #   enabled: false
+      #   url: https://grafana.company.example.com
+      #   token:
+      #     secretRef:
+      #       name: grafana-token
+      #       key: token
+      #   template:
+      #     configmapRef:
+      #       name: grafana-templates
+      #       key: deploy-marker.tmpl
+
+    # -------------------------------------------------------------------------
+    # Sentry
+    # -------------------------------------------------------------------------
+    sentry:
+      []
+      # - name: main
+      #   enabled: false
+      #   org: acme
+      #   token:
+      #     secretRef:
+      #       name: sentry-token
+      #       key: token
 
     # -------------------------------------------------------------------------
     # Email (SMTP)
@@ -894,43 +1046,118 @@ config:
         encryption: starttls
         # SMTP credentials. Omit auth entirely for unauthenticated relays.
         # Password comes from the mounted secret (key: password).
-        # secret_name: email-default-credentials
+        # password:
+        #   secretRef:
+        #     name: email-default-credentials
+        #     key: password
         # username: ci@example.com
         # -- Sender address
         from: "tekton@example.com"
         # -- Recipient list
         to:
           - "platform-team@example.com"
-        # -- Subject Go template (CR/LF stripped to prevent header injection)
-        subject: "[tekton] {{ if .PipelineName }}{{ .PipelineName }}{{ else }}{{ .RunName }}{{ end }} — {{ .State }}"
-        # -- Body Go template (omit for a readable plain-text default)
-        # template: |
-        #   Pipeline {{ .State }}: {{ .PipelineName }}
+        # -- Subject template. Omit for the shipped default (email-subject.tmpl).
+        # Override inline or from a ConfigMap, like every other template:
+        # subject:
+        #   value: "[tekton] {{ .RunName }} — {{ .State }}"
+        #   # configmapRef:
+        #   #   name: my-email-templates
+        #   #   key: subject.tmpl
+        # -- Body template. Omit for the shipped default (email-default.tmpl).
+        # template:
+        #   value: |
+        #     Pipeline {{ .State }}: {{ .PipelineName }}
+        #   # configmapRef:
+        #   #   name: my-email-templates
+        #   #   key: body.tmpl
         # -- Send body as text/html instead of text/plain
         html: false
         # -- CEL expression to filter which events are emailed
         when: 'event.Resource == "pipelinerun" && stateIn("failure", "error")'
 
-# Secret mounting is automatic based on secret_name in each provider instance
-# Secrets are mounted as volumes at /etc/secrets/{provider}/{instance}/{key}
+  # ---------------------------------------------------------------------------
+  # Jira (issue tracking) — top-level integration, sibling of notifiers.
+  # ---------------------------------------------------------------------------
+  # The target issue (PROJ-123) comes from the
+  # tekton.dev/tekton-events-relay.jira.issue-key annotation, which the
+  # TriggerBinding extracts from the branch name or PR/MR title via a CEL
+  # overlay.
+  # -- Jira integration instances (Cloud or Data Center)
+  jira:
+    # -- Unique identifier for this Jira instance
+    - name: default
+      # -- Enable or disable this Jira instance
+      enabled: false
+      # -- Jira base URL (Cloud: https://yourorg.atlassian.net)
+      base_url: "https://yourorg.atlassian.net"
+      # Credentials: token via secretRef (key "token"). With auth.email set,
+      # Cloud basic auth (email + API token); without it, Data Center bearer PAT.
+      auth: {}
+        # email: ci@example.com
+        # token:
+        #   secretRef:
+        #     name: jira-default-token
+        #     key: token
+      # -- Skip TLS verification (self-hosted Data Center only)
+      # insecure_skip_verify: false
+      actions:
+        # -- Comment on the linked issue when the pipeline finishes
+        - name: result-comment
+          type: comment
+          enabled: true
+          when: 'event.Resource == "pipelinerun" && stateIn("success", "failure", "error")'
+          # Comment template. Omit for the shipped default (jira-comment.tmpl);
+          # override inline or from a ConfigMap, like every other template:
+          # template:
+          #   value: |
+          #     Pipeline {{ .State }}: {{ .PipelineName }}
+          #   # configmapRef:
+          #   #   name: jira-templates
+          #   #   key: comment.tmpl
+        # -- Move the card when the pipeline succeeds (disabled by default)
+        - name: mark-done
+          type: transition
+          enabled: false
+          transition: "Done"
+          when: 'event.Resource == "pipelinerun" && event.State == "success"'
+
+# Secret references use Kubernetes-native nested schema:
+#   secretRef:
+#     name: <kubernetes-secret-name>
+#     key: <key-within-secret>
+#
+# ConfigMap references use the same pattern:
+#   configmapRef:
+#     name: <kubernetes-configmap-name>
+#     key: <key-within-configmap>
+#
+# Template references use the same pattern:
+#   template:
+#     configmapRef:
+#       name: <kubernetes-configmap-name>
+#       key: <key-within-configmap>
 #
 # Example: Create a secret for GitHub
 #   kubectl create secret generic github-default-token --from-literal=token="ghp_xxx"
 #
-# Then in config.scm.github[0], set:
-#   secret_name: github-default-token
+# Then in config.scm.github[0].auth:
+#   secretRef:
+#     name: github-default-token
+#     key: token
 #
 # The chart will automatically mount it at /etc/secrets/github/default/token
 #
-# Standard keys by provider:
-#   github, gitlab, azure, gitea, sourcehut: token
+# Standard secretRef key values by provider:
+#   github, gitlab, azure_devops, gitea, sourcehut: token
 #   bitbucket cloud: username, app_password
 #   bitbucket server: token
-#   slack, teams, discord: webhook_url (or bot_token.token_secret_name for bot mode)
+#   slack, teams, discord: webhook_url (or token for bot mode)
 #   pagerduty: integration_key
 #   datadog: api_key
-#   webhook: url_secret_name (+ optional auth: token_file_secret_name, username_file_secret_name, etc.)
+#   webhook: url
 #   email: password
+#   jira: token
+#   valkey: password
 
 # Monitoring configuration
 monitoring:
@@ -971,39 +1198,3 @@ networkPolicy:
   extraIngress: []
   # -- Additional egress rules appended verbatim (e.g. restrict 443 to SCM CIDRs)
   extraEgress: []
-
-# Template configuration
-# ==========================================================================
-# TEMPLATES
-# ==========================================================================
-# Templates allow you to reference and use custom notification message templates
-# from external ConfigMaps in your Kubernetes cluster.
-#
-# HOW TO REFERENCE TEMPLATES:
-#   1. Create a ConfigMap with your custom templates in the cluster:
-#      kubectl create configmap my-templates \
-#        --from-file=slack.tpl \
-#        --from-file=teams.tpl \
-#        -n my-namespace
-#
-#   2. In your notifier configuration (scm.github.actions or notifiers.*),
-#      reference the template file name using the ConfigMap path syntax:
-#      template: configmap://my-templates/slack.tpl
-#
-#   3. The application will load and use the template from the ConfigMap
-#      instead of the inline template defined in values.yaml
-#
-# OVERRIDING WITH CUSTOM CONFIGMAP:
-#   To use a custom ConfigMap instead of inline templates:
-#   1. Set templates.enabled: true
-#   2. Create a ConfigMap in your target namespace with template files
-#   3. Update notifier/action configs to reference: configmap://<configmap-name>/<filename>
-#   4. Ensure the ConfigMap is mounted as a volume in the deployment
-#
-# DEFAULT BEHAVIOR (templates.enabled: false):
-#   When disabled (default), all templates remain inline in values.yaml.
-#   No ConfigMap mounting occurs and no behavior changes from current setup.
-#   This ensures backward compatibility with existing deployments.
-#
-templates:
-  enabled: false

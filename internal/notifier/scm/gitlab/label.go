@@ -30,12 +30,16 @@ type LabelConfig struct {
 }
 
 // NewLabelHandler creates a new GitLab label handler.
-func NewLabelHandler(cfg LabelConfig) notifier.ActionHandler {
+func NewLabelHandler(cfg LabelConfig) (notifier.ActionHandler, error) {
+	c, err := NewClient(cfg.Token, cfg.BaseURL, cfg.InsecureSkipVerify, false, cfg.Log)
+	if err != nil {
+		return nil, err
+	}
 	return &LabelHandler{
-		client: NewClient(cfg.Token, cfg.BaseURL, cfg.InsecureSkipVerify, false, cfg.Log),
+		client: c,
 		name:   cfg.Name,
 		labels: cfg.Labels,
-	}
+	}, nil
 }
 
 // Name returns the handler name.

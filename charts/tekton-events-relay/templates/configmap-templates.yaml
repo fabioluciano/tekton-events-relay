@@ -1,6 +1,5 @@
-# Default notification templates, mounted at /etc/templates when
-# templates.enabled=true and referenced from actions via
-#   template_file: /etc/templates/<name>.tmpl
+# Default notification templates, mounted at /etc/templates and referenced
+# from actions via template_file: /etc/templates/<name>.tmpl
 #
 # Renderer capabilities differ per notifier:
 #   - SCM comment/checkrun handlers, grafana and the accumulator compile with
@@ -150,6 +149,26 @@ data:
     {{ "{{- if .TargetURL }}" }}
     🔗 [View in Dashboard]({{ "{{ .TargetURL }}" }})
     {{ "{{- end }}" }}
+
+  email-default.tmpl: |
+    Pipeline {{ "{{ .State }}" }}: {{ "{{ if .PipelineName }}{{ .PipelineName }}{{ else }}{{ .RunName }}{{ end }}" }}
+
+    Run:       {{ "{{ .RunName }}" }}
+    Namespace: {{ "{{ .Namespace }}" }}
+    {{ "{{- if .CommitSHA }}" }}
+    Commit:    {{ "{{ printf \"%.8s\" .CommitSHA }}" }}
+    {{ "{{- end }}" }}
+    {{ "{{- if .Description }}" }}
+
+    {{ "{{ .Description }}" }}
+    {{ "{{- end }}" }}
+    {{ "{{- if .TargetURL }}" }}
+
+    View logs: {{ "{{ .TargetURL }}" }}
+    {{ "{{- end }}" }}
+
+  email-subject.tmpl: |
+    [tekton] {{ "{{ if .PipelineName }}{{ .PipelineName }}{{ else }}{{ .RunName }}{{ end }}" }} — {{ "{{ .State }}" }}
 
   # Gitea issue comment (sprig available; Gitea renders GFM incl. <details>).
   gitea-issue-comment.tmpl: |
@@ -419,6 +438,16 @@ data:
     {{ "{{- if .TargetURL }}" }}
 
     🔗 [View logs in Tekton Dashboard]({{ "{{ .TargetURL }}" }})
+    {{ "{{- end }}" }}
+
+  jira-comment.tmpl: |
+    Pipeline {{ "{{ .State }}" }}: {{ "{{ if .PipelineName }}{{ .PipelineName }}{{ else }}{{ .RunName }}{{ end }}" }}
+    Run: {{ "{{ .RunName }}" }}
+    {{ "{{- if .CommitSHA }}" }}
+    Commit: {{ "{{ printf \"%.8s\" .CommitSHA }}" }}
+    {{ "{{- end }}" }}
+    {{ "{{- if .TargetURL }}" }}
+    Logs: {{ "{{ .TargetURL }}" }}
     {{ "{{- end }}" }}
 
   # Provider-agnostic rich PR summary (sprig available) — designed for

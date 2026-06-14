@@ -13,7 +13,8 @@ import (
 
 // Init configures a global TracerProvider with an OTLP HTTP exporter.
 // If endpoint is empty, a noop TracerProvider is set (feature disabled).
-func Init(ctx context.Context, endpoint, serviceName string) (*trace.TracerProvider, error) {
+// When insecure is false, the exporter uses TLS (HTTPS).
+func Init(ctx context.Context, endpoint, serviceName string, insecure bool) (*trace.TracerProvider, error) {
 	if endpoint == "" {
 		tp := trace.NewTracerProvider()
 		otel.SetTracerProvider(tp)
@@ -29,10 +30,14 @@ func Init(ctx context.Context, endpoint, serviceName string) (*trace.TracerProvi
 		return nil, err
 	}
 
-	exporter, err := otlptracehttp.New(ctx,
+	opts := []otlptracehttp.Option{
 		otlptracehttp.WithEndpoint(endpoint),
-		otlptracehttp.WithInsecure(),
-	)
+	}
+	if insecure {
+		opts = append(opts, otlptracehttp.WithInsecure())
+	}
+
+	exporter, err := otlptracehttp.New(ctx, opts...)
 	if err != nil {
 		return nil, err
 	}

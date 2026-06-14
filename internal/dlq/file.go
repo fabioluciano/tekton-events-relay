@@ -10,11 +10,15 @@ import (
 	"sync"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/fabioluciano/tekton-events-relay/internal/event"
 )
 
 // DefaultMaxSizeBytes bounds the DLQ file before oldest entries are dropped.
 const DefaultMaxSizeBytes = 10 * 1024 * 1024 // 10MB
+
+var defaultLogger = zap.NewNop()
 
 // FileQueue persists dead events as JSON lines in a single file.
 // Suitable for the relay's low dead-event volume; the whole file is
@@ -143,7 +147,7 @@ func (q *FileQueue) readAll() ([]DeadEvent, error) {
 		}
 		var e DeadEvent
 		if err := json.Unmarshal(line, &e); err != nil {
-			// Skip corrupt lines rather than blocking the whole queue.
+			defaultLogger.Warn("dlq: skipping corrupt line", zap.Error(err))
 			continue
 		}
 		entries = append(entries, e)

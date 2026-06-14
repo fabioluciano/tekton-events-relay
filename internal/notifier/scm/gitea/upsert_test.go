@@ -30,7 +30,7 @@ func (m *giteaMock) handler() http.HandlerFunc {
 
 		switch {
 		case r.URL.Path == "/api/v1/version":
-			_ = json.NewEncoder(w).Encode(map[string]string{"version": "1.22.0"})
+			_ = json.NewEncoder(w).Encode(map[string]string{mockGiteaKey: mockGiteaVersion})
 		case r.Method == "GET" && strings.HasSuffix(r.URL.Path, "/comments"):
 			_ = json.NewEncoder(w).Encode(m.comments)
 		case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/comments"):

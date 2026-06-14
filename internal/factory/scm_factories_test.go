@@ -9,6 +9,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/config"
+	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
 )
 
 // Helper functions to unmarshal SCM instances from YAML since fields are private
@@ -87,8 +88,8 @@ func TestGitHubFactory_Build_skips_disabled_actions(t *testing.T) {
 			Auth:    &config.GitHubAuth{SecretFile: tokenFile},
 			BaseURL: testGitHubBaseURL,
 			Actions: []config.Action{
-				{Name: "s", Type: config.ActionTypeCommitStatus, Enabled: false},
-				{Name: "pr", Type: config.ActionTypePRComment, Enabled: false},
+				{Name: "s", Type: notifier.ActionCommitStatus, Enabled: false},
+				{Name: "pr", Type: notifier.ActionPRComment, Enabled: false},
 			},
 		}, log)
 		return len(handlers), err
@@ -104,17 +105,17 @@ func TestGitHubFactory_Build_creates_handler_for_each_action_type(t *testing.T) 
 		actionType config.ActionType
 		extra      func(*config.Action)
 	}{
-		{"commit_status", config.ActionTypeCommitStatus, nil},
-		{"pr_comment", config.ActionTypePRComment, func(a *config.Action) {
+		{"commit_status", notifier.ActionCommitStatus, nil},
+		{"pr_comment", notifier.ActionPRComment, func(a *config.Action) {
 			a.Template = testTemplate
 		}},
-		{"issue_comment", config.ActionTypeIssueComment, func(a *config.Action) {
+		{"issue_comment", notifier.ActionIssueComment, func(a *config.Action) {
 			a.Template = testTemplate
 		}},
-		{"discussion_comment", config.ActionTypeDiscussionComment, func(a *config.Action) {
+		{"discussion_comment", notifier.ActionDiscussionComment, func(a *config.Action) {
 			a.Template = testTemplate
 		}},
-		{"label", config.ActionTypeLabel, func(a *config.Action) { //nolint:goconst
+		{"label", notifier.ActionLabel, func(a *config.Action) { //nolint:goconst
 			a.Labels = &config.ActionLabels{Add: []config.LabelEntry{{Name: "ok"}}, Remove: []config.LabelEntry{{Name: "fail"}}}
 		}},
 	}
@@ -166,8 +167,8 @@ func TestGitHubFactory_Build_returns_all_enabled_handlers(t *testing.T) {
 		Auth:    &config.GitHubAuth{SecretFile: tokenFile},
 		BaseURL: testGitHubBaseURL,
 		Actions: []config.Action{
-			{Name: "s", Type: config.ActionTypeCommitStatus, Enabled: true},
-			{Name: "label", Type: config.ActionTypeLabel, Enabled: true, Labels: &config.ActionLabels{Add: []config.LabelEntry{{Name: "ok"}}}},
+			{Name: "s", Type: notifier.ActionCommitStatus, Enabled: true},
+			{Name: "label", Type: notifier.ActionLabel, Enabled: true, Labels: &config.ActionLabels{Add: []config.LabelEntry{{Name: "ok"}}}},
 		},
 	}, log)
 
@@ -223,7 +224,7 @@ func TestGitHubFactory_Build_wraps_handler_with_CEL_when_present(t *testing.T) {
 		Auth:    &config.GitHubAuth{SecretFile: tokenFile},
 		BaseURL: testGitHubBaseURL,
 		Actions: []config.Action{
-			{Name: "s", Type: config.ActionTypeCommitStatus, Enabled: true, When: "event.State == 'success'"},
+			{Name: "s", Type: notifier.ActionCommitStatus, Enabled: true, When: "event.State == 'success'"},
 		},
 	}, log)
 
@@ -245,7 +246,7 @@ func TestGitHubFactory_Build_returns_error_for_invalid_CEL(t *testing.T) {
 		Auth:    &config.GitHubAuth{SecretFile: testTokenValue},
 		BaseURL: testGitHubBaseURL,
 		Actions: []config.Action{
-			{Name: "s", Type: config.ActionTypeCommitStatus, Enabled: true, When: "invalid CEL !!!"},
+			{Name: "s", Type: notifier.ActionCommitStatus, Enabled: true, When: "invalid CEL !!!"},
 		},
 	}, log)
 
@@ -272,7 +273,7 @@ func TestGitHubFactory_Build_wraps_handler_with_filter_when_present(t *testing.T
 		Actions: []config.Action{
 			{
 				Name:    "s",
-				Type:    config.ActionTypeCommitStatus,
+				Type:    notifier.ActionCommitStatus,
 				Enabled: true,
 				Filter: &config.ActionFilterConfig{
 					Tasks: config.FilterList{Allow: []string{"build-*"}},
@@ -299,7 +300,7 @@ func TestGitLabFactory_Build_returns_nil_when_instance_disabled(t *testing.T) {
 		Name:    testInstanceNameDisabled,
 		Enabled: false,
 		Auth:    &config.GitLabAuth{SecretFile: testTokenValue},
-		Actions: []config.Action{{Name: "s", Type: config.ActionTypeCommitStatus, Enabled: true}},
+		Actions: []config.Action{{Name: "s", Type: notifier.ActionCommitStatus, Enabled: true}},
 	}, log)
 
 	if err != nil {
@@ -326,7 +327,7 @@ func TestGitLabFactory_Build_creates_commit_status_handler(t *testing.T) {
 		Auth:    &config.GitLabAuth{SecretFile: tokenFile},
 		BaseURL: testGitLabBaseURL,
 		Actions: []config.Action{
-			{Name: "status", Type: config.ActionTypeCommitStatus, Enabled: true}, //nolint:goconst
+			{Name: "status", Type: notifier.ActionCommitStatus, Enabled: true}, //nolint:goconst
 		},
 	}, log)
 
@@ -354,7 +355,7 @@ func TestGitLabFactory_Build_creates_label_handler(t *testing.T) {
 		Auth:    &config.GitLabAuth{SecretFile: tokenFile},
 		BaseURL: testGitLabBaseURL,
 		Actions: []config.Action{
-			{Name: "label", Type: config.ActionTypeLabel, Enabled: true, Labels: &config.ActionLabels{Add: []config.LabelEntry{{Name: "ok"}}}},
+			{Name: "label", Type: notifier.ActionLabel, Enabled: true, Labels: &config.ActionLabels{Add: []config.LabelEntry{{Name: "ok"}}}},
 		},
 	}, log)
 
@@ -377,8 +378,8 @@ func TestGitLabFactory_Build_skips_disabled_actions(t *testing.T) {
 			Auth:    &config.GitLabAuth{SecretFile: tokenFile},
 			BaseURL: testGitLabBaseURL,
 			Actions: []config.Action{
-				{Name: "status", Type: config.ActionTypeCommitStatus, Enabled: false},
-				{Name: "label", Type: config.ActionTypeLabel, Enabled: false},
+				{Name: "status", Type: notifier.ActionCommitStatus, Enabled: false},
+				{Name: "label", Type: notifier.ActionLabel, Enabled: false},
 			},
 		}, log)
 		return len(handlers), err
@@ -395,7 +396,7 @@ func TestGitLabFactory_Build_returns_error_for_invalid_CEL(t *testing.T) {
 		Auth:    &config.GitLabAuth{SecretFile: testTokenValue},
 		BaseURL: testGitLabBaseURL,
 		Actions: []config.Action{
-			{Name: "status", Type: config.ActionTypeCommitStatus, Enabled: true, When: notifierBadSyntax},
+			{Name: "status", Type: notifier.ActionCommitStatus, Enabled: true, When: notifierBadSyntax},
 		},
 	}, log)
 
@@ -441,7 +442,7 @@ func TestBitbucketFactory_Build_returns_nil_when_instance_disabled(t *testing.T)
 	handlers, err := f.Build(config.BitbucketInstance{
 		Name:    testInstanceNameDisabled,
 		Enabled: false,
-		Actions: []config.Action{{Name: "s", Type: config.ActionTypeCommitStatus, Enabled: true}},
+		Actions: []config.Action{{Name: "s", Type: notifier.ActionCommitStatus, Enabled: true}},
 	}, log)
 
 	if err != nil {
@@ -473,7 +474,7 @@ func TestBitbucketFactory_Build_creates_cloud_status_handler(t *testing.T) {
 		Auth:    &config.BitbucketAuth{UsernameFile: userFile, AppPasswordFile: passFile},
 		BaseURL: "https://api.bitbucket.org/2.0",
 		Actions: []config.Action{
-			{Name: "status", Type: config.ActionTypeCommitStatus, Enabled: true},
+			{Name: "status", Type: notifier.ActionCommitStatus, Enabled: true},
 		},
 	}, log)
 
@@ -502,7 +503,7 @@ func TestBitbucketFactory_Build_creates_server_status_handler(t *testing.T) {
 		Auth:    &config.BitbucketAuth{TokenFile: tokenFile},
 		BaseURL: "https://bitbucket.example.com",
 		Actions: []config.Action{
-			{Name: "status", Type: config.ActionTypeCommitStatus, Enabled: true},
+			{Name: "status", Type: notifier.ActionCommitStatus, Enabled: true},
 		},
 	}, log)
 
@@ -582,7 +583,7 @@ func TestBitbucketFactory_Build_returns_error_for_invalid_CEL(t *testing.T) {
 		Variant: "cloud",
 		BaseURL: "https://api.bitbucket.org/2.0",
 		Actions: []config.Action{
-			{Name: "s", Type: config.ActionTypeCommitStatus, Enabled: true, When: notifierBadSyntax},
+			{Name: "s", Type: notifier.ActionCommitStatus, Enabled: true, When: notifierBadSyntax},
 		},
 	}, log)
 
@@ -633,7 +634,7 @@ func TestAzureFactory_Build_returns_nil_when_instance_disabled(t *testing.T) {
 	handlers, err := f.Build(config.AzureInstance{
 		Name:    testInstanceNameDisabled,
 		Enabled: false,
-		Actions: []config.Action{{Name: "s", Type: config.ActionTypeCommitStatus, Enabled: true}},
+		Actions: []config.Action{{Name: "s", Type: notifier.ActionCommitStatus, Enabled: true}},
 	}, log)
 
 	if err != nil {
@@ -661,7 +662,7 @@ func TestAzureFactory_Build_creates_commit_status_handler(t *testing.T) {
 		BaseURL:    testAzureBaseURL,
 		Genre:      "ci",
 		Actions: []config.Action{
-			{Name: "status", Type: config.ActionTypeCommitStatus, Enabled: true},
+			{Name: "status", Type: notifier.ActionCommitStatus, Enabled: true},
 		},
 	}, log)
 
@@ -717,7 +718,7 @@ func TestAzureFactory_Build_creates_label_handler(t *testing.T) {
 		BaseURL:    testAzureBaseURL,
 		Genre:      "ci",
 		Actions: []config.Action{
-			{Name: "label", Type: config.ActionTypeLabel, Enabled: true, Labels: &config.ActionLabels{Add: []config.LabelEntry{{Name: "ok"}}}},
+			{Name: "label", Type: notifier.ActionLabel, Enabled: true, Labels: &config.ActionLabels{Add: []config.LabelEntry{{Name: "ok"}}}},
 		},
 	}, log)
 
@@ -739,7 +740,7 @@ func TestAzureFactory_Build_returns_error_for_invalid_CEL(t *testing.T) {
 		SecretFile: testTokenValue,
 		BaseURL:    testAzureBaseURL,
 		Actions: []config.Action{
-			{Name: "s", Type: config.ActionTypeCommitStatus, Enabled: true, When: notifierBadSyntax},
+			{Name: "s", Type: notifier.ActionCommitStatus, Enabled: true, When: notifierBadSyntax},
 		},
 	}, log)
 
@@ -785,7 +786,7 @@ func TestGiteaFactory_Build_returns_nil_when_instance_disabled(t *testing.T) {
 	handlers, err := f.Build(config.GiteaInstance{
 		Name:    testInstanceNameDisabled,
 		Enabled: false,
-		Actions: []config.Action{{Name: "s", Type: config.ActionTypeCommitStatus, Enabled: true}},
+		Actions: []config.Action{{Name: "s", Type: notifier.ActionCommitStatus, Enabled: true}},
 	}, log)
 
 	if err != nil {
@@ -800,19 +801,22 @@ func TestGiteaFactory_Build_creates_handler_for_each_action_type(t *testing.T) {
 	f := &GiteaFactory{}
 	log, _ := zap.NewDevelopment()
 
+	mockGitea := newMockGiteaServer()
+	defer mockGitea.Close()
+
 	tests := []struct {
 		name       string
 		actionType config.ActionType
 		extra      func(*config.Action)
 	}{
-		{"commit_status", config.ActionTypeCommitStatus, nil},
-		{"pr_comment", config.ActionTypePRComment, func(a *config.Action) {
+		{"commit_status", notifier.ActionCommitStatus, nil},
+		{"pr_comment", notifier.ActionPRComment, func(a *config.Action) {
 			a.Template = testTemplate
 		}},
-		{"issue_comment", config.ActionTypeIssueComment, func(a *config.Action) {
+		{"issue_comment", notifier.ActionIssueComment, func(a *config.Action) {
 			a.Template = testTemplate
 		}},
-		{"label", config.ActionTypeLabel, func(a *config.Action) {
+		{"label", notifier.ActionLabel, func(a *config.Action) {
 			a.Labels = &config.ActionLabels{Add: []config.LabelEntry{{Name: "ok"}}, Remove: []config.LabelEntry{{Name: "fail"}}}
 		}},
 	}
@@ -834,7 +838,7 @@ func TestGiteaFactory_Build_creates_handler_for_each_action_type(t *testing.T) {
 				Name:    testInstanceNameMain,
 				Enabled: true,
 				Auth:    &config.GiteaAuth{SecretFile: tokenFile},
-				BaseURL: "https://gitea.example.com",
+				BaseURL: mockGitea.URL,
 				Actions: []config.Action{action},
 			}, log)
 
@@ -852,13 +856,16 @@ func TestGiteaFactory_Build_returns_error_for_invalid_CEL(t *testing.T) {
 	f := &GiteaFactory{}
 	log, _ := zap.NewDevelopment()
 
+	mockGitea := newMockGiteaServer()
+	defer mockGitea.Close()
+
 	_, err := f.Build(config.GiteaInstance{
 		Name:    testInstanceNameMain,
 		Enabled: true,
 		Auth:    &config.GiteaAuth{SecretFile: testTokenValue},
-		BaseURL: "https://gitea.example.com",
+		BaseURL: mockGitea.URL,
 		Actions: []config.Action{
-			{Name: "s", Type: config.ActionTypeCommitStatus, Enabled: true, When: notifierBadSyntax},
+			{Name: "s", Type: notifier.ActionCommitStatus, Enabled: true, When: notifierBadSyntax},
 		},
 	}, log)
 
@@ -871,6 +878,9 @@ func TestGiteaFactory_Build_skips_unknown_action_type(t *testing.T) {
 	f := &GiteaFactory{}
 	log, _ := zap.NewDevelopment()
 
+	mockGitea := newMockGiteaServer()
+	defer mockGitea.Close()
+
 	tmpDir := t.TempDir()
 	tokenFile := filepath.Join(tmpDir, "token")
 	if err := os.WriteFile(tokenFile, []byte("test-token"), 0600); err != nil {
@@ -881,7 +891,7 @@ func TestGiteaFactory_Build_skips_unknown_action_type(t *testing.T) {
 		Name:    testInstanceNameMain,
 		Enabled: true,
 		Auth:    &config.GiteaAuth{SecretFile: tokenFile},
-		BaseURL: "https://gitea.example.com",
+		BaseURL: mockGitea.URL,
 		Actions: []config.Action{
 			{Name: "x", Type: "nonexistent_type", Enabled: true},
 		},
@@ -904,7 +914,7 @@ func TestSourceHutFactory_Build_returns_nil_when_instance_disabled(t *testing.T)
 	handlers, err := f.Build(config.SourceHutInstance{
 		Name:    testInstanceNameDisabled,
 		Enabled: false,
-		Actions: []config.Action{{Name: "s", Type: config.ActionTypeCommitStatus, Enabled: true}},
+		Actions: []config.Action{{Name: "s", Type: notifier.ActionCommitStatus, Enabled: true}},
 	}, log)
 
 	if err != nil {
@@ -931,7 +941,7 @@ func TestSourceHutFactory_Build_creates_commit_status_handler(t *testing.T) {
 		Auth:    &config.SourceHutAuth{SecretFile: tokenFile},
 		BaseURL: "https://builds.sr.ht",
 		Actions: []config.Action{
-			{Name: "status", Type: config.ActionTypeCommitStatus, Enabled: true},
+			{Name: "status", Type: notifier.ActionCommitStatus, Enabled: true},
 		},
 	}, log)
 
@@ -953,7 +963,7 @@ func TestSourceHutFactory_Build_returns_error_for_invalid_CEL(t *testing.T) {
 		Auth:    &config.SourceHutAuth{SecretFile: testTokenValue},
 		BaseURL: "https://builds.sr.ht",
 		Actions: []config.Action{
-			{Name: "s", Type: config.ActionTypeCommitStatus, Enabled: true, When: notifierBadSyntax},
+			{Name: "s", Type: notifier.ActionCommitStatus, Enabled: true, When: notifierBadSyntax},
 		},
 	}, log)
 
@@ -978,7 +988,7 @@ func TestSourceHutFactory_Build_skips_unsupported_action_type(t *testing.T) {
 		Auth:    &config.SourceHutAuth{SecretFile: tokenFile},
 		BaseURL: "https://builds.sr.ht",
 		Actions: []config.Action{
-			{Name: "pr", Type: config.ActionTypePRComment, Enabled: true},
+			{Name: "pr", Type: notifier.ActionPRComment, Enabled: true},
 		},
 	}, log)
 

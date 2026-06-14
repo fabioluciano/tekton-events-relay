@@ -42,7 +42,9 @@ config:
       - name: github                       # matched by the scm.provider annotation
         enabled: true
         auth:
-          secret_name: github-token        # Secret with key "token"
+          secretRef:
+            name: github-token              # Secret with key "token"
+            key: token
         actions:
           - name: ci-status
             type: commit_status
@@ -57,7 +59,10 @@ config:
     slack:
       - name: prod-alerts
         enabled: true
-        secret_name: slack-webhook         # Secret with key "webhook_url"
+        webhook_url:
+          secretRef:
+            name: slack-webhook            # Secret with key "webhook_url"
+            key: webhook_url
         channel: "#prod-alerts"
         when: 'event.Namespace == "production" && stateIn("failure", "error")'
 ```
@@ -110,6 +115,12 @@ The default in-memory state backend is per-pod: run **one replica**, or set `con
 ## Source Code
 
 * <https://github.com/fabioluciano/tekton-events-relay>
+
+## Requirements
+
+| Repository | Name | Version |
+|------------|------|---------|
+| https://valkey.io/valkey-helm/ | valkey | 0.9.4 |
 
 ## Values
 
@@ -178,11 +189,13 @@ The default in-memory state backend is per-pod: run **one replica**, or set `con
 | config.notifiers.email[0].subject | string | `"[tekton] {{ if .PipelineName }}{{ .PipelineName }}{{ else }}{{ .RunName }}{{ end }} — {{ .State }}"` | Subject Go template (CR/LF stripped to prevent header injection) |
 | config.notifiers.email[0].to | list | `["platform-team@example.com"]` | Recipient list |
 | config.notifiers.email[0].when | string | `"event.Resource == \"pipelinerun\" && stateIn(\"failure\", \"error\")"` | CEL expression to filter which events are emailed |
+| config.notifiers.grafana | list | `[]` | ----------------------------------------------------------------------- |
 | config.notifiers.pagerduty | list | `[{"enabled":false,"name":"main-service","severity":"critical","when":"event.State == \"failure\" || event.State == \"error\""}]` | PagerDuty incident services configuration. Supports multiple services with independent integration keys. |
 | config.notifiers.pagerduty[0] | object | `{"enabled":false,"name":"main-service","severity":"critical","when":"event.State == \"failure\" || event.State == \"error\""}` | Unique identifier for this PagerDuty service configuration |
 | config.notifiers.pagerduty[0].enabled | bool | `false` | Enable or disable this PagerDuty notifier instance |
 | config.notifiers.pagerduty[0].severity | string | `"critical"` | Incident severity level (critical, error, warning, info) |
 | config.notifiers.pagerduty[0].when | string | `"event.State == \"failure\" || event.State == \"error\""` | CEL expression to filter which events trigger incidents |
+| config.notifiers.sentry | list | `[]` | ----------------------------------------------------------------------- |
 | config.notifiers.slack | list | `[{"channel":"#ci-notifications","enabled":false,"icon_emoji":":robot_face:","name":"main-channel","template":":warning: *Pipeline {{.State}}*\n*Run:* `{{.RunName}}`\n*Commit:* `{{.CommitSHA}}`\n{{if .TargetURL}}<{{.TargetURL}}|View in Dashboard>{{end}}\n","username":"Tekton CI","when":"event.State == \"failure\" || event.State == \"error\""}]` | Slack notification channels configuration. Supports multiple channels with independent webhook secrets and templates. |
 | config.notifiers.slack[0] | object | `{"channel":"#ci-notifications","enabled":false,"icon_emoji":":robot_face:","name":"main-channel","template":":warning: *Pipeline {{.State}}*\n*Run:* `{{.RunName}}`\n*Commit:* `{{.CommitSHA}}`\n{{if .TargetURL}}<{{.TargetURL}}|View in Dashboard>{{end}}\n","username":"Tekton CI","when":"event.State == \"failure\" || event.State == \"error\""}` | Unique identifier for this Slack channel configuration |
 | config.notifiers.slack[0].channel | string | `"#ci-notifications"` | Slack channel to post notifications (e.g., #ci-notifications, @username) |
@@ -241,7 +254,7 @@ The default in-memory state backend is per-pod: run **one replica**, or set `con
 | config.scm.gitea[0].actions[3].type | string | `"label"` | Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status) |
 | config.scm.gitea[0].base_url | string | `"https://gitea.company.example.com"` | API base URL for the SCM provider |
 | config.scm.gitea[0].enabled | bool | `false` | Enable or disable this SCM provider instance |
-| config.scm.github | list | `[{"actions":[{"enabled":false,"name":"commit-status","type":"commit_status","when":"event.Resource == \"pipelinerun\""},{"enabled":false,"name":"check-run","template":"## Build Result: {{.State}}\n**Run:** {{.RunName}}\n**Namespace:** {{.Namespace}}\n{{if .TargetURL}}[View Logs]({{.TargetURL}}){{end}}\n","type":"check_run","when":"stateIn(\"success\", \"failure\", \"error\")"},{"enabled":false,"name":"deployment-status","type":"deployment_status","when":"stateIn(\"success\", \"failure\")"},{"enabled":false,"mode":"create","name":"pr-comment","template":"## Pipeline {{.State}}\n**Run:** {{.RunName}}\n**Commit:** {{.CommitSHA}}\n{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}\n","type":"pr_comment","when":"stateIn(\"success\", \"failure\")"},{"enabled":false,"name":"issue-comment","template":"Pipeline {{.Context}} finished with state: **{{.State}}**\n{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}\n","type":"issue_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"name":"discussion-comment","template":"## Pipeline {{.State}}\n**Run:** {{.RunName}}\n**Commit:** {{.CommitSHA}}\n{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}\n","type":"discussion_comment","when":"stateIn(\"success\", \"failure\")"},{"enabled":false,"labels":{"add":[{"color":"0e8a16","name":"ci:passed"},{"name":"ready-to-merge"}],"remove":[{"name":"ci:failed"}]},"name":"label","type":"label","when":"event.Resource == \"pipelinerun\""}],"auth":{"secret_name":"github-default-token"},"base_url":"https://api.github.com","enabled":false,"name":"default"}]` | GitHub SCM provider configuration |
+| config.scm.github | list | `[{"actions":[{"enabled":false,"name":"commit-status","type":"commit_status","when":"event.Resource == \"pipelinerun\""},{"enabled":false,"name":"check-run","template":"## Build Result: {{.State}}\n**Run:** {{.RunName}}\n**Namespace:** {{.Namespace}}\n{{if .TargetURL}}[View Logs]({{.TargetURL}}){{end}}\n","type":"check_run","when":"stateIn(\"success\", \"failure\", \"error\")"},{"enabled":false,"name":"deployment-status","type":"deployment_status","when":"stateIn(\"success\", \"failure\")"},{"enabled":false,"mode":"create","name":"pr-comment","template":"## Pipeline {{.State}}\n**Run:** {{.RunName}}\n**Commit:** {{.CommitSHA}}\n{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}\n","type":"pr_comment","when":"stateIn(\"success\", \"failure\")"},{"enabled":false,"name":"issue-comment","template":"Pipeline {{.Context}} finished with state: **{{.State}}**\n{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}\n","type":"issue_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"name":"discussion-comment","template":"## Pipeline {{.State}}\n**Run:** {{.RunName}}\n**Commit:** {{.CommitSHA}}\n{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}\n","type":"discussion_comment","when":"stateIn(\"success\", \"failure\")"},{"enabled":false,"labels":{"add":[{"color":"0e8a16","name":"ci:passed"},{"name":"ready-to-merge"}],"remove":[{"name":"ci:failed"}]},"name":"label","type":"label","when":"event.Resource == \"pipelinerun\""}],"auth":{"secretRef":{"key":"token","name":"github-default-token"}},"base_url":"https://api.github.com","enabled":false,"name":"default"}]` | GitHub SCM provider configuration |
 | config.scm.github[0].actions[0].enabled | bool | `false` | Enable or disable this SCM provider instance |
 | config.scm.github[0].actions[0].type | string | `"commit_status"` | Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status) |
 | config.scm.github[0].actions[1].enabled | bool | `false` | Enable or disable this SCM provider instance |
@@ -258,8 +271,8 @@ The default in-memory state backend is per-pod: run **one replica**, or set `con
 | config.scm.github[0].actions[6].enabled | bool | `false` | Enable or disable this SCM provider instance |
 | config.scm.github[0].actions[6].labels | object | `{"add":[{"color":"0e8a16","name":"ci:passed"},{"name":"ready-to-merge"}],"remove":[{"name":"ci:failed"}]}` | Declarative label effect: add/remove lists with optional colors (hex without #) Supports both old string format and new object format with color field |
 | config.scm.github[0].actions[6].type | string | `"label"` | Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status) |
-| config.scm.github[0].auth | object | `{"secret_name":"github-default-token"}` | Webhook authentication configuration |
-| config.scm.github[0].auth.secret_name | string | `"github-default-token"` | Kubernetes Secret containing credentials |
+| config.scm.github[0].auth | object | `{"secretRef":{"key":"token","name":"github-default-token"}}` | Webhook authentication configuration |
+| config.scm.github[0].auth.secretRef | object | `{"key":"token","name":"github-default-token"}` | Kubernetes Secret containing credentials |
 | config.scm.github[0].base_url | string | `"https://api.github.com"` | API base URL for the SCM provider |
 | config.scm.github[0].enabled | bool | `false` | Enable or disable this SCM provider instance |
 | config.scm.gitlab | list | `[{"actions":[{"enabled":false,"name":"commit-status","type":"commit_status","when":""},{"enabled":false,"name":"pr-comment","template":"## Pipeline {{.State}}\n**Run:** {{.RunName}}\n**Commit:** {{.CommitSHA}}\n{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}\n","type":"pr_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"name":"issue-comment","template":"Pipeline {{.Context}} finished with state: **{{.State}}**\n{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}\n","type":"issue_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"labels":{"add":["{{ if eq .State \"success\" }}pipeline::success{{ else }}pipeline::failed{{ end }}"],"remove":["{{ if eq .State \"success\" }}pipeline::failed{{ else }}pipeline::success{{ end }}"]},"name":"label","type":"label","when":""}],"base_url":"https://gitlab.com/api/v4","enabled":false,"name":"cloud","variant":"saas"},{"actions":[{"enabled":false,"name":"commit-status","type":"commit_status","when":""},{"enabled":false,"name":"pr-comment","template":"## Pipeline {{.State}}\n**Run:** {{.RunName}}\n**Commit:** {{.CommitSHA}}\n{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}\n","type":"pr_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"name":"issue-comment","template":"Pipeline {{.Context}} finished with state: **{{.State}}**\n{{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}\n","type":"issue_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"labels":{"add":["{{ if eq .State \"success\" }}pipeline::success{{ else }}pipeline::failed{{ end }}"],"remove":["{{ if eq .State \"success\" }}pipeline::failed{{ else }}pipeline::success{{ end }}"]},"name":"label","type":"label","when":""}],"base_url":"https://gitlab.company.example.com/api/v4","enabled":false,"name":"server","variant":"self-managed"}]` | GitLab SCM provider configuration |
@@ -294,10 +307,10 @@ The default in-memory state backend is per-pod: run **one replica**, or set `con
 | config.scm.sourcehut[0].actions[0].enabled | bool | `false` | Enable or disable this SCM provider instance |
 | config.scm.sourcehut[0].actions[0].type | string | `"commit_status"` | Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status) |
 | config.scm.sourcehut[0].enabled | bool | `false` | Enable or disable this SCM provider instance |
-| config.server | object | `{"addr":":8080","auth":{"enabled":false,"secret_file":"${WEBHOOK_SECRET}","timestamp_tolerance":"5m","type":"hmac-sha256","validate_timestamp":false},"max_body_size":1048576,"metrics_addr":"","rate_limit":{"burst":200,"enabled":false,"requests_per_second":100},"read_timeout_sec":10,"shutdown_timeout_sec":30,"tls":{"cert_file":"","key_file":""},"write_timeout_sec":10}` | HTTP server configuration |
+| config.server | object | `{"addr":":8080","auth":{"enabled":false,"secret":{"secretRef":{"key":"hmac-key","name":"webhook-secret"}},"timestamp_tolerance":"5m","type":"hmac-sha256","validate_timestamp":false},"max_body_size":1048576,"metrics_addr":"","rate_limit":{"burst":200,"enabled":false,"requests_per_second":100},"read_timeout_sec":10,"shutdown_timeout_sec":30,"tls":{"cert_file":"","key_file":""},"write_timeout_sec":10}` | HTTP server configuration |
 | config.server.addr | string | `":8080"` | Server listen address and port |
-| config.server.auth | object | `{"enabled":false,"secret_file":"${WEBHOOK_SECRET}","timestamp_tolerance":"5m","type":"hmac-sha256","validate_timestamp":false}` | Webhook authentication configuration |
-| config.server.auth.secret_file | string | `"${WEBHOOK_SECRET}"` | Reference to webhook secret for HMAC validation |
+| config.server.auth | object | `{"enabled":false,"secret":{"secretRef":{"key":"hmac-key","name":"webhook-secret"}},"timestamp_tolerance":"5m","type":"hmac-sha256","validate_timestamp":false}` | Webhook authentication configuration |
+| config.server.auth.secret | object | `{"secretRef":{"key":"hmac-key","name":"webhook-secret"}}` | Reference to webhook secret for HMAC validation. Use secretRef to mount K8s Secret as file |
 | config.server.auth.timestamp_tolerance | string | `"5m"` | Accepted clock skew for replay protection (Go duration format) |
 | config.server.auth.validate_timestamp | bool | `false` | Replay protection: require an X-Webhook-Timestamp header (unix seconds) within timestamp_tolerance of the server clock |
 | config.server.max_body_size | int | `1048576` | Maximum request body size in bytes |
@@ -311,20 +324,22 @@ The default in-memory state backend is per-pod: run **one replica**, or set `con
 | config.server.tls.cert_file | string | `""` | Path to the PEM certificate (empty = plain HTTP) |
 | config.server.tls.key_file | string | `""` | Path to the PEM private key (empty = plain HTTP) |
 | config.server.write_timeout_sec | int | `10` | HTTP write timeout in seconds |
-| config.store | object | `{"backend":"memory","olric":{"bind_port":3320,"memberlist_port":3322,"peers":[]},"ttl":"1h","valkey":{"address":"","db":0,"key_prefix":"tekton-events-relay","password_file":""}}` | State backend configuration (dedupe + accumulator) |
+| config.store | object | `{"backend":"memory","olric":{"bind_port":3320,"memberlist_port":3322,"peers":[]},"ttl":"1h","valkey":{"address":"","db":0,"embedded":{"enabled":false},"key_prefix":"tekton-events-relay","password":{"secretRef":{"key":"password","name":""}}}}` | State backend configuration (dedupe + accumulator) |
 | config.store.backend | string | `"memory"` | Backend: memory, valkey or olric |
 | config.store.olric | object | `{"bind_port":3320,"memberlist_port":3322,"peers":[]}` | Olric embedded backend settings (backend: olric) |
 | config.store.olric.bind_port | int | `3320` | Port for olric data traffic between relay pods |
 | config.store.olric.memberlist_port | int | `3322` | Port for memberlist gossip between relay pods (TCP+UDP) |
 | config.store.olric.peers | list | `[]` | Peer list override; defaults to the chart's headless gossip service |
 | config.store.ttl | string | `"1h"` | Entry lifetime on remote backends (Go duration format) |
-| config.store.valkey | object | `{"address":"","db":0,"key_prefix":"tekton-events-relay","password_file":""}` | Valkey backend settings (backend: valkey) |
-| config.store.valkey.address | string | `""` | Valkey server address (host:port); required when backend=valkey |
+| config.store.valkey | object | `{"address":"","db":0,"embedded":{"enabled":false},"key_prefix":"tekton-events-relay","password":{"secretRef":{"key":"password","name":""}}}` | Valkey backend settings (backend: valkey) |
+| config.store.valkey.address | string | `""` | Valkey server address (host:port); required when backend=valkey and embedded is disabled. When embedded.enabled is true, this is auto-populated with the embedded service address. |
 | config.store.valkey.db | int | `0` | Valkey logical database |
+| config.store.valkey.embedded | object | `{"enabled":false}` | Deploy an embedded Valkey instance as a subchart (disabled by default; use this for single-cluster dev/test setups; for production, use an external Valkey/KeyDB and set address directly) |
 | config.store.valkey.key_prefix | string | `"tekton-events-relay"` | Prefix applied to all keys |
-| config.store.valkey.password_file | string | `""` | File containing the Valkey password (optional) |
-| config.tracing | object | `{"endpoint":"","service_name":"tekton-events-relay"}` | OpenTelemetry tracing configuration |
+| config.store.valkey.password | object | `{"secretRef":{"key":"password","name":""}}` | Reference to a Kubernetes Secret containing the Valkey password (optional) |
+| config.tracing | object | `{"endpoint":"","insecure":false,"service_name":"tekton-events-relay"}` | OpenTelemetry tracing configuration |
 | config.tracing.endpoint | string | `""` | OTLP endpoint for trace export (e.g., "otel-collector:4318"). Empty = tracing disabled. |
+| config.tracing.insecure | bool | `false` | When false, uses HTTPS for OTLP export. Set to true for plaintext HTTP. |
 | config.tracing.service_name | string | `"tekton-events-relay"` | Service name reported in traces |
 | dnsConfig.options[0].name | string | `"ndots"` |  |
 | dnsConfig.options[0].value | string | `"2"` |  |
@@ -398,7 +413,6 @@ The default in-memory state backend is per-pod: run **one replica**, or set `con
 | startupProbe.httpGet.port | string | `"http"` |  |
 | startupProbe.initialDelaySeconds | int | `0` |  |
 | startupProbe.periodSeconds | int | `5` |  |
-| templates.enabled | bool | `false` |  |
 | terminationGracePeriodSeconds | int | `40` | Seconds allowed for graceful shutdown; keep above config.server.shutdown_timeout_sec |
 | tolerations | list | `[]` |  |
 | topologySpreadConstraints | list | `[]` | Topology spread constraints (e.g. spread across zones) |

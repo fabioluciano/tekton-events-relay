@@ -2,6 +2,8 @@ package config
 
 import (
 	"testing"
+
+	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
 )
 
 func TestExampleConfigYAML(t *testing.T) {
@@ -68,7 +70,7 @@ func TestExampleConfigWhenFields(t *testing.T) {
 			whenExpr: `event.Resource == "taskrun" && stateIn("success", "failure")`,
 			check: func() string {
 				if len(cfg.SCM.GitHub) > 0 {
-					if a := findAction(cfg.SCM.GitHub[0].Actions, ActionTypePRComment); a != nil {
+					if a := findAction(cfg.SCM.GitHub[0].Actions, notifier.ActionPRComment); a != nil {
 						return a.When
 					}
 				}
@@ -80,7 +82,7 @@ func TestExampleConfigWhenFields(t *testing.T) {
 			whenExpr: `event.Namespace == "production" && stateIn("failure", "error")`,
 			check: func() string {
 				if len(cfg.SCM.GitHub) > 0 {
-					if a := findAction(cfg.SCM.GitHub[0].Actions, ActionTypeIssueComment); a != nil {
+					if a := findAction(cfg.SCM.GitHub[0].Actions, notifier.ActionIssueComment); a != nil {
 						return a.When
 					}
 				}
@@ -92,7 +94,7 @@ func TestExampleConfigWhenFields(t *testing.T) {
 			whenExpr: `event.Resource == "pipelinerun" && event.Repo.Owner == "myorg"`,
 			check: func() string {
 				if len(cfg.SCM.Azure) > 0 {
-					if a := findAction(cfg.SCM.Azure[0].Actions, ActionTypeLabel); a != nil {
+					if a := findAction(cfg.SCM.Azure[0].Actions, notifier.ActionLabel); a != nil {
 						return a.When
 					}
 				}
@@ -104,7 +106,7 @@ func TestExampleConfigWhenFields(t *testing.T) {
 			whenExpr: `event.RunName.startsWith("nightly-") && stateIn("success", "failure")`,
 			check: func() string {
 				if len(cfg.SCM.Gitea) > 0 {
-					if a := findAction(cfg.SCM.Gitea[0].Actions, ActionTypePRComment); a != nil {
+					if a := findAction(cfg.SCM.Gitea[0].Actions, notifier.ActionPRComment); a != nil {
 						return a.When
 					}
 				}

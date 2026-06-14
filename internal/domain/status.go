@@ -110,6 +110,9 @@ type Event struct {
 	PRNumber         *int `json:"pr_number,omitempty" yaml:"pr_number,omitempty"`
 	DiscussionNumber *int `json:"discussion_number,omitempty" yaml:"discussion_number,omitempty"`
 
+	// JiraIssueKey links the run to a Jira issue (e.g. PROJ-123); empty if absent.
+	JiraIssueKey string `json:"jira_issue_key,omitempty" yaml:"jira_issue_key,omitempty"`
+
 	// Results (optional - populated from TaskRun.status.taskResults or PipelineRun.status.pipelineResults)
 	Results []Result `json:"results,omitempty" yaml:"results,omitempty"`
 

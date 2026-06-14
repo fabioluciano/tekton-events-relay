@@ -78,6 +78,7 @@ func TestNotifyWithFailureState(t *testing.T) {
 	event := domain.Event{
 		State:       domain.StateFailure,
 		RunName:     testRunID123,
+		RunID:       testRunID123,
 		Namespace:   testNamespaceDefault,
 		Context:     testContextBuild,
 		Description: testDescBuildFailed,
@@ -118,6 +119,7 @@ func TestNotifyWithErrorState(t *testing.T) {
 	event := domain.Event{
 		State:       domain.StateError,
 		RunName:     testRunID456,
+		RunID:       testRunID456,
 		Namespace:   "prod",
 		Context:     "deploy",
 		Description: "Deployment error",
@@ -150,6 +152,7 @@ func TestNotifyWithSuccessState(t *testing.T) {
 	event := domain.Event{
 		State:       domain.StateSuccess,
 		RunName:     testRunID789,
+		RunID:       testRunID789,
 		Namespace:   "staging",
 		Context:     testContextTest,
 		Description: "Tests passed",
@@ -222,6 +225,7 @@ func TestPayloadWithFailureState(t *testing.T) {
 	event := domain.Event{
 		State:       domain.StateFailure,
 		RunName:     testRunID123,
+		RunID:       testRunID123,
 		Namespace:   testNamespaceProd,
 		Context:     testContextBuild,
 		Description: testDescBuildFailed,

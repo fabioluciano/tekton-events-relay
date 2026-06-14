@@ -2,8 +2,8 @@
 package http
 
 import (
+	"bytes"
 	"context"
-	"encoding/json"
 	"net/http"
 	"time"
 
@@ -27,36 +27,47 @@ var sensitivePayloadKeys = map[string]bool{
 	"app_password": true, "appPassword": true,
 }
 
-func redactPayload(data []byte) []byte {
-	var m map[string]any
-	if err := json.Unmarshal(data, &m); err != nil {
-		return data
-	}
-	redactMap(m)
-	out, err := json.Marshal(m)
-	if err != nil {
-		return data
-	}
-	return out
-}
+const maxRedactPayloadSize = 1 << 20 // 1MB
 
-func redactMap(m map[string]any) {
-	for k, v := range m {
-		if sensitivePayloadKeys[k] {
-			m[k] = "[REDACTED]" //nolint:goconst
-			continue
-		}
-		switch vt := v.(type) {
-		case map[string]any:
-			redactMap(vt)
-		case []any:
-			for _, elem := range vt {
-				if sub, ok := elem.(map[string]any); ok {
-					redactMap(sub)
+func redactPayload(data []byte) []byte {
+	if len(data) > maxRedactPayloadSize {
+		return data
+	}
+	out := data
+	for key := range sensitivePayloadKeys {
+		for _, variant := range []string{
+			`"` + key + `":`,
+			`"` + key + `" :`,
+			`"` + key + `": `,
+		} {
+			idx := bytes.Index(out, []byte(variant))
+			if idx < 0 {
+				continue
+			}
+			colonIdx := idx + len(variant)
+			start := colonIdx
+			for start < len(out) && out[start] == ' ' {
+				start++
+			}
+			if start >= len(out) {
+				continue
+			}
+			if out[start] == '"' {
+				end := bytes.IndexByte(out[start+1:], '"')
+				if end < 0 {
+					continue
 				}
+				end += start + 2
+				var buf bytes.Buffer
+				buf.Grow(len(out) + 10)
+				buf.Write(out[:start+1])
+				buf.WriteString("[REDACTED]")
+				buf.Write(out[end-1:])
+				out = buf.Bytes()
 			}
 		}
 	}
+	return out
 }
 
 // CloudEventsHandler returns an HTTP handler that decodes CloudEvents and dispatches them through the processing pipeline.
@@ -98,7 +109,7 @@ func CloudEventsHandler(decoders *event.Registry, chain pipeline.Handler, log *z
 				zap.String("content_type", r.Header.Get("Content-Type")),
 				zap.Error(err),
 			)
-			http.Error(w, "not a cloudevent: "+err.Error(), http.StatusBadRequest)
+			http.Error(w, "not a cloudevent", http.StatusBadRequest)
 			return
 		}
 
@@ -157,7 +168,10 @@ func decodeEvent(decoders *event.Registry, ce *cehttp.Event, log *zap.Logger, co
 	}
 	env, err := decoder.Decode(event.RawEvent{ID: ce.ID, Type: ce.Type, Source: ce.Source, Data: ce.Data})
 	if err != nil {
-		log.Debug("skip event", zap.String("decoder", decoder.Name()), zap.Error(err))
+		log.Warn("skip event", zap.String("decoder", decoder.Name()), zap.Error(err))
+		if collectors != nil {
+			collectors.ErrorsPermanent.WithLabelValues("decode_error").Inc()
+		}
 		w.WriteHeader(http.StatusOK)
 		return nil, false
 	}

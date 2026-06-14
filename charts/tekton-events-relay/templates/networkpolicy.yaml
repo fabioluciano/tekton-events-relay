@@ -70,7 +70,7 @@ spec:
     {{- if .Values.config.server.metrics_addr }}
     # Allow Prometheus scraping of the dedicated metrics port
     - ports:
-        - port: {{ .Values.networkPolicy.metricsPort }}
+        - port: {{ .Values.config.server.metrics_addr | trimPrefix ":" | atoi }}
           protocol: TCP
       {{- with .Values.networkPolicy.metricsFrom }}
       from:

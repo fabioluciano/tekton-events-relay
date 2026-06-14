@@ -4,16 +4,30 @@ import (
 	"context"
 	"strings"
 
-	"github.com/fabioluciano/tekton-events-relay/internal/config"
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
 )
+
+// FilterConfig configures action-level filtering with allow/deny lists.
+// Mirrors config.ActionFilterConfig to avoid a dependency on the config package.
+type FilterConfig struct {
+	Tasks          FilterList `yaml:"tasks,omitempty"`
+	Pipelines      FilterList `yaml:"pipelines,omitempty"`
+	CustomRuns     FilterList `yaml:"custom_runs,omitempty"`
+	EventListeners FilterList `yaml:"event_listeners,omitempty"`
+}
+
+// FilterList defines allow and deny lists for filtering.
+type FilterList struct {
+	Allow []string `yaml:"allow,omitempty"`
+	Deny  []string `yaml:"deny,omitempty"`
+}
 
 // FilteredHandler wraps an ActionHandler with action-level filtering.
 // Supports allow/deny lists per resource type (tasks, pipelines, custom_runs, event_listeners).
 // Filtering is case-insensitive. If cfg is nil, all events pass through.
 type FilteredHandler struct {
 	inner ActionHandler
-	cfg   *config.ActionFilterConfig
+	cfg   *FilterConfig
 
 	// Pre-built maps for O(1) lookup (lowercase keys)
 	tasksAllow          map[string]struct{}
@@ -28,7 +42,7 @@ type FilteredHandler struct {
 
 // NewFilteredHandler creates a filtered wrapper around an ActionHandler.
 // If cfg is nil, the handler passes all events through (no filtering).
-func NewFilteredHandler(inner ActionHandler, cfg *config.ActionFilterConfig) *FilteredHandler {
+func NewFilteredHandler(inner ActionHandler, cfg *FilterConfig) *FilteredHandler {
 	h := &FilteredHandler{
 		inner: inner,
 		cfg:   cfg,

@@ -46,6 +46,11 @@ func BuildAll(cfg *config.Config, log *zap.Logger, opts ...BuildOption) (*notifi
 		return nil, err
 	}
 
+	// Jira issue tracking (top-level integration)
+	if err := BuildAndRegister(cfg.Jira, &JiraFactory{}, log, reg); err != nil {
+		return nil, err
+	}
+
 	// F3 Accumulator — built last so it can find providers already in the registry
 	if cfg.Accumulator.Enabled {
 		accHandler, err := BuildAccumulator(cfg.Accumulator, reg, options.accumulatorBuffer, log)

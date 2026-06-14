@@ -29,16 +29,20 @@ type LabelConfig struct {
 }
 
 // NewLabelHandler creates a new Gitea label handler.
-func NewLabelHandler(cfg LabelConfig) notifier.ActionHandler {
+func NewLabelHandler(cfg LabelConfig) (notifier.ActionHandler, error) {
 	log := cfg.Log
 	if log == nil {
 		log = zap.NewNop()
 	}
+	c, err := NewClient(cfg.Token, cfg.BaseURL, cfg.InsecureSkipVerify, false, cfg.Log)
+	if err != nil {
+		return nil, err
+	}
 	return &LabelHandler{
-		client: NewClient(cfg.Token, cfg.BaseURL, cfg.InsecureSkipVerify, false, cfg.Log),
+		client: c,
 		labels: cfg.Labels,
 		log:    log,
-	}
+	}, nil
 }
 
 // Name returns the handler name.

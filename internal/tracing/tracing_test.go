@@ -8,7 +8,7 @@ import (
 )
 
 func TestInit_EmptyEndpoint_ReturnsNoopProvider(t *testing.T) {
-	tp, err := Init(context.Background(), "", "test-service")
+	tp, err := Init(context.Background(), "", "test-service", true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -30,7 +30,7 @@ func TestInit_EmptyEndpoint_ReturnsNoopProvider(t *testing.T) {
 
 func TestInit_WithEndpoint_CreatesTracerProvider(t *testing.T) {
 	// Use a non-routable endpoint; the provider is created lazily so no connection error occurs.
-	tp, err := Init(context.Background(), "localhost:4318", "test-service")
+	tp, err := Init(context.Background(), "localhost:4318", "test-service", true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -49,7 +49,7 @@ func TestInit_WithEndpoint_CreatesTracerProvider(t *testing.T) {
 }
 
 func TestInit_Shutdown(t *testing.T) {
-	tp, err := Init(context.Background(), "", "test-service")
+	tp, err := Init(context.Background(), "", "test-service", true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

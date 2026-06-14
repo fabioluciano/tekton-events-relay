@@ -70,7 +70,7 @@ func TestTracingInit_EmptyEndpointContinuesWithNoopTracer(t *testing.T) {
 
 	// InitGlobal with empty endpoint should not panic and return a noop cleanup
 	log := zap.NewNop()
-	tp, cleanup, err := tracing.InitGlobal(context.Background(), "", "test-svc", log)
+	tp, cleanup, err := tracing.InitGlobal(context.Background(), "", "test-svc", true, log)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -89,7 +89,7 @@ func TestTracingInit_EmptyEndpointContinuesWithNoopTracer(t *testing.T) {
 
 func TestTracingInit_InvalidEndpointDoesNotPanic(t *testing.T) {
 	// Init with a non-routable endpoint: provider is created lazily, no connection error
-	tp, err := tracing.Init(context.Background(), "invalid-host:99999", "test-svc")
+	tp, err := tracing.Init(context.Background(), "invalid-host:99999", "test-svc", true)
 	if err != nil {
 		t.Fatalf("unexpected error for invalid endpoint: %v", err)
 	}

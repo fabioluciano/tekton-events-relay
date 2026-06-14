@@ -32,9 +32,9 @@ func (f *AzureFactory) Build(inst config.AzureInstance, log *zap.Logger) ([]noti
 // buildHandler creates the appropriate handler based on action type.
 func (f *AzureFactory) buildHandler(inst config.AzureInstance, action config.Action, token string, log *zap.Logger) (notifier.ActionHandler, error) {
 	switch action.Type {
-	case config.ActionTypeCommitStatus:
+	case notifier.ActionCommitStatus:
 		return azuredevops.NewStatusReporter(token, inst.BaseURL, inst.Genre, inst.InsecureSkipVerify, log), nil
-	case config.ActionTypePRComment:
+	case notifier.ActionPRComment:
 		if action.Mode == "upsert" {
 			log.Warn("comment mode 'upsert' is not supported on Azure DevOps, using 'create'",
 				zap.String("instance", inst.Name),
@@ -48,7 +48,7 @@ func (f *AzureFactory) buildHandler(inst config.AzureInstance, action config.Act
 			InsecureSkipVerify: inst.InsecureSkipVerify,
 			Log:                log,
 		})
-	case config.ActionTypeLabel:
+	case notifier.ActionLabel:
 		return azuredevops.NewLabelHandler(azuredevops.LabelConfig{
 			Token:              token,
 			BaseURL:            inst.BaseURL,

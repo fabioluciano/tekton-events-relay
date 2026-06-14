@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
@@ -43,5 +44,5 @@ func (e *Enricher) dashboardLink(r domain.Event) string {
 		return ""
 	}
 	return fmt.Sprintf("%s/#/namespaces/%s/%s/%s",
-		e.DashboardURL, r.Namespace, kind, r.RunName)
+		e.DashboardURL, url.PathEscape(r.Namespace), kind, url.PathEscape(r.RunName))
 }

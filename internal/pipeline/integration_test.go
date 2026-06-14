@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/fabioluciano/tekton-events-relay/internal/config"
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
 	"github.com/fabioluciano/tekton-events-relay/internal/event"
 	"github.com/fabioluciano/tekton-events-relay/internal/event/tekton"
@@ -70,8 +69,8 @@ func TestIntegration_FullPipeline_TaskRun(t *testing.T) {
 	mock := &mockActionHandler{name: testProviderGitHub, actionType: notifier.ActionCommitStatus}
 
 	// Wrap with filter (allow task "build")
-	filterCfg := &config.ActionFilterConfig{
-		Tasks: config.FilterList{
+	filterCfg := &notifier.FilterConfig{
+		Tasks: notifier.FilterList{
 			Allow: []string{"build"},
 		},
 	}
@@ -150,8 +149,8 @@ func TestIntegration_FilteredByDeny(t *testing.T) {
 	mock := &mockActionHandler{name: testProviderGitHub, actionType: notifier.ActionCommitStatus}
 
 	// Filter denies task "cleanup"
-	filterCfg := &config.ActionFilterConfig{
-		Tasks: config.FilterList{
+	filterCfg := &notifier.FilterConfig{
+		Tasks: notifier.FilterList{
 			Deny: []string{"cleanup"},
 		},
 	}
@@ -286,8 +285,8 @@ func TestIntegration_BothFiltersPass(t *testing.T) {
 	mock := &mockActionHandler{name: testProviderGitHub, actionType: notifier.ActionCommitStatus}
 
 	// Filter allows task "deploy"
-	filterCfg := &config.ActionFilterConfig{
-		Tasks: config.FilterList{
+	filterCfg := &notifier.FilterConfig{
+		Tasks: notifier.FilterList{
 			Allow: []string{"deploy"},
 		},
 	}
@@ -359,8 +358,8 @@ func TestIntegration_PipelineRun(t *testing.T) {
 	mock := &mockActionHandler{name: testProviderGitHub, actionType: notifier.ActionCommitStatus}
 
 	// Filter allows pipeline "ci-pipeline"
-	filterCfg := &config.ActionFilterConfig{
-		Pipelines: config.FilterList{
+	filterCfg := &notifier.FilterConfig{
+		Pipelines: notifier.FilterList{
 			Allow: []string{"ci-pipeline"},
 		},
 	}
@@ -431,8 +430,8 @@ func TestIntegration_CustomRun(t *testing.T) {
 	mock := &mockActionHandler{name: testProviderGitHub, actionType: notifier.ActionCommitStatus}
 
 	// Filter allows custom run "approval-task"
-	filterCfg := &config.ActionFilterConfig{
-		CustomRuns: config.FilterList{
+	filterCfg := &notifier.FilterConfig{
+		CustomRuns: notifier.FilterList{
 			Allow: []string{"approval-task"},
 		},
 	}
@@ -502,8 +501,8 @@ func TestIntegration_EventListener(t *testing.T) {
 	mock := &mockActionHandler{name: "", actionType: notifier.ActionCommitStatus}
 
 	// Filter allows event listener "prod-listener"
-	filterCfg := &config.ActionFilterConfig{
-		EventListeners: config.FilterList{
+	filterCfg := &notifier.FilterConfig{
+		EventListeners: notifier.FilterList{
 			Allow: []string{"prod-listener"},
 		},
 	}

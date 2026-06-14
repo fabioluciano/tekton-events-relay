@@ -62,7 +62,7 @@ func buildActionsWithMiddleware(
 			return nil, err
 		}
 		wrapped = middleware.WrapWithFilter(wrapped, action.Filter)
-		if action.Type == config.ActionTypeCommitStatus {
+		if action.Type == notifier.ActionCommitStatus {
 			wrapped = middleware.WrapWithContextPerTask(wrapped, action.ContextPerTask)
 		}
 		handlers = append(handlers, wrapped)

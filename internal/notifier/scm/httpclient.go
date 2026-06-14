@@ -7,11 +7,19 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/httpx"
+	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
 )
 
 const defaultResponseBodyLimit = 4 * 1024 * 1024 // 4MB
+
+var bufferPool = sync.Pool{
+	New: func() any {
+		return new(bytes.Buffer)
+	},
+}
 
 // AuthFunc adds authentication to an HTTP request.
 type AuthFunc func(req *http.Request)
@@ -19,20 +27,22 @@ type AuthFunc func(req *http.Request)
 // DoJSON performs an HTTP request with JSON encoding, retry logic, and optional response decoding.
 func DoJSON(ctx context.Context, client *http.Client, retry httpx.RetryPolicy,
 	method, url string, body any, authFn AuthFunc, v any) error {
-	var buf bytes.Buffer
+	buf := bufferPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	defer bufferPool.Put(buf)
 	if body != nil {
-		if err := json.NewEncoder(&buf).Encode(body); err != nil {
+		if err := json.NewEncoder(buf).Encode(body); err != nil {
 			return fmt.Errorf("encode payload: %w", err)
 		}
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, url, &buf)
+	req, err := http.NewRequestWithContext(ctx, method, url, buf)
 	if err != nil {
 		return err
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "tekton-events-relay")
+	req.Header.Set("User-Agent", notifier.UserAgent)
 
 	if authFn != nil {
 		authFn(req)
@@ -44,7 +54,10 @@ func DoJSON(ctx context.Context, client *http.Client, retry httpx.RetryPolicy,
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, defaultResponseBodyLimit))
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, defaultResponseBodyLimit))
+	if err != nil {
+		return err
+	}
 
 	if resp.StatusCode >= 300 {
 		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))

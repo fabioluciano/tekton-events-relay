@@ -4,17 +4,17 @@ package config
 import (
 	"fmt"
 	"os"
-	"regexp"
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
 )
 
 // AccumulatorProviderConfig identifies which registered handler the accumulator
 // should delegate PR comments to.
 type AccumulatorProviderConfig struct {
 	Name string `yaml:"name"`
-	Type string `yaml:"type"` // "github" | "gitlab" | "gitea"
 }
 
 // AccumulatorConfig controls the F3 accumulator feature for aggregating
@@ -89,6 +89,7 @@ type Config struct {
 	Accumulator    AccumulatorConfig `yaml:"accumulator,omitempty" json:"accumulator,omitempty"`
 	SCM            SCMConfig         `yaml:"scm" validate:"required"`
 	Notifiers      NotifiersConfig   `yaml:"notifiers" validate:"required"`
+	Jira           []JiraInstance    `yaml:"jira,omitempty" validate:"omitempty,dive"`
 	Logging        LoggingConfig     `yaml:"logging"`
 	Tracing        TracingConfig     `yaml:"tracing"`
 }
@@ -148,9 +149,6 @@ const (
 const (
 	DefaultServerAddr        = ":8080"
 	AuthTypeBearer           = "bearer"
-	AuthTypeBasic            = "basic"
-	AuthTypeAPIKey           = "apikey"
-	AuthTypeHMAC             = "hmac"
 	BitbucketVariantCloud    = "cloud"
 	BitbucketVariantServer   = "server"
 	GitLabVariantSaaS        = "saas"
@@ -201,20 +199,8 @@ type NotifiersConfig struct {
 	Email     []EmailInstance     `yaml:"email,omitempty" validate:"omitempty,dive"`
 }
 
-// ActionType identifies the type of action in the configuration.
-type ActionType string
-
-// Action type constants matching notifier.ActionType values.
-const (
-	ActionTypeCommitStatus      ActionType = "commit_status"
-	ActionTypeCommitComment     ActionType = "commit_comment"
-	ActionTypePRComment         ActionType = "pr_comment"
-	ActionTypeIssueComment      ActionType = "issue_comment"
-	ActionTypeLabel             ActionType = "label"
-	ActionTypeDiscussionComment ActionType = "discussion_comment"
-	ActionTypeCheckRun          ActionType = "check_run"
-	ActionTypeDeploymentStatus  ActionType = "deployment_status"
-)
+// ActionType is a type alias for notifier.ActionType to avoid duplication.
+type ActionType = notifier.ActionType
 
 // Action represents a single action configuration within an SCM instance.
 type Action struct {
@@ -404,6 +390,12 @@ type GitHubInstance struct {
 
 func (g GitHubInstance) isEnabled() bool { return g.Enabled }
 
+// GetBaseURL returns the base URL for the GitHub instance.
+func (g GitHubInstance) GetBaseURL() string { return g.BaseURL }
+
+// GetActions returns the configured actions for the GitHub instance.
+func (g GitHubInstance) GetActions() []Action { return g.Actions }
+
 // SecretFile returns the path to the secret file for authentication.
 func (g GitHubInstance) SecretFile() string {
 	if g.Auth != nil {
@@ -424,6 +416,12 @@ type GitLabInstance struct {
 }
 
 func (g GitLabInstance) isEnabled() bool { return g.Enabled }
+
+// GetBaseURL returns the base URL for the GitLab instance.
+func (g GitLabInstance) GetBaseURL() string { return g.BaseURL }
+
+// GetActions returns the configured actions for the GitLab instance.
+func (g GitLabInstance) GetActions() []Action { return g.Actions }
 
 // SecretFile returns the path to the secret file for authentication.
 func (g GitLabInstance) SecretFile() string {
@@ -446,6 +444,12 @@ type BitbucketInstance struct {
 
 func (b BitbucketInstance) isEnabled() bool { return b.Enabled }
 
+// GetBaseURL returns the base URL for the Bitbucket instance.
+func (b BitbucketInstance) GetBaseURL() string { return b.BaseURL }
+
+// GetActions returns the configured actions for the Bitbucket instance.
+func (b BitbucketInstance) GetActions() []Action { return b.Actions }
+
 // AzureInstance represents a single Azure DevOps instance configuration.
 type AzureInstance struct {
 	Name               string   `yaml:"name" validate:"required"`
@@ -460,6 +464,12 @@ type AzureInstance struct {
 
 func (a AzureInstance) isEnabled() bool { return a.Enabled }
 
+// GetBaseURL returns the base URL for the Azure DevOps instance.
+func (a AzureInstance) GetBaseURL() string { return a.BaseURL }
+
+// GetActions returns the configured actions for the Azure DevOps instance.
+func (a AzureInstance) GetActions() []Action { return a.Actions }
+
 // GiteaInstance represents a single Gitea instance configuration.
 type GiteaInstance struct {
 	Name               string     `yaml:"name" validate:"required"`
@@ -471,6 +481,12 @@ type GiteaInstance struct {
 }
 
 func (g GiteaInstance) isEnabled() bool { return g.Enabled }
+
+// GetBaseURL returns the base URL for the Gitea instance.
+func (g GiteaInstance) GetBaseURL() string { return g.BaseURL }
+
+// GetActions returns the configured actions for the Gitea instance.
+func (g GiteaInstance) GetActions() []Action { return g.Actions }
 
 // SecretFile returns the path to the secret file for authentication.
 func (g GiteaInstance) SecretFile() string {
@@ -491,6 +507,12 @@ type SourceHutInstance struct {
 }
 
 func (s SourceHutInstance) isEnabled() bool { return s.Enabled }
+
+// GetBaseURL returns the base URL for the SourceHut instance.
+func (s SourceHutInstance) GetBaseURL() string { return s.BaseURL }
+
+// GetActions returns the configured actions for the SourceHut instance.
+func (s SourceHutInstance) GetActions() []Action { return s.Actions }
 
 // SecretFile returns the path to the secret file for authentication.
 func (s SourceHutInstance) SecretFile() string {
@@ -514,6 +536,12 @@ type SlackInstance struct {
 
 func (s SlackInstance) isEnabled() bool { return s.Enabled }
 
+// GetWhen returns the CEL when expression for the Slack instance.
+func (s SlackInstance) GetWhen() string { return s.When }
+
+// GetTemplate returns the Go template for the Slack instance.
+func (s SlackInstance) GetTemplate() string { return s.Template }
+
 // WebhookURL returns the path to the webhook URL file.
 func (s SlackInstance) WebhookURL() string {
 	if s.Auth != nil {
@@ -532,6 +560,12 @@ type TeamsInstance struct {
 }
 
 func (t TeamsInstance) isEnabled() bool { return t.Enabled }
+
+// GetWhen returns the CEL when expression for the Teams instance.
+func (t TeamsInstance) GetWhen() string { return t.When }
+
+// GetTemplate returns the Go template for the Teams instance.
+func (t TeamsInstance) GetTemplate() string { return t.Template }
 
 // WebhookURL returns the path to the webhook URL file.
 func (t TeamsInstance) WebhookURL() string {
@@ -552,6 +586,12 @@ type DiscordInstance struct {
 }
 
 func (d DiscordInstance) isEnabled() bool { return d.Enabled }
+
+// GetWhen returns the CEL when expression for the Discord instance.
+func (d DiscordInstance) GetWhen() string { return d.When }
+
+// GetTemplate returns the Go template for the Discord instance.
+func (d DiscordInstance) GetTemplate() string { return d.Template }
 
 // WebhookURL returns the path to the webhook URL file.
 func (d DiscordInstance) WebhookURL() string {
@@ -584,12 +624,63 @@ type EmailInstance struct {
 
 func (e EmailInstance) isEnabled() bool { return e.Enabled }
 
+// GetWhen returns the CEL when expression for the Email instance.
+func (e EmailInstance) GetWhen() string { return e.When }
+
+// GetTemplate returns the Go template for the Email instance.
+func (e EmailInstance) GetTemplate() string { return e.Template }
+
 // EmailAuth holds SMTP credentials. Password comes from a mounted secret.
 type EmailAuth struct {
 	Username     string `yaml:"username,omitempty"`
 	PasswordFile string `yaml:"password_file,omitempty"`
 	PasswordKey  string `yaml:"password_key,omitempty"`
 }
+
+// JiraInstance represents a Jira (Cloud or Data Center) integration. The
+// target issue comes from the tekton.dev/tekton-events-relay.jira.issue-key
+// annotation, extracted by the TriggerBinding from branch names or PR titles.
+type JiraInstance struct {
+	Name    string `yaml:"name" validate:"required"`
+	Enabled bool   `yaml:"enabled"`
+	// BaseURL: https://yourorg.atlassian.net (Cloud) or the Data Center URL.
+	BaseURL string    `yaml:"base_url"`
+	Auth    *JiraAuth `yaml:"auth,omitempty"`
+	// InsecureSkipVerify disables TLS verification (self-hosted Data Center).
+	InsecureSkipVerify bool         `yaml:"insecure_skip_verify,omitempty"`
+	Actions            []JiraAction `yaml:"actions,omitempty"`
+}
+
+func (j JiraInstance) isEnabled() bool { return j.Enabled }
+
+// JiraAuth holds Jira credentials. With Email set, basic auth (Cloud API
+// token); otherwise the token is sent as a bearer (Data Center PAT).
+type JiraAuth struct {
+	Email     string `yaml:"email,omitempty"`
+	TokenFile string `yaml:"token_file,omitempty"`
+	TokenKey  string `yaml:"token_key,omitempty"`
+}
+
+// JiraAction configures one Jira action within an instance.
+type JiraAction struct {
+	Name    string         `yaml:"name"`
+	Type    JiraActionType `yaml:"type" validate:"required"`
+	Enabled bool           `yaml:"enabled"`
+	When    string         `yaml:"when,omitempty"`
+	// Template renders the comment body (comment actions); empty uses the default.
+	Template string `yaml:"template,omitempty"`
+	// Transition is the target transition name or numeric id (transition actions).
+	Transition string `yaml:"transition,omitempty"`
+}
+
+// JiraActionType identifies the Jira action kind.
+type JiraActionType string
+
+// Jira action types.
+const (
+	JiraActionComment    JiraActionType = "comment"
+	JiraActionTransition JiraActionType = "transition"
+)
 
 // PagerDutyInstance represents a single PagerDuty notifier configuration.
 type PagerDutyInstance struct {
@@ -602,8 +693,8 @@ type PagerDutyInstance struct {
 
 func (p PagerDutyInstance) isEnabled() bool { return p.Enabled }
 
-// Template returns an empty string as PagerDuty does not use templates.
-func (p PagerDutyInstance) Template() string { return "" }
+// GetWhen returns the CEL when expression for the PagerDuty instance.
+func (p PagerDutyInstance) GetWhen() string { return p.When }
 
 // DatadogInstance represents a single Datadog notifier configuration.
 type DatadogInstance struct {
@@ -617,8 +708,8 @@ type DatadogInstance struct {
 
 func (d DatadogInstance) isEnabled() bool { return d.Enabled }
 
-// Template returns an empty string as Datadog does not use templates.
-func (d DatadogInstance) Template() string { return "" }
+// GetWhen returns the CEL when expression for the Datadog instance.
+func (d DatadogInstance) GetWhen() string { return d.When }
 
 // WebhookInstance represents a single generic webhook notifier configuration.
 type WebhookInstance struct {
@@ -633,6 +724,9 @@ type WebhookInstance struct {
 }
 
 func (w WebhookInstance) isEnabled() bool { return w.Enabled }
+
+// GetWhen returns the CEL when expression for the Webhook instance.
+func (w WebhookInstance) GetWhen() string { return w.When }
 
 // WebhookAuthConfig defines authentication configuration for webhook notifiers.
 type WebhookAuthConfig struct {
@@ -698,8 +792,9 @@ type VerboseConfig struct {
 
 // TracingConfig contains OpenTelemetry tracing configuration.
 type TracingConfig struct {
-	Endpoint    string `mapstructure:"endpoint" yaml:"endpoint"`
-	ServiceName string `mapstructure:"service_name" yaml:"service_name"`
+	Endpoint    string `yaml:"endpoint"`
+	ServiceName string `yaml:"service_name"`
+	Insecure    bool   `yaml:"insecure,omitempty"` // true = plaintext HTTP (default); false = HTTPS with TLS
 }
 
 // Load reads and parses the configuration file at the given path.
@@ -710,10 +805,8 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("read config: %w", err)
 	}
 
-	expanded := expandEnv(string(raw))
-
 	var cfg Config
-	if err := yaml.Unmarshal([]byte(expanded), &cfg); err != nil {
+	if err := yaml.Unmarshal(raw, &cfg); err != nil {
 		return nil, fmt.Errorf("parse yaml: %w", err)
 	}
 
@@ -724,16 +817,6 @@ func Load(path string) (*Config, error) {
 	}
 
 	return &cfg, nil
-}
-
-var envRe = regexp.MustCompile(`\$\{([A-Z_][A-Z0-9_]*)\}`)
-
-// expandEnv handles ${UPPERCASE_VAR} for non-secret operational config.
-// For secrets, use file-based resolution via secrets.Resolve.
-func expandEnv(s string) string {
-	return envRe.ReplaceAllStringFunc(s, func(match string) string {
-		return os.Getenv(match[2 : len(match)-1])
-	})
 }
 
 func applyDefaults(c *Config) {

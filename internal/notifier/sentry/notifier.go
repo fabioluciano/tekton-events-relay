@@ -5,7 +5,9 @@ package sentry
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"go.uber.org/zap"
@@ -38,10 +40,33 @@ type Config struct {
 	Log      *zap.Logger
 }
 
+// validateURL checks that a URL has an http or https scheme.
+func validateURL(urlStr string) error {
+	u, err := url.Parse(urlStr)
+	if err != nil {
+		return fmt.Errorf("invalid URL: %w", err)
+	}
+	switch u.Scheme {
+	case "http", "https":
+		return nil
+	default:
+		return fmt.Errorf("unsupported URL scheme %q: only http and https are allowed", u.Scheme)
+	}
+}
+
 // New creates a Sentry release notifier.
 func New(cfg Config) *Notifier {
 	base := cfg.BaseURL
 	if base == "" {
+		base = defaultBaseURL
+	}
+	if err := validateURL(base); err != nil {
+		if cfg.Log != nil {
+			cfg.Log.Error("invalid Sentry base URL, using default",
+				zap.String("url", base),
+				zap.Error(err),
+			)
+		}
 		base = defaultBaseURL
 	}
 	log := cfg.Log
@@ -118,7 +143,8 @@ func (n *Notifier) post(ctx context.Context, url string, payload any) error {
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 300 {
-		return fmt.Errorf("sentry API returned %d", resp.StatusCode)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("sentry API returned %d: %s", resp.StatusCode, string(body))
 	}
 	return nil
 }

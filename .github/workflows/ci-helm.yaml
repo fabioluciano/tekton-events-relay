@@ -33,6 +33,11 @@ jobs:
         with:
           version: "v3.16.3"
 
+      - name: Add Helm repos and build dependencies
+        run: |
+          helm repo add valkey https://valkey.io/valkey-helm/
+          helm dependency build charts/tekton-events-relay
+
       - name: Helm lint
         run: |
           echo "::group::Helm lint"
@@ -71,6 +76,11 @@ jobs:
         with:
           version: "v3.16.3"
 
+      - name: Add Helm repos and build dependencies
+        run: |
+          helm repo add valkey https://valkey.io/valkey-helm/
+          helm dependency build charts/tekton-events-relay
+
       - name: Install kubeconform
         run: |
           curl -L https://github.com/yannh/kubeconform/releases/download/v0.7.0/kubeconform-linux-amd64.tar.gz | tar xz
@@ -95,6 +105,11 @@ jobs:
         uses: azure/setup-helm@v5.0.0
         with:
           version: "v3.16.3"
+
+      - name: Add Helm repos and build dependencies
+        run: |
+          helm repo add valkey https://valkey.io/valkey-helm/
+          helm dependency build charts/tekton-events-relay
 
       - name: Install kubesec
         run: |
@@ -137,6 +152,11 @@ jobs:
         uses: azure/setup-helm@v5.0.0
         with:
           version: "v3.16.3"
+
+      - name: Add Helm repos and build dependencies
+        run: |
+          helm repo add valkey https://valkey.io/valkey-helm/
+          helm dependency build charts/tekton-events-relay
 
       - name: Install KubeLinter
         run: |

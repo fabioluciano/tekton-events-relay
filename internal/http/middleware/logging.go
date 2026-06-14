@@ -99,7 +99,7 @@ func RequestLogging(logger *zap.Logger) func(http.Handler) http.Handler {
 func generateRequestID() string {
 	b := make([]byte, 8)
 	if _, err := rand.Read(b); err != nil {
-		return "req_" + time.Now().Format("20060102150405")
+		return "req_" + time.Now().UTC().Format("20060102150405")
 	}
 	return "req_" + hex.EncodeToString(b)
 }

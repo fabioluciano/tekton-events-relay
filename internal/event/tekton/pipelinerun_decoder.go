@@ -86,7 +86,7 @@ func (d *PipelineRunDecoder) Decode(raw event.RawEvent) (*event.Envelope, error)
 		for _, r := range obj.Status.PipelineResults {
 			report.Results = append(report.Results, domain.Result{
 				Name:  r.Name,
-				Value: r.Value,
+				Value: rawMessageToString(r.Value),
 			})
 		}
 	}

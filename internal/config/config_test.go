@@ -7,13 +7,14 @@ import (
 	"testing"
 
 	"go.uber.org/zap"
+
+	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
 )
 
 func TestLoad(t *testing.T) {
 	tests := []struct {
 		name        string
 		fileContent string
-		envVars     map[string]string
 		wantErr     bool
 	}{
 		{
@@ -21,17 +22,6 @@ func TestLoad(t *testing.T) {
 			fileContent: `server:
   addr: ":8080"
 notifiers: {}`,
-			wantErr: false,
-		},
-		{
-			name: "config with env expansion",
-			fileContent: `server:
-  addr: "${LISTEN_ADDR}"
-dashboard_url: "${DASHBOARD_URL}"`,
-			envVars: map[string]string{
-				"LISTEN_ADDR":   ":9090",
-				"DASHBOARD_URL": "http://localhost:8080",
-			},
 			wantErr: false,
 		},
 		{
@@ -54,10 +44,6 @@ dashboard_url: "${DASHBOARD_URL}"`,
 				t.Fatal(err)
 			}
 
-			for k, v := range tt.envVars {
-				t.Setenv(k, v)
-			}
-
 			cfg, err := Load(cfgPath)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Load() error = %v, wantErr %v", err, tt.wantErr)
@@ -74,52 +60,6 @@ func TestLoadNonExistent(t *testing.T) {
 	_, err := Load("/nonexistent/path/config.yaml")
 	if err == nil {
 		t.Error("expected error for nonexistent file")
-	}
-}
-
-func TestExpandEnv(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		envVars  map[string]string
-		expected string
-	}{
-		{
-			name:     "single var",
-			input:    "value is ${VAR}",
-			envVars:  map[string]string{"VAR": "test"},
-			expected: "value is test",
-		},
-		{
-			name:     "multiple vars",
-			input:    "${A} and ${B}",
-			envVars:  map[string]string{"A": "foo", "B": "bar"},
-			expected: "foo and bar",
-		},
-		{
-			name:     "no vars",
-			input:    "plain text",
-			envVars:  nil,
-			expected: "plain text",
-		},
-		{
-			name:     "undefined var",
-			input:    "${UNDEFINED}",
-			envVars:  nil,
-			expected: "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			for k, v := range tt.envVars {
-				t.Setenv(k, v)
-			}
-			result := expandEnv(tt.input)
-			if result != tt.expected {
-				t.Errorf("expandEnv() = %q, want %q", result, tt.expected)
-			}
-		})
 	}
 }
 
@@ -153,13 +93,13 @@ func TestConfig_ValidateTokenReferences_Warns(t *testing.T) {
 			expectWarn: true,
 		},
 		{
-			name: "env var reference no warning",
+			name: "file path no warning",
 			fileContent: `scm:
   github:
     - name: test
       enabled: true
       auth:
-        secret_file: "${GITHUB_TOKEN}"
+        secret_file: "/etc/secrets/github/token"
       base_url: "https://api.github.com"`,
 			expectWarn: false,
 		},
@@ -173,22 +113,18 @@ func TestConfig_ValidateTokenReferences_Warns(t *testing.T) {
 			expectWarn: true,
 		},
 		{
-			name: "env var webhook url no warning",
+			name: "file path webhook url no warning",
 			fileContent: `notifiers:
   slack:
     - name: test
       enabled: false
-      webhook_url: "${SLACK_WEBHOOK}"`,
+      webhook_url: "/etc/secrets/slack/webhook-url"`,
 			expectWarn: false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Set dummy env vars so expansion doesn't produce empty values
-			t.Setenv("GITHUB_TOKEN", "dummy_token")
-			t.Setenv("SLACK_WEBHOOK", "https://dummy.slack.com/webhook")
-
 			tmpDir := t.TempDir()
 			cfgPath := filepath.Join(tmpDir, "config.yaml")
 			if err := os.WriteFile(cfgPath, []byte(tt.fileContent), 0600); err != nil {
@@ -306,7 +242,7 @@ func TestActionConfigUnmarshal(t *testing.T) {
 	gh := cfg.SCM.GitHub[0].Actions
 	// Find pr_comment action (index 0)
 	prComment := gh[0]
-	if !prComment.Enabled || prComment.Type != ActionTypePRComment {
+	if !prComment.Enabled || prComment.Type != notifier.ActionPRComment {
 		t.Error("expected enabled GitHub PR comment action")
 	}
 	if prComment.Template != "Pipeline {{.State}} for {{.RunName}}" {
@@ -315,13 +251,13 @@ func TestActionConfigUnmarshal(t *testing.T) {
 
 	// issue_comment action (index 1)
 	issueComment := gh[1]
-	if !issueComment.Enabled || issueComment.Type != ActionTypeIssueComment {
+	if !issueComment.Enabled || issueComment.Type != notifier.ActionIssueComment {
 		t.Error("expected enabled GitHub issue comment action")
 	}
 
 	// label action (index 2)
 	labelAction := gh[2]
-	if !labelAction.Enabled || labelAction.Type != ActionTypeLabel {
+	if !labelAction.Enabled || labelAction.Type != notifier.ActionLabel {
 		t.Error("expected enabled GitHub label action")
 	}
 	if labelAction.Labels == nil || len(labelAction.Labels.Add) != 1 || labelAction.Labels.Add[0].Name != "ci:passed" {
@@ -333,7 +269,7 @@ func TestActionConfigUnmarshal(t *testing.T) {
 
 	// commit_status action (index 3)
 	commitStatus := gh[3]
-	if !commitStatus.Enabled || commitStatus.Type != ActionTypeCommitStatus {
+	if !commitStatus.Enabled || commitStatus.Type != notifier.ActionCommitStatus {
 		t.Error("expected enabled GitHub commit status action")
 	}
 	if commitStatus.When != "event.State == 'success'" {
@@ -345,13 +281,13 @@ func TestActionConfigUnmarshal(t *testing.T) {
 		t.Fatal("expected Gitea actions config")
 	}
 	giteaActions := cfg.SCM.Gitea[0].Actions
-	if !giteaActions[0].Enabled || giteaActions[0].Type != ActionTypeCommitStatus {
+	if !giteaActions[0].Enabled || giteaActions[0].Type != notifier.ActionCommitStatus {
 		t.Error("expected enabled Gitea commit status action")
 	}
 	if giteaActions[0].When != "" {
 		t.Errorf("expected empty when field for Gitea commit_status, got: %s", giteaActions[0].When)
 	}
-	if !giteaActions[1].Enabled || giteaActions[1].Type != ActionTypePRComment {
+	if !giteaActions[1].Enabled || giteaActions[1].Type != notifier.ActionPRComment {
 		t.Error("expected enabled Gitea PR comment action")
 	}
 
@@ -359,7 +295,7 @@ func TestActionConfigUnmarshal(t *testing.T) {
 	if len(cfg.SCM.GitLab) == 0 || len(cfg.SCM.GitLab[0].Actions) == 0 {
 		t.Fatal("expected GitLab actions config")
 	}
-	if !cfg.SCM.GitLab[0].Actions[0].Enabled || cfg.SCM.GitLab[0].Actions[0].Type != ActionTypeLabel {
+	if !cfg.SCM.GitLab[0].Actions[0].Enabled || cfg.SCM.GitLab[0].Actions[0].Type != notifier.ActionLabel {
 		t.Error("expected enabled GitLab label action")
 	}
 
@@ -367,7 +303,7 @@ func TestActionConfigUnmarshal(t *testing.T) {
 	if len(cfg.SCM.Azure) == 0 || len(cfg.SCM.Azure[0].Actions) == 0 {
 		t.Fatal("expected Azure DevOps actions config")
 	}
-	if !cfg.SCM.Azure[0].Actions[0].Enabled || cfg.SCM.Azure[0].Actions[0].Type != ActionTypeLabel {
+	if !cfg.SCM.Azure[0].Actions[0].Enabled || cfg.SCM.Azure[0].Actions[0].Type != notifier.ActionLabel {
 		t.Error("expected enabled Azure DevOps label action")
 	}
 }
@@ -458,7 +394,7 @@ func TestWebhookAuthValidation(t *testing.T) {
       enabled: true
       url_file: "https://example.com/webhook"
       auth:
-        type: ` + AuthTypeBasic + `
+        type: ` + "basic" + `
         username_file: "user"
         password_file: "pass"`,
 			wantErr: false,
@@ -471,7 +407,7 @@ func TestWebhookAuthValidation(t *testing.T) {
       enabled: true
       url_file: "https://example.com/webhook"
       auth:
-        type: ` + AuthTypeAPIKey + `
+        type: ` + "apikey" + `
         token_file: "key-123"
         header: "X-API-Key"`,
 			wantErr: false,
@@ -484,7 +420,7 @@ func TestWebhookAuthValidation(t *testing.T) {
       enabled: true
       url_file: "https://example.com/webhook"
       auth:
-        type: ` + AuthTypeHMAC + `
+        type: ` + "hmac" + `
         secret_file: "my-secret"`,
 			wantErr: false,
 		},
@@ -522,7 +458,7 @@ func TestWebhookAuthValidation(t *testing.T) {
       enabled: true
       url_file: "https://example.com/webhook"
       auth:
-        type: ` + AuthTypeBasic + `
+        type: ` + "basic" + `
         username_file: "user"`,
 			wantErr:     true,
 			errContains: "type 'basic' requires 'username_file' and 'password_file'",
@@ -535,7 +471,7 @@ func TestWebhookAuthValidation(t *testing.T) {
       enabled: true
       url_file: "https://example.com/webhook"
       auth:
-        type: ` + AuthTypeAPIKey + `
+        type: ` + "apikey" + `
         token_file: "key"`,
 			wantErr:     true,
 			errContains: "type 'apikey' requires 'token_file' and 'header'",
@@ -548,7 +484,7 @@ func TestWebhookAuthValidation(t *testing.T) {
       enabled: true
       url_file: "https://example.com/webhook"
       auth:
-        type: ` + AuthTypeHMAC + ``,
+        type: ` + "hmac" + ``,
 			wantErr:     true,
 			errContains: "type 'hmac' requires 'secret_file'",
 		},
@@ -560,7 +496,7 @@ func TestWebhookAuthValidation(t *testing.T) {
       enabled: true
       url_file: "https://example.com/webhook"
       auth:
-        type: ` + AuthTypeHMAC + `
+        type: ` + "hmac" + `
         secret_file: "key"
         token_file: "invalid"`,
 			wantErr:     true,

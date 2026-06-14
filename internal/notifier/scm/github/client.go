@@ -13,6 +13,9 @@ import (
 
 	gh "github.com/google/go-github/v68/github"
 	"go.uber.org/zap"
+
+	"github.com/fabioluciano/tekton-events-relay/internal/httpx"
+	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
 )
 
 // HTTPDoer abstracts GitHub API HTTP operations for both token and app-based authentication.
@@ -36,7 +39,7 @@ type Client struct {
 // NewClient creates a new GitHub API client with the given token, base URL, and TLS verification setting.
 func NewClient(token, baseURL string, insecureSkipVerify bool, log *zap.Logger, debug bool) *Client {
 	if baseURL == "" {
-		baseURL = "https://api.github.com" //nolint:goconst
+		baseURL = GitHubBaseURL
 	}
 	if log == nil {
 		log = zap.NewNop()
@@ -45,7 +48,7 @@ func NewClient(token, baseURL string, insecureSkipVerify bool, log *zap.Logger, 
 	httpClient := buildHTTPClient(insecureSkipVerify, debug, log)
 	ghc := gh.NewClient(httpClient).WithAuthToken(token)
 
-	if baseURL != "" && baseURL != "https://api.github.com" {
+	if baseURL != GitHubBaseURL { //nolint:goconst
 		var err error
 		ghc, err = ghc.WithEnterpriseURLs(baseURL, baseURL+"/api/graphql")
 		if err != nil {
@@ -66,7 +69,7 @@ func NewClient(token, baseURL string, insecureSkipVerify bool, log *zap.Logger, 
 // buildHTTPClient creates an http.Client with appropriate TLS and timeout settings.
 func buildHTTPClient(insecureSkipVerify bool, debug bool, log *zap.Logger) *http.Client {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.MaxIdleConnsPerHost = 100
+	transport.MaxIdleConnsPerHost = httpx.SharedMaxIdleConnsPerHost
 
 	if insecureSkipVerify {
 		if transport.TLSClientConfig == nil {
@@ -191,7 +194,7 @@ func (c *Client) DoGraphQL(ctx context.Context, query string, variables map[stri
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "tekton-events-relay")
+	req.Header.Set("User-Agent", notifier.UserAgent)
 
 	// Use the underlying http.Client which has auth transport (Bearer token)
 	resp, err := c.gh.Client().Do(req)
@@ -222,8 +225,8 @@ func (c *Client) DoGraphQL(ctx context.Context, query string, variables map[stri
 
 // graphqlEndpoint returns the GraphQL endpoint based on baseURL.
 func (c *Client) graphqlEndpoint() string {
-	if c.baseURL == "https://api.github.com" {
-		return "https://api.github.com/graphql"
+	if c.baseURL == GitHubBaseURL {
+		return GitHubBaseURL + "/graphql"
 	}
 	// GHES: baseURL + /api/graphql
 	return c.baseURL + "/api/graphql"

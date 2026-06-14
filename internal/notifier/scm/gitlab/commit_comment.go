@@ -46,8 +46,13 @@ func NewCommitCommentHandler(cfg CommitCommentConfig) (notifier.ActionHandler, e
 	if log == nil {
 		log = zap.NewNop()
 	}
+	c, err := NewClient(cfg.Token, cfg.BaseURL, cfg.InsecureSkipVerify, false, cfg.Log)
+	if err != nil {
+		return nil, err
+	}
+
 	return &CommitCommentHandler{
-		client:   NewClient(cfg.Token, cfg.BaseURL, cfg.InsecureSkipVerify, false, cfg.Log),
+		client:   c,
 		name:     cfg.Name,
 		template: tmpl,
 		log:      log,

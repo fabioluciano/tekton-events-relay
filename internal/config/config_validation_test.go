@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
 )
 
 const (
@@ -66,7 +68,7 @@ func TestValidate_InvalidCEL_GitHub(t *testing.T) {
 					Actions: []Action{
 						{
 							Name:    testActionNameStatus,
-							Type:    ActionTypeCommitStatus,
+							Type:    notifier.ActionCommitStatus,
 							Enabled: true,
 							When:    "event.State == ", // Invalid CEL
 						},
@@ -95,7 +97,7 @@ func TestValidate_InvalidCEL_AllActions(t *testing.T) {
 			name: "pr_comment invalid",
 			action: Action{
 				Name: "pr",
-				Type: ActionTypePRComment,
+				Type: notifier.ActionPRComment,
 				When: "invalid CEL &&",
 			},
 			expectedErr: "actions[0].when",
@@ -104,7 +106,7 @@ func TestValidate_InvalidCEL_AllActions(t *testing.T) {
 			name: "issue_comment invalid",
 			action: Action{
 				Name: "issue",
-				Type: ActionTypeIssueComment,
+				Type: notifier.ActionIssueComment,
 				When: "event.State ==",
 			},
 			expectedErr: "actions[0].when",
@@ -113,7 +115,7 @@ func TestValidate_InvalidCEL_AllActions(t *testing.T) {
 			name: "label invalid",
 			action: Action{
 				Name:   "label",
-				Type:   ActionTypeLabel,
+				Type:   notifier.ActionLabel,
 				When:   "missing()",
 				Labels: &ActionLabels{Add: []LabelEntry{{Name: "ci:passed"}}},
 			},
@@ -123,7 +125,7 @@ func TestValidate_InvalidCEL_AllActions(t *testing.T) {
 			name: "discussion_comment invalid",
 			action: Action{
 				Name: "disc",
-				Type: ActionTypeDiscussionComment,
+				Type: notifier.ActionDiscussionComment,
 				When: "event.State ===",
 			},
 			expectedErr: "actions[0].when",
@@ -701,7 +703,7 @@ func TestValidate_AllSCMProviders(t *testing.T) {
 					Auth:    &GitHubAuth{SecretFile: "token"},
 					BaseURL: "https://github.com",
 					Actions: []Action{
-						{Name: "status", Type: ActionTypeCommitStatus, When: "event.State == 'succeeded'"}, //nolint:goconst
+						{Name: "status", Type: notifier.ActionCommitStatus, When: "event.State == 'succeeded'"}, //nolint:goconst
 					},
 				},
 			},
@@ -713,7 +715,7 @@ func TestValidate_AllSCMProviders(t *testing.T) {
 					Auth:    &GitLabAuth{SecretFile: "token"},
 					BaseURL: "https://gitlab.com",
 					Actions: []Action{
-						{Name: "status", Type: ActionTypeCommitStatus, When: "event.State == 'failed'"},
+						{Name: "status", Type: notifier.ActionCommitStatus, When: "event.State == 'failed'"},
 					},
 				},
 			},
@@ -724,7 +726,7 @@ func TestValidate_AllSCMProviders(t *testing.T) {
 					Auth:    &GiteaAuth{SecretFile: "token"},
 					BaseURL: "https://gitea.com",
 					Actions: []Action{
-						{Name: "pr", Type: ActionTypePRComment, When: "event.State == 'running'"},
+						{Name: "pr", Type: notifier.ActionPRComment, When: "event.State == 'running'"},
 					},
 				},
 			},
@@ -735,7 +737,7 @@ func TestValidate_AllSCMProviders(t *testing.T) {
 					SecretFile: "token",
 					BaseURL:    "https://dev.azure.com",
 					Actions: []Action{
-						{Name: "label", Type: ActionTypeLabel, When: "event.State == 'succeeded'", Labels: &ActionLabels{Add: []LabelEntry{{Name: "ok"}}}},
+						{Name: "label", Type: notifier.ActionLabel, When: "event.State == 'succeeded'", Labels: &ActionLabels{Add: []LabelEntry{{Name: "ok"}}}},
 					},
 				},
 			},
@@ -747,7 +749,7 @@ func TestValidate_AllSCMProviders(t *testing.T) {
 					Auth:    &BitbucketAuth{UsernameFile: "user", AppPasswordFile: "pass"},
 					BaseURL: "https://bitbucket.org",
 					Actions: []Action{
-						{Name: "pr", Type: ActionTypePRComment, When: "event.PRNumber > 0"},
+						{Name: "pr", Type: notifier.ActionPRComment, When: "event.PRNumber > 0"},
 					},
 				},
 			},
@@ -758,7 +760,7 @@ func TestValidate_AllSCMProviders(t *testing.T) {
 					Auth:    &SourceHutAuth{SecretFile: "token"},
 					BaseURL: "https://sr.ht",
 					Actions: []Action{
-						{Name: "status", Type: ActionTypeCommitStatus, When: "event.State != 'pending'"},
+						{Name: "status", Type: notifier.ActionCommitStatus, When: "event.State != 'pending'"},
 					},
 				},
 			},
@@ -839,7 +841,7 @@ func TestConfig_AuthTypes(t *testing.T) {
 					Auth: AuthConfig{ //nolint:gosec // test data
 						Enabled:    true,
 						Type:       tt.authType,
-						SecretFile: "${WEBHOOK_SECRET}",
+						SecretFile: "/etc/secrets/server/auth/secret",
 					},
 				},
 			}
@@ -898,7 +900,7 @@ func TestValidate_ValidCELExpressions(t *testing.T) {
 							Auth:    &GitHubAuth{SecretFile: "token"},
 							BaseURL: "https://github.com",
 							Actions: []Action{
-								{Name: "status", Type: ActionTypeCommitStatus, When: tt.when},
+								{Name: "status", Type: notifier.ActionCommitStatus, When: tt.when},
 							},
 						},
 					},

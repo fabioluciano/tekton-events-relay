@@ -16,18 +16,32 @@ import (
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/scm"
 )
 
+const (
+	mockGiteaVersion = "1.22.0"
+	mockGiteaKey     = "version"
+)
+
 func newLabelTestHandler(t *testing.T, baseURL string) notifier.ActionHandler {
 	t.Helper()
-	return NewLabelHandler(LabelConfig{
+	h, err := NewLabelHandler(LabelConfig{
 		Token:   "token",
 		BaseURL: baseURL,
 		Labels:  scm.LabelSet{Add: []scm.Label{{Name: "ci:passed"}}, Remove: []scm.Label{{Name: "ci:failed"}}},
 		Log:     zap.NewNop(),
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return h
 }
 
 func TestLabelHandler_NameAndType(t *testing.T) {
-	h := newLabelTestHandler(t, "http://localhost")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]string{mockGiteaKey: mockGiteaVersion})
+	}))
+	defer srv.Close()
+
+	h := newLabelTestHandler(t, srv.URL)
 	if h.Name() != "gitea" {
 		t.Errorf("Name = %q, want gitea", h.Name())
 	}
@@ -40,7 +54,7 @@ func TestLabelHandler_SkipsWithoutIssueOrPR(t *testing.T) {
 	var calls atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/v1/version" {
-			_ = json.NewEncoder(w).Encode(map[string]string{"version": "1.22.0"})
+			_ = json.NewEncoder(w).Encode(map[string]string{mockGiteaKey: mockGiteaVersion})
 			return
 		}
 		calls.Add(1)
@@ -67,7 +81,7 @@ func TestLabelHandler_AppliesLabelForState(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/api/v1/version":
-			_ = json.NewEncoder(w).Encode(map[string]string{"version": "1.22.0"})
+			_ = json.NewEncoder(w).Encode(map[string]string{mockGiteaKey: mockGiteaVersion})
 		case strings.Contains(r.URL.Path, "/labels"):
 			labelCalls.Add(1)
 			w.WriteHeader(http.StatusOK)

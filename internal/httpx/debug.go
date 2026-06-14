@@ -45,7 +45,10 @@ func (d *debugTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	// Read full body, restore full body, truncate only for log.
 	var reqLogBody []byte
 	if req.Body != nil {
-		fullBody, _ := io.ReadAll(req.Body)
+		fullBody, readErr := io.ReadAll(req.Body)
+		if readErr != nil {
+			d.logger.Warn("failed to read request body for debug logging", zap.Error(readErr))
+		}
 		req.Body = io.NopCloser(bytes.NewReader(fullBody))
 		if len(fullBody) > maxBodyLogSize {
 			reqLogBody = fullBody[:maxBodyLogSize]
@@ -74,7 +77,10 @@ func (d *debugTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 
 	// Read full response body, restore full body, truncate only for log.
-	fullRespBody, _ := io.ReadAll(resp.Body)
+	fullRespBody, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		d.logger.Warn("failed to read response body for debug logging", zap.Error(readErr))
+	}
 	_ = resp.Body.Close()
 	resp.Body = io.NopCloser(bytes.NewReader(fullRespBody))
 

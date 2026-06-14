@@ -1,6 +1,8 @@
 package factory
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,6 +13,18 @@ import (
 	"github.com/fabioluciano/tekton-events-relay/internal/config"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
 )
+
+// newMockGiteaServer creates a mock Gitea server that responds to /api/v1/version.
+func newMockGiteaServer() *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/version" {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"version":"1.21.0"}`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+}
 
 const (
 	testStatus            = "status"
@@ -24,7 +38,6 @@ const (
 	testGitLabBaseURL     = "https://gitlab.com/api/v4"
 	testBitbucketBaseURL  = "https://api.bitbucket.org"
 	testAzureBaseURL      = "https://dev.azure.com"
-	testGiteaBaseURL      = "https://gitea.example.com"
 	testSourceHutBaseURL  = "https://builds.sr.ht"
 	testSlackWebhookURL   = "https://hooks.slack.com/test"
 	testTokenPrefixed     = "test-testToken"
@@ -111,6 +124,10 @@ func TestBuildAll_IntegrationWiring(t *testing.T) {
 	log, _ := zap.NewDevelopment()
 
 	t.Run("all providers wired correctly with one instance each", func(t *testing.T) {
+		// Create a mock Gitea server (Gitea SDK validates the server on client creation)
+		mockGitea := newMockGiteaServer()
+		defer mockGitea.Close()
+
 		// Create temp files for secrets
 		tmpDir := t.TempDir()
 		ghToken := filepath.Join(tmpDir, "gh-token")
@@ -215,7 +232,7 @@ func TestBuildAll_IntegrationWiring(t *testing.T) {
       enabled: true
       auth:
         secret_file: ` + giteaToken + `
-      base_url: ` + testGiteaBaseURL + `
+      base_url: ` + mockGitea.URL + `
       actions:
         - name: ` + testStatus + `
           type: commit_status
@@ -361,8 +378,8 @@ notifiers:
 
 	t.Run("disabled actions within enabled instances produce no handlers", func(t *testing.T) {
 		cfg := setupTestConfig(t, []config.Action{
-			{Name: testStatus, Type: config.ActionTypeCommitStatus, Enabled: false},
-			{Name: testLabel, Type: config.ActionTypeLabel, Enabled: false},
+			{Name: testStatus, Type: notifier.ActionCommitStatus, Enabled: false},
+			{Name: testLabel, Type: notifier.ActionLabel, Enabled: false},
 		})
 
 		reg, err := BuildAll(cfg, log)
@@ -379,7 +396,7 @@ notifiers:
 		cfg := setupTestConfig(t, []config.Action{
 			{
 				Name:     "bad-cel",
-				Type:     config.ActionTypePRComment,
+				Type:     notifier.ActionPRComment,
 				Enabled:  true,
 				Template: "/tmp/tekton-test-templates/t.tmpl",
 				When:     "invalid !!! syntax",
@@ -413,28 +430,28 @@ func TestBuildAll(t *testing.T) {
 		cfg := setupTestConfig(t, []config.Action{
 			{
 				Name:    testStatus,
-				Type:    config.ActionTypeCommitStatus,
+				Type:    notifier.ActionCommitStatus,
 				Enabled: true,
 			},
 			{
 				Name:     testPRComment,
-				Type:     config.ActionTypePRComment,
+				Type:     notifier.ActionPRComment,
 				Enabled:  true,
 				Template: "/tmp/tekton-test-templates/test.tmpl",
 			},
 			{
 				Name:     testIssueComment,
-				Type:     config.ActionTypeIssueComment,
+				Type:     notifier.ActionIssueComment,
 				Enabled:  true,
 				Template: "/tmp/tekton-test-templates/issue.tmpl"},
 			{
 				Name:     testDiscussionComment,
-				Type:     config.ActionTypeDiscussionComment,
+				Type:     notifier.ActionDiscussionComment,
 				Enabled:  true,
 				Template: "/tmp/tekton-test-templates/discussion.tmpl"},
 			{
 				Name:    testLabel,
-				Type:    config.ActionTypeLabel,
+				Type:    notifier.ActionLabel,
 				Enabled: true,
 				Labels:  &config.ActionLabels{Add: []config.LabelEntry{{Name: "ci:passed"}}, Remove: []config.LabelEntry{{Name: "ci:failed"}}},
 			},
@@ -456,7 +473,7 @@ func TestBuildAll(t *testing.T) {
 		cfg := setupTestConfig(t, []config.Action{
 			{
 				Name:    testPRComment,
-				Type:    config.ActionTypePRComment,
+				Type:    notifier.ActionPRComment,
 				Enabled: false,
 			},
 		})
@@ -474,6 +491,9 @@ func TestBuildAll(t *testing.T) {
 	})
 
 	t.Run("Gitea action handlers registered when enabled", func(t *testing.T) {
+		mockGitea := newMockGiteaServer()
+		defer mockGitea.Close()
+
 		tmpDir := t.TempDir()
 		tokenFile := filepath.Join(tmpDir, "gitea-token")
 		if err := os.WriteFile(tokenFile, []byte("test-gitea-token"), 0600); err != nil {
@@ -486,7 +506,7 @@ func TestBuildAll(t *testing.T) {
       enabled: true
       auth:
         secret_file: ` + tokenFile + `
-      base_url: ` + testGiteaBaseURL + `
+      base_url: ` + mockGitea.URL + `
       actions:
         - name: ` + testPRComment + `
           type: pr_comment
@@ -571,12 +591,12 @@ func TestBuildAll(t *testing.T) {
 		cfg := setupTestConfig(t, []config.Action{
 			{
 				Name:    testStatus,
-				Type:    config.ActionTypeCommitStatus,
+				Type:    notifier.ActionCommitStatus,
 				Enabled: true,
 			},
 			{
 				Name:     testPRComment,
-				Type:     config.ActionTypePRComment,
+				Type:     notifier.ActionPRComment,
 				Enabled:  true,
 				Template: "/tmp/tekton-test-templates/test.tmpl", When: "event.State == 'success'",
 			},
@@ -598,12 +618,12 @@ func TestBuildAll(t *testing.T) {
 		cfg := setupTestConfig(t, []config.Action{
 			{
 				Name:    testStatus,
-				Type:    config.ActionTypeCommitStatus,
+				Type:    notifier.ActionCommitStatus,
 				Enabled: true,
 			},
 			{
 				Name:    testLabel,
-				Type:    config.ActionTypeLabel,
+				Type:    notifier.ActionLabel,
 				Enabled: true,
 				Labels:  &config.ActionLabels{Add: []config.LabelEntry{{Name: "ci:passed"}}, Remove: []config.LabelEntry{{Name: "ci:failed"}}},
 			},
@@ -625,7 +645,7 @@ func TestBuildAll(t *testing.T) {
 		cfg := setupTestConfig(t, []config.Action{
 			{
 				Name:     testPRComment,
-				Type:     config.ActionTypePRComment,
+				Type:     notifier.ActionPRComment,
 				Enabled:  true,
 				Template: "/tmp/tekton-test-templates/test.tmpl", When: "invalid CEL syntax !!!",
 			},

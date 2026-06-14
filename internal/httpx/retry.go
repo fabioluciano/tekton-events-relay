@@ -31,6 +31,12 @@ const (
 )
 
 var (
+	defaultRetryClient = sync.OnceValue(func() *retryhttp.Client {
+		c := retryhttp.NewClient()
+		c.Logger = nil
+		return c
+	})
+
 	policyMu      sync.RWMutex
 	defaultPolicy = RetryPolicy{
 		MaxAttempts:    DefaultRetryMaxAttempts,
@@ -94,12 +100,11 @@ func DoWithRetryPolicy(c *http.Client, req *http.Request, p RetryPolicy) (*http.
 	p = p.normalized()
 	host := req.URL.Host
 
-	rc := retryhttp.NewClient()
+	rc := defaultRetryClient()
 	rc.RetryMax = p.MaxAttempts - 1
 	rc.RetryWaitMin = p.InitialBackoff
 	rc.RetryWaitMax = p.MaxBackoff
 	rc.HTTPClient = c
-	rc.Logger = nil // suppress retryablehttp's default stderr logging
 
 	rc.CheckRetry = func(_ context.Context, resp *http.Response, err error) (bool, error) {
 		if err != nil {

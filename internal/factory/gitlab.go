@@ -72,9 +72,9 @@ func resolveOAuth2Token(oauth2cfg *config.OAuth2ClientCredentials, provider, nam
 // enables future SaaS-specific behaviors (rate limiting, feature flags).
 func (f *GitLabFactory) buildHandler(inst config.GitLabInstance, action config.Action, token string, log *zap.Logger) (notifier.ActionHandler, error) {
 	switch action.Type {
-	case config.ActionTypeCommitStatus:
-		return gitlab.NewStatusReporter(token, inst.BaseURL, inst.Name, inst.InsecureSkipVerify, log), nil
-	case config.ActionTypeCommitComment:
+	case notifier.ActionCommitStatus:
+		return gitlab.NewStatusReporter(token, inst.BaseURL, inst.Name, inst.InsecureSkipVerify, log)
+	case notifier.ActionCommitComment:
 		return gitlab.NewCommitCommentHandler(gitlab.CommitCommentConfig{
 			Token:              token,
 			BaseURL:            inst.BaseURL,
@@ -83,7 +83,7 @@ func (f *GitLabFactory) buildHandler(inst config.GitLabInstance, action config.A
 			InsecureSkipVerify: inst.InsecureSkipVerify,
 			Log:                log,
 		})
-	case config.ActionTypePRComment:
+	case notifier.ActionPRComment:
 		return gitlab.NewMRCommentHandler(gitlab.MRCommentConfig{
 			Token:              token,
 			BaseURL:            inst.BaseURL,
@@ -93,15 +93,15 @@ func (f *GitLabFactory) buildHandler(inst config.GitLabInstance, action config.A
 			InsecureSkipVerify: inst.InsecureSkipVerify,
 			Log:                log,
 		})
-	case config.ActionTypeDeploymentStatus:
+	case notifier.ActionDeploymentStatus:
 		return gitlab.NewDeploymentHandler(gitlab.DeploymentConfig{
 			Token:              token,
 			BaseURL:            inst.BaseURL,
 			Name:               inst.Name,
 			InsecureSkipVerify: inst.InsecureSkipVerify,
 			Log:                log,
-		}), nil
-	case config.ActionTypeLabel:
+		})
+	case notifier.ActionLabel:
 		return gitlab.NewLabelHandler(gitlab.LabelConfig{
 			Token:              token,
 			BaseURL:            inst.BaseURL,
@@ -109,7 +109,7 @@ func (f *GitLabFactory) buildHandler(inst config.GitLabInstance, action config.A
 			Labels:             labelSet(action),
 			InsecureSkipVerify: inst.InsecureSkipVerify,
 			Log:                log,
-		}), nil
+		})
 	default:
 		return nil, ErrUnsupportedActionType
 	}

@@ -24,7 +24,7 @@ data:
       auth:
         enabled: true
         type: {{ .Values.config.server.auth.type | quote }}
-        secret_file: {{ .Values.config.server.auth.secret_file | quote }}
+        secret_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .Values.config.server.auth.secret "provider" "server" "instance" "auth" "key" "secret") }}
         {{- if .Values.config.server.auth.validate_timestamp }}
         validate_timestamp: true
         timestamp_tolerance: {{ .Values.config.server.auth.timestamp_tolerance | default "5m" | quote }}
@@ -55,9 +55,13 @@ data:
       ttl: {{ .Values.config.store.ttl | quote }}
       {{- if eq .Values.config.store.backend "valkey" }}
       valkey:
-        address: {{ required "config.store.valkey.address is required when store.backend=valkey" .Values.config.store.valkey.address | quote }}
-        {{- if .Values.config.store.valkey.password_file }}
-        password_file: {{ .Values.config.store.valkey.password_file | quote }}
+        {{- if .Values.config.store.valkey.embedded.enabled }}
+        address: "{{ include "tekton-events-relay.fullname" . }}-valkey:{{ (index .Subcharts "valkey").Values.service.port | default 6379 }}"
+        {{- else }}
+        address: {{ required "config.store.valkey.address is required when store.backend=valkey and embedded is disabled" .Values.config.store.valkey.address | quote }}
+        {{- end }}
+        {{- if .Values.config.store.valkey.password }}
+        password_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .Values.config.store.valkey.password "provider" "valkey" "instance" "default" "key" "password") }}
         {{- end }}
         db: {{ .Values.config.store.valkey.db | int }}
         key_prefix: {{ .Values.config.store.valkey.key_prefix | quote }}
@@ -116,6 +120,7 @@ data:
       {{- if .Values.config.tracing.service_name }}
       service_name: {{ .Values.config.tracing.service_name | quote }}
       {{- end }}
+      insecure: {{ .Values.config.tracing.insecure | default false }}
     {{- end }}
     {{- end }}
 
@@ -128,11 +133,8 @@ data:
           enabled: {{ .enabled }}
           {{- if .auth }}
           auth:
-            {{- if .auth.secret_name }}
-            secret_file: "/etc/secrets/github/{{ .name }}/token"
-            {{- end }}
-            {{- if .auth.secret_key }}
-            secret_key: {{ .auth.secret_key | quote }}
+            {{- if .auth.secretRef }}
+            secret_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .auth "provider" "github" "instance" .name "key" (default "token" .auth.secretRef.key)) }}
             {{- end }}
             {{- if .auth.app_id }}
             app_id: {{ .auth.app_id }}
@@ -140,8 +142,8 @@ data:
             {{- if .auth.installation_id }}
             installation_id: {{ .auth.installation_id }}
             {{- end }}
-            {{- if .auth.private_key_secret_name }}
-            private_key_file: {{ printf "/etc/github-app/%s/private-key.pem" .name | quote }}
+            {{- if .auth.private_key }}
+            private_key_file: {{ include "tekton-events-relay.resolveValueWithBase" (dict "field" .auth.private_key "base" "/etc/github-app" "instance" .name "key" "private-key.pem") }}
             {{- end }}
           {{- end }}
           {{- if .base_url }}
@@ -165,9 +167,15 @@ data:
               {{- if .context_per_task }}
               context_per_task: true
               {{- end }}
-              {{- if .template }}
+              {{- if and .template (kindIs "map" .template) .template.configmapRef }}
+              template_file: "/etc/templates/{{ .template.configmapRef.name }}/{{ .template.configmapRef.key }}"
+              {{- else if .template }}
               template: |
+{{- if kindIs "map" .template }}
+{{ .template.value | nindent 16 }}
+{{- else }}
 {{ .template | nindent 16 }}
+{{- end }}
               {{- end }}
               {{- if .labels }}
               labels:
@@ -197,16 +205,17 @@ data:
           enabled: {{ .enabled }}
           {{- if .auth }}
           auth:
-            {{- if .auth.secret_name }}
-            secret_file: "/etc/secrets/gitlab/{{ .name }}/token"
-            {{- end }}
-            {{- if .auth.secret_key }}
-            secret_key: {{ .auth.secret_key | quote }}
+            {{- if .auth.secretRef }}
+            secret_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .auth "provider" "gitlab" "instance" .name "key" (default "token" .auth.secretRef.key)) }}
             {{- end }}
             {{- if .auth.oauth2 }}
             oauth2:
-              client_id_file: "/etc/secrets/gitlab/{{ .name }}/client_id"
-              client_secret_file: "/etc/secrets/gitlab/{{ .name }}/client_secret"
+              {{- if .auth.oauth2.client_id }}
+              client_id_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .auth.oauth2.client_id "provider" "gitlab" "instance" .name "key" (default "client_id" (or .auth.oauth2.client_id.secretRef.key .auth.oauth2.client_id.configmapRef.key))) }}
+              {{- end }}
+              {{- if .auth.oauth2.client_secret }}
+              client_secret_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .auth.oauth2.client_secret "provider" "gitlab" "instance" .name "key" (default "client_secret" (or .auth.oauth2.client_secret.secretRef.key .auth.oauth2.client_secret.configmapRef.key))) }}
+              {{- end }}
               token_url: {{ .auth.oauth2.token_url | quote }}
             {{- end }}
           {{- end }}
@@ -259,22 +268,23 @@ data:
           enabled: {{ .enabled }}
           {{- if .auth }}
           auth:
-            {{- if .auth.username_secret_name }}
-            username_file: "/etc/secrets/bitbucket/{{ .name }}/username"
+            {{- if .auth.username }}
+            username_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .auth.username "provider" "bitbucket" "instance" .name "key" (default "username" (or .auth.username.secretRef.key .auth.username.configmapRef.key))) }}
             {{- end }}
-            {{- if .auth.app_password_secret_name }}
-            app_password_file: "/etc/secrets/bitbucket/{{ .name }}/app_password"
+            {{- if .auth.app_password }}
+            app_password_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .auth.app_password "provider" "bitbucket" "instance" .name "key" (default "app_password" .auth.app_password.secretRef.key)) }}
             {{- end }}
-            {{- if .auth.secret_name }}
-            token_file: "/etc/secrets/bitbucket/{{ .name }}/token"
-            {{- end }}
-            {{- if .auth.secret_key }}
-            token_key: {{ .auth.secret_key | quote }}
+            {{- if .auth.secretRef }}
+            token_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .auth "provider" "bitbucket" "instance" .name "key" (default "token" .auth.secretRef.key)) }}
             {{- end }}
             {{- if .auth.oauth2 }}
             oauth2:
-              client_id_file: "/etc/secrets/bitbucket/{{ .name }}/client_id"
-              client_secret_file: "/etc/secrets/bitbucket/{{ .name }}/client_secret"
+              {{- if .auth.oauth2.client_id }}
+              client_id_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .auth.oauth2.client_id "provider" "bitbucket" "instance" .name "key" (default "client_id" (or .auth.oauth2.client_id.secretRef.key .auth.oauth2.client_id.configmapRef.key))) }}
+              {{- end }}
+              {{- if .auth.oauth2.client_secret }}
+              client_secret_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .auth.oauth2.client_secret "provider" "bitbucket" "instance" .name "key" (default "client_secret" (or .auth.oauth2.client_secret.secretRef.key .auth.oauth2.client_secret.configmapRef.key))) }}
+              {{- end }}
               token_url: {{ .auth.oauth2.token_url | quote }}
             {{- end }}
           {{- end }}
@@ -309,11 +319,8 @@ data:
         {{- range .Values.config.scm.azure_devops }}
         - name: {{ .name }}
           enabled: {{ .enabled }}
-          {{- if .secret_name }}
-          secret_file: "/etc/secrets/azure/{{ .name }}/token"
-          {{- end }}
-          {{- if .secret_key }}
-          secret_key: {{ .secret_key | quote }}
+          {{- if .secretRef }}
+          secret_file: {{ include "tekton-events-relay.resolveValue" (dict "field" . "provider" "azure" "instance" .name "key" (default "token" .secretRef.key)) }}
           {{- end }}
           genre: {{ .genre | quote }}
           {{- if .base_url }}
@@ -364,16 +371,17 @@ data:
           enabled: {{ .enabled }}
           {{- if .auth }}
           auth:
-            {{- if .auth.secret_name }}
-            secret_file: "/etc/secrets/gitea/{{ .name }}/token"
-            {{- end }}
-            {{- if .auth.secret_key }}
-            secret_key: {{ .auth.secret_key | quote }}
+            {{- if .auth.secretRef }}
+            secret_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .auth "provider" "gitea" "instance" .name "key" (default "token" .auth.secretRef.key)) }}
             {{- end }}
             {{- if .auth.oauth2 }}
             oauth2:
-              client_id_file: "/etc/secrets/gitea/{{ .name }}/client_id"
-              client_secret_file: "/etc/secrets/gitea/{{ .name }}/client_secret"
+              {{- if .auth.oauth2.client_id }}
+              client_id_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .auth.oauth2.client_id "provider" "gitea" "instance" .name "key" (default "client_id" (or .auth.oauth2.client_id.secretRef.key .auth.oauth2.client_id.configmapRef.key))) }}
+              {{- end }}
+              {{- if .auth.oauth2.client_secret }}
+              client_secret_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .auth.oauth2.client_secret "provider" "gitea" "instance" .name "key" (default "client_secret" (or .auth.oauth2.client_secret.secretRef.key .auth.oauth2.client_secret.configmapRef.key))) }}
+              {{- end }}
               token_url: {{ .auth.oauth2.token_url | quote }}
             {{- end }}
           {{- end }}
@@ -396,9 +404,15 @@ data:
               {{- if .context_per_task }}
               context_per_task: true
               {{- end }}
-              {{- if .template }}
+              {{- if and .template (kindIs "map" .template) .template.configmapRef }}
+              template_file: "/etc/templates/{{ .template.configmapRef.name }}/{{ .template.configmapRef.key }}"
+              {{- else if .template }}
               template: |
+{{- if kindIs "map" .template }}
+{{ .template.value | nindent 16 }}
+{{- else }}
 {{ .template | nindent 16 }}
+{{- end }}
               {{- end }}
               {{- if .labels }}
               labels:
@@ -427,11 +441,8 @@ data:
           enabled: {{ .enabled }}
           {{- if .auth }}
           auth:
-            {{- if .auth.secret_name }}
-            secret_file: "/etc/secrets/sourcehut/{{ .name }}/token"
-            {{- end }}
-            {{- if .auth.secret_key }}
-            secret_key: {{ .auth.secret_key | quote }}
+            {{- if .auth.secretRef }}
+            secret_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .auth "provider" "sourcehut" "instance" .name "key" (default "token" .auth.secretRef.key)) }}
             {{- end }}
           {{- end }}
           {{- if .base_url }}
@@ -468,14 +479,14 @@ data:
         {{- range .Values.config.notifiers.slack }}
         - name: {{ .name }}
           enabled: {{ .enabled }}
-          {{- if or .secret_name .bot_token }}
+          {{- if or .webhook_url .bot_token }}
           auth:
             {{- if .bot_token }}
             bot_token:
-              token_file: "/etc/secrets/slack/{{ .name }}/token"
+              token_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .bot_token.token "provider" "slack" "instance" .name "key" (default "token" .bot_token.token.secretRef.key)) }}
               channel_id: {{ .bot_token.channel_id | quote }}
-            {{- else }}
-            webhook_url_file: "/etc/secrets/slack/{{ .name }}/webhook_url"
+            {{- else if .webhook_url }}
+            webhook_url_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .webhook_url "provider" "slack" "instance" .name "key" (default "webhook_url" (or .webhook_url.secretRef.key .webhook_url.configmapRef.key))) }}
             {{- end }}
           {{- end }}
           {{- if .channel }}
@@ -490,9 +501,15 @@ data:
           {{- if .when }}
           when: {{ .when | quote }}
           {{- end }}
-          {{- if .template }}
+          {{- if and .template (kindIs "map" .template) .template.configmapRef }}
+          template_file: "/etc/templates/{{ .template.configmapRef.name }}/{{ .template.configmapRef.key }}"
+          {{- else if .template }}
           template: |
+{{- if kindIs "map" .template }}
+{{ .template.value | nindent 12 }}
+{{- else }}
 {{ .template | nindent 12 }}
+{{- end }}
           {{- end }}
         {{- end }}
       {{- end }}
@@ -501,16 +518,22 @@ data:
         {{- range .Values.config.notifiers.teams }}
         - name: {{ .name }}
           enabled: {{ .enabled }}
-          {{- if .secret_name }}
+          {{- if .webhook_url }}
           auth:
-            webhook_url_file: "/etc/secrets/teams/{{ .name }}/webhook_url"
+            webhook_url_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .webhook_url "provider" "teams" "instance" .name "key" (default "webhook_url" (or .webhook_url.secretRef.key .webhook_url.configmapRef.key))) }}
           {{- end }}
           {{- if .when }}
           when: {{ .when | quote }}
           {{- end }}
-          {{- if .template }}
+          {{- if and .template (kindIs "map" .template) .template.configmapRef }}
+          template_file: "/etc/templates/{{ .template.configmapRef.name }}/{{ .template.configmapRef.key }}"
+          {{- else if .template }}
           template: |
+{{- if kindIs "map" .template }}
+{{ .template.value | nindent 12 }}
+{{- else }}
 {{ .template | nindent 12 }}
+{{- end }}
           {{- end }}
         {{- end }}
       {{- end }}
@@ -519,14 +542,14 @@ data:
         {{- range .Values.config.notifiers.discord }}
         - name: {{ .name }}
           enabled: {{ .enabled }}
-          {{- if or .secret_name .bot_token }}
+          {{- if or .webhook_url .bot_token }}
           auth:
             {{- if .bot_token }}
             bot_token:
-              token_file: "/etc/secrets/discord/{{ .name }}/token"
+              token_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .bot_token.token "provider" "discord" "instance" .name "key" (default "token" .bot_token.token.secretRef.key)) }}
               channel_id: {{ .bot_token.channel_id | quote }}
-            {{- else }}
-            webhook_url_file: "/etc/secrets/discord/{{ .name }}/webhook_url"
+            {{- else if .webhook_url }}
+            webhook_url_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .webhook_url "provider" "discord" "instance" .name "key" (default "webhook_url" (or .webhook_url.secretRef.key .webhook_url.configmapRef.key))) }}
             {{- end }}
           {{- end }}
           {{- if .username }}
@@ -538,9 +561,15 @@ data:
           {{- if .when }}
           when: {{ .when | quote }}
           {{- end }}
-          {{- if .template }}
+          {{- if and .template (kindIs "map" .template) .template.configmapRef }}
+          template_file: "/etc/templates/{{ .template.configmapRef.name }}/{{ .template.configmapRef.key }}"
+          {{- else if .template }}
           template: |
+{{- if kindIs "map" .template }}
+{{ .template.value | nindent 12 }}
+{{- else }}
 {{ .template | nindent 12 }}
+{{- end }}
           {{- end }}
         {{- end }}
       {{- end }}
@@ -549,9 +578,9 @@ data:
         {{- range .Values.config.notifiers.pagerduty }}
         - name: {{ .name }}
           enabled: {{ .enabled }}
-          {{- if .secret_name }}
+          {{- if .integration_key }}
           auth:
-            integration_key_file: "/etc/secrets/pagerduty/{{ .name }}/integration_key"
+            integration_key_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .integration_key "provider" "pagerduty" "instance" .name "key" (default "integration_key" .integration_key.secretRef.key)) }}
           {{- end }}
           {{- if .severity }}
           severity: {{ .severity | quote }}
@@ -566,9 +595,9 @@ data:
         {{- range .Values.config.notifiers.datadog }}
         - name: {{ .name }}
           enabled: {{ .enabled }}
-          {{- if .secret_name }}
+          {{- if .api_key }}
           auth:
-            api_key_file: "/etc/secrets/datadog/{{ .name }}/api_key"
+            api_key_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .api_key "provider" "datadog" "instance" .name "key" (default "api_key" .api_key.secretRef.key)) }}
           {{- end }}
           {{- if .site }}
           site: {{ .site | quote }}
@@ -590,9 +619,9 @@ data:
         - name: {{ .name }}
           enabled: {{ .enabled }}
           url: {{ .url | quote }}
-          {{- if .secret_name }}
+          {{- if .token }}
           auth:
-            token_file: "/etc/secrets/grafana/{{ .name }}/token"
+            token_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .token "provider" "grafana" "instance" .name "key" (default "token" .token.secretRef.key)) }}
           {{- end }}
           {{- if .tags }}
           tags:
@@ -603,9 +632,15 @@ data:
           {{- if .when }}
           when: {{ .when | quote }}
           {{- end }}
-          {{- if .template }}
+          {{- if and .template (kindIs "map" .template) .template.configmapRef }}
+          template_file: "/etc/templates/{{ .template.configmapRef.name }}/{{ .template.configmapRef.key }}"
+          {{- else if .template }}
           template: |
+{{- if kindIs "map" .template }}
+{{ .template.value | nindent 12 }}
+{{- else }}
 {{ .template | nindent 12 }}
+{{- end }}
           {{- end }}
         {{- end }}
       {{- end }}
@@ -625,9 +660,9 @@ data:
             - {{ . | quote }}
             {{- end }}
           {{- end }}
-          {{- if .secret_name }}
+          {{- if .token }}
           auth:
-            token_file: "/etc/secrets/sentry/{{ .name }}/token"
+            token_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .token "provider" "sentry" "instance" .name "key" (default "token" .token.secretRef.key)) }}
           {{- end }}
           {{- if .when }}
           when: {{ .when | quote }}
@@ -647,18 +682,22 @@ data:
           {{- if .encryption }}
           encryption: {{ .encryption | quote }}
           {{- end }}
-          {{- if and .secret_name .username }}
+          {{- if and .password .username }}
           auth:
             username: {{ .username | quote }}
-            password_file: "/etc/secrets/email/{{ .name }}/password"
+            password_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .password "provider" "email" "instance" .name "key" (default "password" .password.secretRef.key)) }}
           {{- end }}
           from: {{ .from | quote }}
           to:
             {{- range .to }}
             - {{ . | quote }}
             {{- end }}
-          {{- if .subject }}
-          subject: {{ .subject | quote }}
+          {{- if and .subject .subject.value }}
+          subject: {{ .subject.value | quote }}
+          {{- else if and .subject .subject.configmapRef }}
+          subject: "/etc/templates/{{ .subject.configmapRef.name }}/{{ .subject.configmapRef.key }}"
+          {{- else }}
+          subject: "/etc/templates/email-subject.tmpl"
           {{- end }}
           {{- if .html }}
           html: {{ .html }}
@@ -669,9 +708,13 @@ data:
           {{- if .when }}
           when: {{ .when | quote }}
           {{- end }}
-          {{- if .template }}
+          {{- if and .template (kindIs "map" .template) .template.configmapRef }}
+          template: "/etc/templates/{{ .template.configmapRef.name }}/{{ .template.configmapRef.key }}"
+          {{- else if and .template .template.value }}
           template: |
-{{ .template | nindent 12 }}
+{{ .template.value | nindent 12 }}
+          {{- else }}
+          template: "/etc/templates/email-default.tmpl"
           {{- end }}
         {{- end }}
       {{- end }}
@@ -681,29 +724,23 @@ data:
         {{- range .Values.config.notifiers.webhook }}
         - name: {{ .name }}
           enabled: {{ .enabled }}
-          {{- if .url_secret_name }}
-          url_file: "/etc/secrets/webhook/{{ .name }}/url"
-          {{- end }}
-          {{- if .url_key }}
-          url_key: {{ .url_key | quote }}
+          {{- if .url }}
+          url_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .url "provider" "webhook" "instance" .name "key" (default "url" (or .url.secretRef.key .url.configmapRef.key))) }}
           {{- end }}
           {{- if .auth }}
           auth:
             type: {{ .auth.type | quote }}
-            {{- if .auth.token_file_secret_name }}
-            token_file: "/etc/secrets/webhook/{{ .name }}/token"
+            {{- if .auth.token }}
+            token_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .auth.token "provider" "webhook" "instance" .name "key" (default "token" .auth.token.secretRef.key)) }}
             {{- end }}
-            {{- if .auth.token_key }}
-            token_key: {{ .auth.token_key | quote }}
+            {{- if .auth.username }}
+            username_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .auth.username "provider" "webhook" "instance" .name "key" (default "username" (or .auth.username.secretRef.key .auth.username.configmapRef.key))) }}
             {{- end }}
-            {{- if .auth.username_file_secret_name }}
-            username_file: "/etc/secrets/webhook/{{ .name }}/username"
+            {{- if .auth.password }}
+            password_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .auth.password "provider" "webhook" "instance" .name "key" (default "password" .auth.password.secretRef.key)) }}
             {{- end }}
-            {{- if .auth.password_file_secret_name }}
-            password_file: "/etc/secrets/webhook/{{ .name }}/password"
-            {{- end }}
-            {{- if .auth.secret_file_secret_name }}
-            secret_file: "/etc/secrets/webhook/{{ .name }}/hmac_secret"
+            {{- if .auth.hmac_secret }}
+            secret_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .auth.hmac_secret "provider" "webhook" "instance" .name "key" (default "hmac_secret" .auth.hmac_secret.secretRef.key)) }}
             {{- end }}
             {{- if .auth.header }}
             header: {{ .auth.header | quote }}
@@ -716,9 +753,56 @@ data:
           headers:
             {{- .headers | toYaml | nindent 12 }}
           {{- end }}
-          {{- if .template }}
+          {{- if and .template (kindIs "map" .template) .template.configmapRef }}
+          template_file: "/etc/templates/{{ .template.configmapRef.name }}/{{ .template.configmapRef.key }}"
+          {{- else if .template }}
           template: |
+{{- if kindIs "map" .template }}
+{{ .template.value | nindent 12 }}
+{{- else }}
 {{ .template | nindent 12 }}
+{{- end }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+
+    {{- if .Values.config.jira }}
+    jira:
+      {{- range .Values.config.jira }}
+      - name: {{ .name }}
+        enabled: {{ .enabled }}
+        base_url: {{ .base_url | quote }}
+        {{- if and .auth .auth.token }}
+        auth:
+          {{- if .auth.email }}
+          email: {{ .auth.email | quote }}
+          {{- end }}
+          token_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .auth.token "provider" "jira" "instance" .name "key" (default "token" .auth.token.secretRef.key)) }}
+        {{- end }}
+        {{- if .insecure_skip_verify }}
+        insecure_skip_verify: {{ .insecure_skip_verify }}
+        {{- end }}
+        {{- if .actions }}
+        actions:
+          {{- range .actions }}
+          - name: {{ .name }}
+            type: {{ .type }}
+            enabled: {{ .enabled }}
+            {{- if .when }}
+            when: {{ .when | quote }}
+            {{- end }}
+            {{- if .transition }}
+            transition: {{ .transition | quote }}
+            {{- end }}
+            {{- if and .template (kindIs "map" .template) .template.configmapRef }}
+            template: "/etc/templates/{{ .template.configmapRef.name }}/{{ .template.configmapRef.key }}"
+            {{- else if and .template .template.value }}
+            template: |
+{{ .template.value | nindent 14 }}
+            {{- else if eq .type "comment" }}
+            template: "/etc/templates/jira-comment.tmpl"
+            {{- end }}
           {{- end }}
         {{- end }}
       {{- end }}

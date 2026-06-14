@@ -13,6 +13,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 
 	"github.com/itchyny/gojq"
 
@@ -70,7 +71,7 @@ func New(cfg Config, log *zap.Logger) (*Notifier, error) {
 
 	n.base = &notifier.Base{
 		HTTP:         notifier.DefaultHTTPClient(),
-		BuildURL:     func(_ domain.Event) (string, error) { return cfg.URL, nil },
+		BuildURL:     func(_ domain.Event) (string, error) { return cfg.URL, validateURL(cfg.URL) },
 		BuildPayload: n.payload,
 		Auth:         n.auth,
 		UserAgent:    notifier.UserAgent,
@@ -121,6 +122,20 @@ func (n *Notifier) payload(e domain.Event) (any, error) {
 	}
 
 	return defaultPayload, nil
+}
+
+// validateURL checks that a URL has an http or https scheme.
+func validateURL(urlStr string) error {
+	u, err := url.Parse(urlStr)
+	if err != nil {
+		return fmt.Errorf("invalid URL: %w", err)
+	}
+	switch u.Scheme {
+	case "http", "https":
+		return nil
+	default:
+		return fmt.Errorf("unsupported URL scheme %q: only http and https are allowed", u.Scheme)
+	}
 }
 
 func (n *Notifier) auth(req *http.Request) error {

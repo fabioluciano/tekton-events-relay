@@ -56,7 +56,7 @@ func resolveSourceHutToken(inst config.SourceHutInstance, log *zap.Logger) (stri
 // buildHandler creates the appropriate handler based on action type.
 func (f *SourceHutFactory) buildHandler(inst config.SourceHutInstance, action config.Action, token string, log *zap.Logger) notifier.ActionHandler {
 	switch action.Type {
-	case config.ActionTypeCommitStatus:
+	case notifier.ActionCommitStatus:
 		return sourcehut.NewStatusReporter(token, inst.BaseURL, inst.InsecureSkipVerify, log)
 	default:
 		return nil

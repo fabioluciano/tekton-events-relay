@@ -53,8 +53,13 @@ func NewMRCommentHandler(cfg MRCommentConfig) (notifier.ActionHandler, error) {
 		log = zap.NewNop()
 	}
 
+	c, err := NewClient(cfg.Token, cfg.BaseURL, cfg.InsecureSkipVerify, false, cfg.Log)
+	if err != nil {
+		return nil, err
+	}
+
 	return &MRCommentHandler{
-		client:   NewClient(cfg.Token, cfg.BaseURL, cfg.InsecureSkipVerify, false, cfg.Log),
+		client:   c,
 		name:     cfg.Name,
 		template: tmpl,
 		mode:     mode,

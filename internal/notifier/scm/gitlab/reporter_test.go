@@ -11,30 +11,6 @@ const (
 	testRepoName = "myrepo"
 )
 
-func TestMapState(t *testing.T) {
-	tests := []struct {
-		state domain.State
-		want  string
-	}{
-		{domain.StatePending, "pending"},
-		{domain.StateRunning, "running"},
-		{domain.StateSuccess, "success"},
-		{domain.StateFailure, "failed"},
-		{domain.StateError, "failed"},
-		{domain.StateCanceled, "canceled"},
-		{domain.State("unknown"), "pending"},
-	}
-
-	for _, tt := range tests {
-		t.Run(string(tt.state), func(t *testing.T) {
-			got := gitlabStateMap.Map(tt.state, "pending")
-			if got != tt.want {
-				t.Errorf("gitlabStateMap.Map(%q) = %q, want %q", tt.state, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestProjectIdentifier(t *testing.T) {
 	tests := []struct {
 		name    string

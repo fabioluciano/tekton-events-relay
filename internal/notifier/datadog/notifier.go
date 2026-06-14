@@ -10,11 +10,26 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
 )
+
+// validateURL checks that a URL has an http or https scheme.
+func validateURL(urlStr string) error {
+	u, err := url.Parse(urlStr)
+	if err != nil {
+		return fmt.Errorf("invalid URL: %w", err)
+	}
+	switch u.Scheme {
+	case "http", "https":
+		return nil
+	default:
+		return fmt.Errorf("unsupported URL scheme %q: only http and https are allowed", u.Scheme)
+	}
+}
 
 const (
 	defaultSite  = "datadoghq.com"
@@ -66,7 +81,11 @@ func (n *Notifier) Handle(ctx context.Context, e domain.Event) error {
 }
 
 func (n *Notifier) url(_ domain.Event) (string, error) {
-	return fmt.Sprintf("https://api.%s/api/v2/events", n.cfg.Site), nil
+	u := fmt.Sprintf("https://api.%s/api/v2/events", n.cfg.Site)
+	if err := validateURL(u); err != nil {
+		return "", fmt.Errorf("invalid Datadog URL: %w", err)
+	}
+	return u, nil
 }
 
 func (n *Notifier) auth(req *http.Request) error {

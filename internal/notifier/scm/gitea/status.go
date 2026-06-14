@@ -18,14 +18,18 @@ type StatusReporter struct {
 }
 
 // NewStatusReporter creates a new Gitea commit status reporter.
-func NewStatusReporter(token, baseURL string, insecureSkipVerify bool, log *zap.Logger) notifier.ActionHandler {
+func NewStatusReporter(token, baseURL string, insecureSkipVerify bool, log *zap.Logger) (notifier.ActionHandler, error) {
 	if log == nil {
 		log = zap.NewNop()
 	}
-	return &StatusReporter{
-		client: NewClient(token, baseURL, insecureSkipVerify, false, log),
-		log:    log,
+	c, err := NewClient(token, baseURL, insecureSkipVerify, false, log)
+	if err != nil {
+		return nil, err
 	}
+	return &StatusReporter{
+		client: c,
+		log:    log,
+	}, nil
 }
 
 // Name returns the handler name.

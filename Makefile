@@ -16,7 +16,7 @@ fmt:
 	gofmt -s -w .
 
 run: build
-	./$(BIN) --config config.example.json
+	./$(BIN) --config wiki/examples/config.yaml
 
 docker:
 	docker build -t $(IMG) .

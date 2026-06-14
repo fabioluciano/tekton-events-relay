@@ -31,16 +31,20 @@ type DeploymentConfig struct {
 }
 
 // NewDeploymentHandler creates a new GitLab deployment handler.
-func NewDeploymentHandler(cfg DeploymentConfig) notifier.ActionHandler {
+func NewDeploymentHandler(cfg DeploymentConfig) (notifier.ActionHandler, error) {
 	log := cfg.Log
 	if log == nil {
 		log = zap.NewNop()
 	}
+	c, err := NewClient(cfg.Token, cfg.BaseURL, cfg.InsecureSkipVerify, false, cfg.Log)
+	if err != nil {
+		return nil, err
+	}
 	return &DeploymentHandler{
-		client: NewClient(cfg.Token, cfg.BaseURL, cfg.InsecureSkipVerify, false, cfg.Log),
+		client: c,
 		name:   cfg.Name,
 		log:    log,
-	}
+	}, nil
 }
 
 // Name returns the handler name.

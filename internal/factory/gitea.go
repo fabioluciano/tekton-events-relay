@@ -42,9 +42,9 @@ func resolveGiteaToken(inst config.GiteaInstance, log *zap.Logger) (string, erro
 // buildHandler creates the appropriate handler based on action type.
 func (f *GiteaFactory) buildHandler(inst config.GiteaInstance, action config.Action, token string, log *zap.Logger) (notifier.ActionHandler, error) {
 	switch action.Type {
-	case config.ActionTypeCommitStatus:
-		return gitea.NewStatusReporter(token, inst.BaseURL, inst.InsecureSkipVerify, log), nil
-	case config.ActionTypePRComment:
+	case notifier.ActionCommitStatus:
+		return gitea.NewStatusReporter(token, inst.BaseURL, inst.InsecureSkipVerify, log)
+	case notifier.ActionPRComment:
 		return gitea.NewPRCommentHandler(gitea.PRCommentConfig{
 			Token:              token,
 			BaseURL:            inst.BaseURL,
@@ -53,7 +53,7 @@ func (f *GiteaFactory) buildHandler(inst config.GiteaInstance, action config.Act
 			InsecureSkipVerify: inst.InsecureSkipVerify,
 			Log:                log,
 		})
-	case config.ActionTypeIssueComment:
+	case notifier.ActionIssueComment:
 		return gitea.NewIssueCommentHandler(gitea.IssueCommentConfig{
 			Token:              token,
 			BaseURL:            inst.BaseURL,
@@ -62,14 +62,14 @@ func (f *GiteaFactory) buildHandler(inst config.GiteaInstance, action config.Act
 			InsecureSkipVerify: inst.InsecureSkipVerify,
 			Log:                log,
 		})
-	case config.ActionTypeLabel:
+	case notifier.ActionLabel:
 		return gitea.NewLabelHandler(gitea.LabelConfig{
 			Token:              token,
 			BaseURL:            inst.BaseURL,
 			Labels:             labelSet(action),
 			InsecureSkipVerify: inst.InsecureSkipVerify,
 			Log:                log,
-		}), nil
+		})
 	default:
 		return nil, ErrUnsupportedActionType
 	}

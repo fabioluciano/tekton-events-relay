@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"regexp"
+	"sync"
 	"text/template"
 
 	"go.uber.org/zap"
@@ -11,7 +12,11 @@ import (
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
 )
 
-var colorRegex = regexp.MustCompile(`^[0-9a-fA-F]{6}$`)
+var (
+	colorRegex  = regexp.MustCompile(`^[0-9a-fA-F]{6}$`)
+	tmplCacheMu sync.Mutex
+	tmplCache   = make(map[string]*template.Template)
+)
 
 // Label represents a label with an optional color.
 type Label struct {
@@ -71,10 +76,24 @@ func (s LabelSet) Render(e domain.Event) (add, remove []Label, err error) {
 	return add, remove, nil
 }
 
+func cachedTemplate(name string) (*template.Template, error) {
+	tmplCacheMu.Lock()
+	defer tmplCacheMu.Unlock()
+	if t, ok := tmplCache[name]; ok {
+		return t, nil
+	}
+	t, err := template.New("label").Parse(name)
+	if err != nil {
+		return nil, err
+	}
+	tmplCache[name] = t
+	return t, nil
+}
+
 func renderLabelList(items []Label, e domain.Event) ([]Label, error) {
 	out := make([]Label, 0, len(items))
 	for _, label := range items {
-		tmpl, err := template.New("label").Parse(label.Name)
+		tmpl, err := cachedTemplate(label.Name)
 		if err != nil {
 			return nil, fmt.Errorf("parse label template %q: %w", label.Name, err)
 		}

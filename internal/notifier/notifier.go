@@ -25,6 +25,8 @@ const (
 	ActionDiscussionComment ActionType = "discussion_comment"
 	ActionDeploymentStatus  ActionType = "deployment_status"
 	ActionNotify            ActionType = "notify" // for generic notifiers (Slack, Teams, Discord, PagerDuty, Datadog, Webhook)
+	ActionJiraComment       ActionType = "jira_comment"
+	ActionJiraTransition    ActionType = "jira_transition"
 )
 
 // ActionHandler is the interface for action-specific handlers.
@@ -46,6 +48,7 @@ type Registry struct {
 	handlers []ActionHandler
 	byName   map[string][]ActionHandler     // provider → handlers
 	byType   map[ActionType][]ActionHandler // action type → handlers
+	names    []string                       // cached sorted names
 }
 
 // NewRegistry creates a new Registry for action handlers.
@@ -64,6 +67,7 @@ func (r *Registry) Register(h ActionHandler) {
 	r.handlers = append(r.handlers, h)
 	r.byName[h.Name()] = append(r.byName[h.Name()], h)
 	r.byType[h.Type()] = append(r.byType[h.Type()], h)
+	r.names = nil // invalidate cache
 }
 
 // FindByName returns all handlers for a given provider name.
@@ -103,11 +107,28 @@ func (r *Registry) Lookup(name string) ActionHandler {
 // Names returns the names of all providers, sorted and deduplicated.
 func (r *Registry) Names() []string {
 	r.mu.RLock()
-	defer r.mu.RUnlock()
-	names := make([]string, 0, len(r.byName))
-	for name := range r.byName {
-		names = append(names, name)
+	if r.names != nil {
+		out := make([]string, len(r.names))
+		copy(out, r.names)
+		r.mu.RUnlock()
+		return out
 	}
-	sort.Strings(names)
-	return names
+	r.mu.RUnlock()
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	// Double-check after write lock.
+	if r.names != nil {
+		out := make([]string, len(r.names))
+		copy(out, r.names)
+		return out
+	}
+	r.names = make([]string, 0, len(r.byName))
+	for name := range r.byName {
+		r.names = append(r.names, name)
+	}
+	sort.Strings(r.names)
+	out := make([]string, len(r.names))
+	copy(out, r.names)
+	return out
 }

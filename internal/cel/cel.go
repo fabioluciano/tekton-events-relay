@@ -239,6 +239,7 @@ func populateActivation(activation map[string]any, e domain.Event) {
 		"RunID":               e.RunID,
 		"Namespace":           e.Namespace,
 		"Context":             e.Context,
+		"JiraIssueKey":        e.JiraIssueKey,
 		"Description":         e.Description,
 		"CommitSHA":           e.CommitSHA,
 		"Provider":            e.Provider,

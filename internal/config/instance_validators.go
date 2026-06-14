@@ -675,6 +675,55 @@ func validateEmailInstance(prefix string, inst EmailInstance) []ValidationError 
 	return errs
 }
 
+func validateJiraInstance(prefix string, inst JiraInstance) []ValidationError {
+	var errs []ValidationError
+	if inst.Enabled {
+		if inst.BaseURL == "" {
+			errs = append(errs, ValidationError{Path: prefix + ".base_url", Message: "base_url required when enabled"})
+		}
+		if inst.Auth == nil {
+			errs = append(errs, ValidationError{Path: prefix + ValidationPathAuth, Message: ValidationMsgAuthRequired})
+		}
+	}
+	for i, action := range inst.Actions {
+		aprefix := fmt.Sprintf("%s.actions[%d]", prefix, i)
+		switch action.Type {
+		case JiraActionComment:
+			if action.Template != "" {
+				if _, err := template.New("jira").Parse(action.Template); err != nil {
+					errs = append(errs, ValidationError{Path: aprefix + ".template", Message: fmt.Sprintf("invalid template: %v", err)})
+				}
+			}
+		case JiraActionTransition:
+			if action.Transition == "" {
+				errs = append(errs, ValidationError{Path: aprefix + ".transition", Message: "transition name or id required"})
+			}
+		default:
+			errs = append(errs, ValidationError{Path: aprefix + ".type", Message: fmt.Sprintf("invalid jira action type '%s' (must be comment or transition)", action.Type)})
+		}
+		if action.When != "" && CELCompileFunc != nil {
+			if err := CELCompileFunc(action.When); err != nil {
+				errs = append(errs, ValidationError{Path: aprefix + ".when", Message: fmt.Sprintf("invalid CEL: %v", err)})
+			}
+		}
+	}
+	return errs
+}
+
+// validateJira validates all Jira instances.
+func (c *Config) validateJira(names map[string]map[string]bool) error {
+	for i, inst := range c.Jira {
+		if err := checkDuplicateName("jira", inst.Name, names); err != nil {
+			return err
+		}
+		errs := validateJiraInstance(fmt.Sprintf("jira[%d]", i), inst)
+		if len(errs) > 0 {
+			return fmt.Errorf("%s", errs[0].Error())
+		}
+	}
+	return nil
+}
+
 //nolint:dupl // validateSCM and validateNotifiers share structure but operate on different config sections
 func (c *Config) validateNotifiers(names map[string]map[string]bool) error {
 	for i, inst := range c.Notifiers.Slack {

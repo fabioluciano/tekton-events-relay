@@ -32,6 +32,10 @@ const (
 	AnnoIssueNumber      = "tekton.dev/tekton-events-relay.scm.issue-number"
 	AnnoPRNumber         = "tekton.dev/tekton-events-relay.scm.pr-number"
 	AnnoDiscussionNumber = "tekton.dev/tekton-events-relay.scm.discussion-number"
+
+	// AnnoJiraIssueKey links the run to a Jira issue (e.g. PROJ-123). The
+	// TriggerBinding extracts it from the branch name or PR/MR title.
+	AnnoJiraIssueKey = "tekton.dev/tekton-events-relay.jira.issue-key"
 )
 
 // RawEvent is the decoder input, decoupled from the CloudEvents SDK.

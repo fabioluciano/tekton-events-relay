@@ -399,7 +399,10 @@
                           "description": "Key within the secret"
                         }
                       },
-                      "required": ["name", "key"]
+                      "required": [
+                        "name",
+                        "key"
+                      ]
                     }
                   }
                 },
@@ -625,7 +628,9 @@
                         "description": "Key within the secret (optional, provider-specific default)"
                       }
                     },
-                    "required": ["name"]
+                    "required": [
+                      "name"
+                    ]
                   },
                   "bot_token": {
                     "type": "object",
@@ -644,7 +649,9 @@
                             "description": "Key within the secret (optional, provider-specific default)"
                           }
                         },
-                        "required": ["name"]
+                        "required": [
+                          "name"
+                        ]
                       },
                       "channel_id": {
                         "type": "string",
@@ -702,7 +709,10 @@
                         "description": "Key within the ConfigMap"
                       }
                     },
-                    "required": ["configmapName", "configmapKey"]
+                    "required": [
+                      "configmapName",
+                      "configmapKey"
+                    ]
                   }
                 },
                 "required": [
@@ -739,7 +749,9 @@
                         "description": "Key within the secret (optional, provider-specific default)"
                       }
                     },
-                    "required": ["name"]
+                    "required": [
+                      "name"
+                    ]
                   },
                   "when": {
                     "type": "string",
@@ -765,7 +777,10 @@
                         "description": "Key within the ConfigMap"
                       }
                     },
-                    "required": ["configmapName", "configmapKey"]
+                    "required": [
+                      "configmapName",
+                      "configmapKey"
+                    ]
                   }
                 },
                 "required": [
@@ -802,7 +817,9 @@
                         "description": "Key within the secret (optional, provider-specific default)"
                       }
                     },
-                    "required": ["name"]
+                    "required": [
+                      "name"
+                    ]
                   },
                   "bot_token": {
                     "type": "object",
@@ -821,7 +838,9 @@
                             "description": "Key within the secret (optional, provider-specific default)"
                           }
                         },
-                        "required": ["name"]
+                        "required": [
+                          "name"
+                        ]
                       },
                       "channel_id": {
                         "type": "string",
@@ -863,7 +882,10 @@
                         "description": "Key within the ConfigMap"
                       }
                     },
-                    "required": ["configmapName", "configmapKey"]
+                    "required": [
+                      "configmapName",
+                      "configmapKey"
+                    ]
                   }
                 },
                 "required": [
@@ -900,7 +922,9 @@
                         "description": "Key within the secret (optional, provider-specific default)"
                       }
                     },
-                    "required": ["name"]
+                    "required": [
+                      "name"
+                    ]
                   },
                   "severity": {
                     "type": "string",
@@ -955,7 +979,9 @@
                         "description": "Key within the secret (optional, provider-specific default)"
                       }
                     },
-                    "required": ["name"]
+                    "required": [
+                      "name"
+                    ]
                   },
                   "site": {
                     "type": "string",
@@ -1027,7 +1053,9 @@
                         "description": "Key within the secret (optional, provider-specific default)"
                       }
                     },
-                    "required": ["name"]
+                    "required": [
+                      "name"
+                    ]
                   },
                   "tags": {
                     "type": "array",
@@ -1057,7 +1085,10 @@
                         "description": "Key within the ConfigMap"
                       }
                     },
-                    "required": ["configmapName", "configmapKey"]
+                    "required": [
+                      "configmapName",
+                      "configmapKey"
+                    ]
                   }
                 },
                 "required": [
@@ -1109,7 +1140,9 @@
                         "description": "Key within the secret (optional, provider-specific default)"
                       }
                     },
-                    "required": ["name"]
+                    "required": [
+                      "name"
+                    ]
                   },
                   "when": {
                     "type": "string",
@@ -1150,7 +1183,9 @@
                         "description": "Key within the secret (optional, provider-specific default)"
                       }
                     },
-                    "required": ["name"]
+                    "required": [
+                      "name"
+                    ]
                   },
                   "auth": {
                     "type": "object",
@@ -1183,7 +1218,10 @@
                                 "description": "Key within the secret"
                               }
                             },
-                            "required": ["name", "key"]
+                            "required": [
+                              "name",
+                              "key"
+                            ]
                           }
                         }
                       },
@@ -1204,7 +1242,10 @@
                                 "description": "Key within the secret"
                               }
                             },
-                            "required": ["name", "key"]
+                            "required": [
+                              "name",
+                              "key"
+                            ]
                           }
                         }
                       },
@@ -1225,7 +1266,10 @@
                                 "description": "Key within the secret"
                               }
                             },
-                            "required": ["name", "key"]
+                            "required": [
+                              "name",
+                              "key"
+                            ]
                           }
                         }
                       },
@@ -1246,7 +1290,10 @@
                                 "description": "Key within the secret"
                               }
                             },
-                            "required": ["name", "key"]
+                            "required": [
+                              "name",
+                              "key"
+                            ]
                           }
                         }
                       },
@@ -1336,7 +1383,9 @@
                         "description": "Key within the secret (optional, provider-specific default)"
                       }
                     },
-                    "required": ["name"]
+                    "required": [
+                      "name"
+                    ]
                   },
                   "username": {
                     "type": "string",
@@ -1354,12 +1403,46 @@
                     "description": "Recipient list"
                   },
                   "subject": {
-                    "type": "string",
-                    "description": "Subject Go template (CR/LF stripped)"
+                    "type": "object",
+                    "description": "Subject template (inline value or configmapRef); omit for the shipped default",
+                    "properties": {
+                      "value": {
+                        "type": "string",
+                        "description": "Inline template"
+                      },
+                      "configmapRef": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "key": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
                   },
                   "template": {
-                    "type": "string",
-                    "description": "Body Go template; plain-text default when omitted"
+                    "type": "object",
+                    "description": "Body template (inline value or configmapRef); omit for the shipped default",
+                    "properties": {
+                      "value": {
+                        "type": "string",
+                        "description": "Inline template"
+                      },
+                      "configmapRef": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "key": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
                   },
                   "templateRef": {
                     "type": "object",
@@ -1374,7 +1457,10 @@
                         "description": "Key within the ConfigMap"
                       }
                     },
-                    "required": ["configmapName", "configmapKey"]
+                    "required": [
+                      "configmapName",
+                      "configmapKey"
+                    ]
                   },
                   "html": {
                     "type": "boolean",
@@ -1418,6 +1504,126 @@
               "type": "boolean",
               "description": "When false, uses HTTPS for OTLP export. Set to true for plaintext HTTP.",
               "default": false
+            }
+          }
+        },
+        "jira": {
+          "type": "array",
+          "description": "Jira integration instances. Issue key comes from the tekton.dev/tekton-events-relay.jira.issue-key annotation.",
+          "default": [],
+          "items": {
+            "type": "object",
+            "required": [
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "enabled": {
+                "type": "boolean",
+                "default": false
+              },
+              "base_url": {
+                "type": "string",
+                "description": "Jira base URL (Cloud: https://yourorg.atlassian.net)"
+              },
+              "insecure_skip_verify": {
+                "type": "boolean",
+                "default": false
+              },
+              "auth": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "description": "Atlassian account email (Cloud basic auth); omit for Data Center bearer"
+                  },
+                  "token": {
+                    "type": "object",
+                    "properties": {
+                      "secretRef": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "key": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "configmapRef": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "key": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "value": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              },
+              "actions": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "type"
+                  ],
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "comment",
+                        "transition"
+                      ]
+                    },
+                    "enabled": {
+                      "type": "boolean",
+                      "default": false
+                    },
+                    "when": {
+                      "type": "string"
+                    },
+                    "transition": {
+                      "type": "string",
+                      "description": "Target transition name or id (transition actions)"
+                    },
+                    "template": {
+                      "type": "object",
+                      "description": "Comment body template (inline value or configmapRef); omit for the shipped default",
+                      "properties": {
+                        "value": {
+                          "type": "string",
+                          "description": "Inline template"
+                        },
+                        "configmapRef": {
+                          "type": "object",
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "key": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
             }
           }
         }
@@ -2334,7 +2540,10 @@
               "description": "Key within the ConfigMap"
             }
           },
-          "required": ["configmapName", "configmapKey"]
+          "required": [
+            "configmapName",
+            "configmapKey"
+          ]
         },
         "mode": {
           "type": "string",
@@ -2720,7 +2929,9 @@
                   "description": "Key within the secret (optional, provider-specific default)"
                 }
               },
-              "required": ["name"]
+              "required": [
+                "name"
+              ]
             },
             "app_id": {
               "type": "integer",
@@ -2746,10 +2957,15 @@
                       "description": "Key within the secret (default: private-key.pem)"
                     }
                   },
-                  "required": ["name", "key"]
+                  "required": [
+                    "name",
+                    "key"
+                  ]
                 }
               },
-              "required": ["secretRef"]
+              "required": [
+                "secretRef"
+              ]
             }
           }
         },
@@ -2814,7 +3030,9 @@
                   "description": "Key within the secret (optional, provider-specific default)"
                 }
               },
-              "required": ["name"]
+              "required": [
+                "name"
+              ]
             },
             "oauth2": {
               "type": "object",
@@ -2837,7 +3055,10 @@
                           "description": "Key within the secret"
                         }
                       },
-                      "required": ["name", "key"]
+                      "required": [
+                        "name",
+                        "key"
+                      ]
                     },
                     "configmapRef": {
                       "type": "object",
@@ -2852,7 +3073,10 @@
                           "description": "Key within the ConfigMap"
                         }
                       },
-                      "required": ["name", "key"]
+                      "required": [
+                        "name",
+                        "key"
+                      ]
                     }
                   }
                 },
@@ -2873,7 +3097,10 @@
                           "description": "Key within the secret"
                         }
                       },
-                      "required": ["name", "key"]
+                      "required": [
+                        "name",
+                        "key"
+                      ]
                     }
                   }
                 },
@@ -2950,7 +3177,10 @@
                       "description": "Key within the secret"
                     }
                   },
-                  "required": ["name", "key"]
+                  "required": [
+                    "name",
+                    "key"
+                  ]
                 },
                 "configmapRef": {
                   "type": "object",
@@ -2965,7 +3195,10 @@
                       "description": "Key within the ConfigMap"
                     }
                   },
-                  "required": ["name", "key"]
+                  "required": [
+                    "name",
+                    "key"
+                  ]
                 }
               }
             },
@@ -2986,7 +3219,10 @@
                       "description": "Key within the secret"
                     }
                   },
-                  "required": ["name", "key"]
+                  "required": [
+                    "name",
+                    "key"
+                  ]
                 }
               }
             },
@@ -3003,7 +3239,9 @@
                   "description": "Key within the secret (optional, provider-specific default)"
                 }
               },
-              "required": ["name"]
+              "required": [
+                "name"
+              ]
             },
             "oauth2": {
               "type": "object",
@@ -3026,7 +3264,10 @@
                           "description": "Key within the secret"
                         }
                       },
-                      "required": ["name", "key"]
+                      "required": [
+                        "name",
+                        "key"
+                      ]
                     },
                     "configmapRef": {
                       "type": "object",
@@ -3041,7 +3282,10 @@
                           "description": "Key within the ConfigMap"
                         }
                       },
-                      "required": ["name", "key"]
+                      "required": [
+                        "name",
+                        "key"
+                      ]
                     }
                   }
                 },
@@ -3062,7 +3306,10 @@
                           "description": "Key within the secret"
                         }
                       },
-                      "required": ["name", "key"]
+                      "required": [
+                        "name",
+                        "key"
+                      ]
                     }
                   }
                 },
@@ -3128,7 +3375,9 @@
               "description": "Key within the secret (optional, provider-specific default)"
             }
           },
-          "required": ["name"]
+          "required": [
+            "name"
+          ]
         },
         "actions": {
           "type": "array",
@@ -3210,7 +3459,9 @@
                   "description": "Key within the secret (optional, provider-specific default)"
                 }
               },
-              "required": ["name"]
+              "required": [
+                "name"
+              ]
             },
             "oauth2": {
               "type": "object",
@@ -3233,7 +3484,10 @@
                           "description": "Key within the secret"
                         }
                       },
-                      "required": ["name", "key"]
+                      "required": [
+                        "name",
+                        "key"
+                      ]
                     },
                     "configmapRef": {
                       "type": "object",
@@ -3248,7 +3502,10 @@
                           "description": "Key within the ConfigMap"
                         }
                       },
-                      "required": ["name", "key"]
+                      "required": [
+                        "name",
+                        "key"
+                      ]
                     }
                   }
                 },
@@ -3269,7 +3526,10 @@
                           "description": "Key within the secret"
                         }
                       },
-                      "required": ["name", "key"]
+                      "required": [
+                        "name",
+                        "key"
+                      ]
                     }
                   }
                 },
@@ -3334,7 +3594,9 @@
                   "description": "Key within the secret (optional, provider-specific default)"
                 }
               },
-              "required": ["name"]
+              "required": [
+                "name"
+              ]
             }
           }
         },

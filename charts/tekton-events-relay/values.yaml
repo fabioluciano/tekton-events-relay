@@ -1045,15 +1045,70 @@ config:
         # -- Recipient list
         to:
           - "platform-team@example.com"
-        # -- Subject Go template (CR/LF stripped to prevent header injection)
-        subject: "[tekton] {{ if .PipelineName }}{{ .PipelineName }}{{ else }}{{ .RunName }}{{ end }} — {{ .State }}"
-        # -- Body Go template (omit for a readable plain-text default)
-        # template: |
-        #   Pipeline {{ .State }}: {{ .PipelineName }}
+        # -- Subject template. Omit for the shipped default (email-subject.tmpl).
+        # Override inline or from a ConfigMap, like every other template:
+        # subject:
+        #   value: "[tekton] {{ .RunName }} — {{ .State }}"
+        #   # configmapRef:
+        #   #   name: my-email-templates
+        #   #   key: subject.tmpl
+        # -- Body template. Omit for the shipped default (email-default.tmpl).
+        # template:
+        #   value: |
+        #     Pipeline {{ .State }}: {{ .PipelineName }}
+        #   # configmapRef:
+        #   #   name: my-email-templates
+        #   #   key: body.tmpl
         # -- Send body as text/html instead of text/plain
         html: false
         # -- CEL expression to filter which events are emailed
         when: 'event.Resource == "pipelinerun" && stateIn("failure", "error")'
+
+  # ---------------------------------------------------------------------------
+  # Jira (issue tracking) — top-level integration, sibling of notifiers.
+  # ---------------------------------------------------------------------------
+  # The target issue (PROJ-123) comes from the
+  # tekton.dev/tekton-events-relay.jira.issue-key annotation, which the
+  # TriggerBinding extracts from the branch name or PR/MR title via a CEL
+  # overlay.
+  # -- Jira integration instances (Cloud or Data Center)
+  jira:
+    # -- Unique identifier for this Jira instance
+    - name: default
+      # -- Enable or disable this Jira instance
+      enabled: false
+      # -- Jira base URL (Cloud: https://yourorg.atlassian.net)
+      base_url: "https://yourorg.atlassian.net"
+      # Credentials: token via secretRef (key "token"). With auth.email set,
+      # Cloud basic auth (email + API token); without it, Data Center bearer PAT.
+      auth: {}
+        # email: ci@example.com
+        # token:
+        #   secretRef:
+        #     name: jira-default-token
+        #     key: token
+      # -- Skip TLS verification (self-hosted Data Center only)
+      # insecure_skip_verify: false
+      actions:
+        # -- Comment on the linked issue when the pipeline finishes
+        - name: result-comment
+          type: comment
+          enabled: true
+          when: 'event.Resource == "pipelinerun" && stateIn("success", "failure", "error")'
+          # Comment template. Omit for the shipped default (jira-comment.tmpl);
+          # override inline or from a ConfigMap, like every other template:
+          # template:
+          #   value: |
+          #     Pipeline {{ .State }}: {{ .PipelineName }}
+          #   # configmapRef:
+          #   #   name: jira-templates
+          #   #   key: comment.tmpl
+        # -- Move the card when the pipeline succeeds (disabled by default)
+        - name: mark-done
+          type: transition
+          enabled: false
+          transition: "Done"
+          when: 'event.Resource == "pipelinerun" && event.State == "success"'
 
 # Secret references use Kubernetes-native nested schema:
 #   secretRef:
@@ -1089,6 +1144,7 @@ config:
 #   datadog: api_key
 #   webhook: url
 #   email: password
+#   jira: token
 #   valkey: password
 
 # Monitoring configuration

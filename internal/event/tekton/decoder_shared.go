@@ -66,4 +66,5 @@ func applyOptionalNumbers(report *domain.Event, annotations map[string]string) {
 	report.IssueNumber = optionalInt(annotations, event.AnnoIssueNumber)
 	report.PRNumber = optionalInt(annotations, event.AnnoPRNumber)
 	report.DiscussionNumber = optionalInt(annotations, event.AnnoDiscussionNumber)
+	report.JiraIssueKey = annotations[event.AnnoJiraIssueKey]
 }

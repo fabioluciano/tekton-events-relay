@@ -89,6 +89,7 @@ type Config struct {
 	Accumulator    AccumulatorConfig `yaml:"accumulator,omitempty" json:"accumulator,omitempty"`
 	SCM            SCMConfig         `yaml:"scm" validate:"required"`
 	Notifiers      NotifiersConfig   `yaml:"notifiers" validate:"required"`
+	Jira           []JiraInstance    `yaml:"jira,omitempty" validate:"omitempty,dive"`
 	Logging        LoggingConfig     `yaml:"logging"`
 	Tracing        TracingConfig     `yaml:"tracing"`
 }
@@ -635,6 +636,51 @@ type EmailAuth struct {
 	PasswordFile string `yaml:"password_file,omitempty"`
 	PasswordKey  string `yaml:"password_key,omitempty"`
 }
+
+// JiraInstance represents a Jira (Cloud or Data Center) integration. The
+// target issue comes from the tekton.dev/tekton-events-relay.jira.issue-key
+// annotation, extracted by the TriggerBinding from branch names or PR titles.
+type JiraInstance struct {
+	Name    string `yaml:"name" validate:"required"`
+	Enabled bool   `yaml:"enabled"`
+	// BaseURL: https://yourorg.atlassian.net (Cloud) or the Data Center URL.
+	BaseURL string    `yaml:"base_url"`
+	Auth    *JiraAuth `yaml:"auth,omitempty"`
+	// InsecureSkipVerify disables TLS verification (self-hosted Data Center).
+	InsecureSkipVerify bool         `yaml:"insecure_skip_verify,omitempty"`
+	Actions            []JiraAction `yaml:"actions,omitempty"`
+}
+
+func (j JiraInstance) isEnabled() bool { return j.Enabled }
+
+// JiraAuth holds Jira credentials. With Email set, basic auth (Cloud API
+// token); otherwise the token is sent as a bearer (Data Center PAT).
+type JiraAuth struct {
+	Email     string `yaml:"email,omitempty"`
+	TokenFile string `yaml:"token_file,omitempty"`
+	TokenKey  string `yaml:"token_key,omitempty"`
+}
+
+// JiraAction configures one Jira action within an instance.
+type JiraAction struct {
+	Name    string         `yaml:"name"`
+	Type    JiraActionType `yaml:"type" validate:"required"`
+	Enabled bool           `yaml:"enabled"`
+	When    string         `yaml:"when,omitempty"`
+	// Template renders the comment body (comment actions); empty uses the default.
+	Template string `yaml:"template,omitempty"`
+	// Transition is the target transition name or numeric id (transition actions).
+	Transition string `yaml:"transition,omitempty"`
+}
+
+// JiraActionType identifies the Jira action kind.
+type JiraActionType string
+
+// Jira action types.
+const (
+	JiraActionComment    JiraActionType = "comment"
+	JiraActionTransition JiraActionType = "transition"
+)
 
 // PagerDutyInstance represents a single PagerDuty notifier configuration.
 type PagerDutyInstance struct {

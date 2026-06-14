@@ -125,6 +125,11 @@ spec:
             {{- end }}
             {{- end }}
             {{- end }}
+            {{- range $inst := .Values.config.jira }}
+            {{- if $inst.enabled }}
+            {{- include "tekton-events-relay.notifierVolumeMounts" (dict "provider" "jira" "instance" $inst) | nindent 12 }}
+            {{- end }}
+            {{- end }}
             {{- if and .Values.config.server.auth.enabled .Values.config.server.auth.secret (include "tekton-events-relay.hasRef" .Values.config.server.auth.secret) }}
             - mountPath: /etc/secrets/server/auth
               name: server-auth-secret
@@ -153,6 +158,27 @@ spec:
               name: tpl-{{ $inst.templateRef.configmapName }}
               readOnly: true
             {{- end }}
+            {{- end }}
+            {{- end }}
+            {{- range $inst := .Values.config.jira }}
+            {{- range $action := $inst.actions }}
+            {{- if and $action.template $action.template.configmapRef }}
+            - mountPath: /etc/templates/{{ $action.template.configmapRef.name }}
+              name: tpl-{{ $action.template.configmapRef.name }}
+              readOnly: true
+            {{- end }}
+            {{- end }}
+            {{- end }}
+            {{- range $inst := .Values.config.notifiers.email }}
+            {{- if and $inst.template $inst.template.configmapRef }}
+            - mountPath: /etc/templates/{{ $inst.template.configmapRef.name }}
+              name: tpl-{{ $inst.template.configmapRef.name }}
+              readOnly: true
+            {{- end }}
+            {{- if and $inst.subject $inst.subject.configmapRef }}
+            - mountPath: /etc/templates/{{ $inst.subject.configmapRef.name }}
+              name: tpl-{{ $inst.subject.configmapRef.name }}
+              readOnly: true
             {{- end }}
             {{- end }}
             - mountPath: /etc/templates
@@ -217,6 +243,11 @@ spec:
         {{- end }}
         {{- end }}
         {{- end }}
+        {{- range $inst := .Values.config.jira }}
+        {{- if $inst.enabled }}
+        {{- include "tekton-events-relay.notifierVolumes" (dict "provider" "jira" "instance" $inst) | nindent 8 }}
+        {{- end }}
+        {{- end }}
         {{- if and .Values.config.server.auth.enabled .Values.config.server.auth.secret (include "tekton-events-relay.hasRef" .Values.config.server.auth.secret) }}
         {{- include "tekton-events-relay.valueFromVolume" (dict "name" "server-auth-secret" "field" .Values.config.server.auth.secret) | nindent 8 }}
         {{- end }}
@@ -241,6 +272,27 @@ spec:
             name: {{ $inst.templateRef.configmapName }}
           name: tpl-{{ $inst.templateRef.configmapName }}
         {{- end }}
+        {{- end }}
+        {{- end }}
+        {{- range $inst := .Values.config.jira }}
+        {{- range $action := $inst.actions }}
+        {{- if and $action.template $action.template.configmapRef }}
+        - configMap:
+            name: {{ $action.template.configmapRef.name }}
+          name: tpl-{{ $action.template.configmapRef.name }}
+        {{- end }}
+        {{- end }}
+        {{- end }}
+        {{- range $inst := .Values.config.notifiers.email }}
+        {{- if and $inst.template $inst.template.configmapRef }}
+        - configMap:
+            name: {{ $inst.template.configmapRef.name }}
+          name: tpl-{{ $inst.template.configmapRef.name }}
+        {{- end }}
+        {{- if and $inst.subject $inst.subject.configmapRef }}
+        - configMap:
+            name: {{ $inst.subject.configmapRef.name }}
+          name: tpl-{{ $inst.subject.configmapRef.name }}
         {{- end }}
         {{- end }}
         - configMap:

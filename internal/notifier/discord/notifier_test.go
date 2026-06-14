@@ -508,8 +508,8 @@ func TestTemplateFile_Valid(t *testing.T) {
 	}
 
 	cfg := Config{
-		WebhookURL:   testWebhookURL,
-		TemplateFile: templatePath,
+		WebhookURL: testWebhookURL,
+		Template:   templatePath,
 	}
 	n, err := New(cfg, nil)
 	if err != nil {
@@ -522,8 +522,8 @@ func TestTemplateFile_Valid(t *testing.T) {
 
 func TestTemplateFile_Missing(t *testing.T) {
 	cfg := Config{
-		WebhookURL:   testWebhookURL,
-		TemplateFile: "/nonexistent/template.txt",
+		WebhookURL: testWebhookURL,
+		Template:   "/nonexistent/template.txt",
 	}
 	_, err := New(cfg, nil)
 	if err == nil {
@@ -542,8 +542,8 @@ func TestTemplateFile_InvalidSyntax(t *testing.T) {
 	}
 
 	cfg := Config{
-		WebhookURL:   testWebhookURL,
-		TemplateFile: templatePath,
+		WebhookURL: testWebhookURL,
+		Template:   templatePath,
 	}
 	_, err := New(cfg, nil)
 	if err == nil {

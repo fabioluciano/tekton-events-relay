@@ -25,6 +25,8 @@ const (
 	ActionDiscussionComment ActionType = "discussion_comment"
 	ActionDeploymentStatus  ActionType = "deployment_status"
 	ActionNotify            ActionType = "notify" // for generic notifiers (Slack, Teams, Discord, PagerDuty, Datadog, Webhook)
+	ActionJiraComment       ActionType = "jira_comment"
+	ActionJiraTransition    ActionType = "jira_transition"
 )
 
 // ActionHandler is the interface for action-specific handlers.

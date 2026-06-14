@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"net"
 	"net/smtp"
-	"os"
 	"strings"
 	"text/template"
 	"time"
@@ -19,6 +18,7 @@ import (
 
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
+	"github.com/fabioluciano/tekton-events-relay/internal/notifier/scm"
 )
 
 const (
@@ -66,19 +66,17 @@ View logs: {{ .TargetURL }}
 
 // Config holds the email notifier configuration.
 type Config struct {
-	Name       string
-	Host       string
-	Port       int    // default 587
-	Encryption string // starttls (default) | tls | none
-	Username   string // empty = no AUTH
-	Password   string
-	From       string
-	To         []string
-	Subject    string // Go template; default: defaultSubjectTemplate
-	Template   string // body Go template; default: defaultBodyTemplate
-	// TemplateFile takes precedence over Template when set.
-	TemplateFile       string
-	HTML               bool // send body as text/html instead of text/plain
+	Name               string
+	Host               string
+	Port               int    // default 587
+	Encryption         string // starttls (default) | tls | none
+	Username           string // empty = no AUTH
+	Password           string
+	From               string
+	To                 []string
+	Subject            string // Go template; default: defaultSubjectTemplate
+	Template           string // body Go template (inline or /etc/templates path); default: defaultBodyTemplate
+	HTML               bool   // send body as text/html instead of text/plain
 	Timeout            time.Duration
 	InsecureSkipVerify bool // skip TLS verification (self-hosted relays)
 }
@@ -117,7 +115,13 @@ func New(cfg Config, log *zap.Logger) (*Notifier, error) {
 		cfg.Timeout = defaultTimeout
 	}
 
-	subjectSrc := cfg.Subject
+	// Subject and body templates may be inline strings or absolute file
+	// paths (the chart renders the configmap default / configmapRef as a
+	// /etc/templates/... path); LoadTemplateString resolves either.
+	subjectSrc, err := scm.LoadTemplateString(cfg.Subject)
+	if err != nil {
+		return nil, fmt.Errorf("email %s: load subject template: %w", cfg.Name, err)
+	}
 	if subjectSrc == "" {
 		subjectSrc = defaultSubjectTemplate
 	}
@@ -126,13 +130,9 @@ func New(cfg Config, log *zap.Logger) (*Notifier, error) {
 		return nil, fmt.Errorf("email %s: invalid subject template: %w", cfg.Name, err)
 	}
 
-	bodySrc := cfg.Template
-	if cfg.TemplateFile != "" {
-		data, err := os.ReadFile(cfg.TemplateFile)
-		if err != nil {
-			return nil, fmt.Errorf("email %s: read template file %s: %w", cfg.Name, cfg.TemplateFile, err)
-		}
-		bodySrc = string(data)
+	bodySrc, err := scm.LoadTemplateString(cfg.Template)
+	if err != nil {
+		return nil, fmt.Errorf("email %s: load template: %w", cfg.Name, err)
 	}
 	if bodySrc == "" {
 		bodySrc = defaultBodyTemplate

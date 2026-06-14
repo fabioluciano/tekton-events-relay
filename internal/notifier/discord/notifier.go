@@ -9,11 +9,11 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"os"
 	"text/template"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
+	"github.com/fabioluciano/tekton-events-relay/internal/notifier/scm"
 )
 
 const (
@@ -32,9 +32,8 @@ type Config struct {
 	BotToken  string
 	ChannelID string // Discord channel snowflake ID
 	// Common
-	Username     string // default: tekton-events-relay
-	Template     string // optional Go template; if empty, uses default format
-	TemplateFile string // optional path to template file; takes precedence over Template
+	Username string // default: tekton-events-relay
+	Template string // optional Go template; if empty, uses default format
 }
 
 // Notifier sends events to Discord via webhook.
@@ -52,16 +51,11 @@ func New(cfg Config, log *zap.Logger) (*Notifier, error) {
 
 	n := &Notifier{cfg: cfg}
 
-	// Compile template if provided (TemplateFile takes precedence)
-	var templateContent string
-	if cfg.TemplateFile != "" {
-		data, err := os.ReadFile(cfg.TemplateFile)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read template file %s: %w", cfg.TemplateFile, err)
-		}
-		templateContent = string(data)
-	} else if cfg.Template != "" {
-		templateContent = cfg.Template
+	// Resolve the template: inline string or an /etc/templates/... path
+	// (the chart renders configmap defaults / configmapRef as a path).
+	templateContent, err := scm.LoadTemplateString(cfg.Template)
+	if err != nil {
+		return nil, fmt.Errorf("load template: %w", err)
 	}
 
 	if templateContent != "" {

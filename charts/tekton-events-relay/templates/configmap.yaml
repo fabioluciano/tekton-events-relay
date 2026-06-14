@@ -668,8 +668,12 @@ data:
             {{- range .to }}
             - {{ . | quote }}
             {{- end }}
-          {{- if .subject }}
-          subject: {{ .subject | quote }}
+          {{- if and .subject .subject.value }}
+          subject: {{ .subject.value | quote }}
+          {{- else if and .subject .subject.configmapRef }}
+          subject: "/etc/templates/{{ .subject.configmapRef.name }}/{{ .subject.configmapRef.key }}"
+          {{- else }}
+          subject: "/etc/templates/email-subject.tmpl"
           {{- end }}
           {{- if .html }}
           html: {{ .html }}
@@ -680,11 +684,13 @@ data:
           {{- if .when }}
           when: {{ .when | quote }}
           {{- end }}
-          {{- if .templateRef }}
-          template_file: "/etc/templates/{{ .templateRef.configmapName }}/{{ .templateRef.configmapKey }}"
-          {{- else if .template }}
+          {{- if and .template .template.configmapRef }}
+          template: "/etc/templates/{{ .template.configmapRef.name }}/{{ .template.configmapRef.key }}"
+          {{- else if and .template .template.value }}
           template: |
-{{ .template | nindent 12 }}
+{{ .template.value | nindent 12 }}
+          {{- else }}
+          template: "/etc/templates/email-default.tmpl"
           {{- end }}
         {{- end }}
       {{- end }}
@@ -728,6 +734,47 @@ data:
           {{- else if .template }}
           template: |
 {{ .template | nindent 12 }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+
+    {{- if .Values.config.jira }}
+    jira:
+      {{- range .Values.config.jira }}
+      - name: {{ .name }}
+        enabled: {{ .enabled }}
+        base_url: {{ .base_url | quote }}
+        {{- if and .auth .auth.token }}
+        auth:
+          {{- if .auth.email }}
+          email: {{ .auth.email | quote }}
+          {{- end }}
+          token_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .auth.token "provider" "jira" "instance" .name "key" (default "token" .auth.token.secretRef.key)) }}
+        {{- end }}
+        {{- if .insecure_skip_verify }}
+        insecure_skip_verify: {{ .insecure_skip_verify }}
+        {{- end }}
+        {{- if .actions }}
+        actions:
+          {{- range .actions }}
+          - name: {{ .name }}
+            type: {{ .type }}
+            enabled: {{ .enabled }}
+            {{- if .when }}
+            when: {{ .when | quote }}
+            {{- end }}
+            {{- if .transition }}
+            transition: {{ .transition | quote }}
+            {{- end }}
+            {{- if and .template .template.configmapRef }}
+            template: "/etc/templates/{{ .template.configmapRef.name }}/{{ .template.configmapRef.key }}"
+            {{- else if and .template .template.value }}
+            template: |
+{{ .template.value | nindent 14 }}
+            {{- else if eq .type "comment" }}
+            template: "/etc/templates/jira-comment.tmpl"
+            {{- end }}
           {{- end }}
         {{- end }}
       {{- end }}

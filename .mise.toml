@@ -58,12 +58,18 @@ run = '''
 
 [tasks.helm-template]
 description = "Render Helm templates for validation"
-run = "helm template tekton-events-relay charts/tekton-events-relay --debug"
+run = '''
+  helm repo add valkey https://valkey.io/valkey-helm/ 2>/dev/null || true
+  helm dependency build charts/tekton-events-relay
+  helm template tekton-events-relay charts/tekton-events-relay --debug
+'''
 
 [tasks.helm-kubeconform]
 description = "Validate Helm manifests against Kubernetes schemas"
 run = '''
   echo "🔍 Running Kubeconform validation..."
+  helm repo add valkey https://valkey.io/valkey-helm/ 2>/dev/null || true
+  helm dependency build charts/tekton-events-relay
   helm template tekton-events-relay charts/tekton-events-relay | kubeconform -strict -summary
 '''
 
@@ -71,6 +77,8 @@ run = '''
 description = "Security risk analysis for Kubernetes resources"
 run = '''
   echo "🔍 Running Kubesec security risk analysis..."
+  helm repo add valkey https://valkey.io/valkey-helm/ 2>/dev/null || true
+  helm dependency build charts/tekton-events-relay
   RESULT=$(helm template tekton-events-relay charts/tekton-events-relay | kubesec scan - 2>&1 || true)
 
   # Mostra score e status
@@ -122,6 +130,8 @@ run = """
 description = "Validate and test Helm chart"
 run = '''
   echo "📋 Validating Helm chart..."
+  helm repo add valkey https://valkey.io/valkey-helm/ 2>/dev/null || true
+  helm dependency build charts/tekton-events-relay
   helm lint charts/tekton-events-relay
   echo "\n🎨 Rendering templates..."
   helm template tekton-events-relay charts/tekton-events-relay > /dev/null
@@ -139,6 +149,8 @@ description = "Generate comprehensive security report for Helm charts"
 run = '''
   echo "📊 Generating Helm Security Report"
   echo "================================="
+  helm repo add valkey https://valkey.io/valkey-helm/ 2>/dev/null || true
+  helm dependency build charts/tekton-events-relay
   echo ""
   echo "🔍 1. Kubeconform Schema Validation"
   echo "-------------------------------------"

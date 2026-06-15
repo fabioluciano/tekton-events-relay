@@ -185,7 +185,7 @@ func (s *olricStore) getTasks(ctx context.Context, uid string) (map[string]*doma
 	return tasks, nil
 }
 
-var olricLogPattern = regexp.MustCompile(`^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2} \[(DEBUG|INFO|WARN|ERROR)\] (.*)$`)
+var olricLogPattern = regexp.MustCompile(`^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2} \[(DEBUG|INFO|WARN|ERROR|ERR)\] (.*)$`)
 
 // zapLogWriter adapts olric's std log output to structured zap logging.
 type zapLogWriter struct {
@@ -207,7 +207,7 @@ func (w *zapLogWriter) Write(p []byte) (int, error) {
 			w.log.Info(text)
 		case "WARN":
 			w.log.Warn(text)
-		case "ERROR":
+		case "ERROR", "ERR":
 			w.log.Error(text)
 		}
 	} else {

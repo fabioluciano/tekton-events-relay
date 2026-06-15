@@ -63,6 +63,7 @@
 .doc {
   padding: 40px 0 90px;
   min-height: 70vh;
+  min-width: 0;
 }
 .doc h1 {
   font-size: 36px;
@@ -175,6 +176,12 @@
   margin: 18px 0;
   display: flex;
   justify-content: center;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.doc pre.mermaid svg {
+  max-width: 100%;
+  height: auto;
 }
 .doc-footer {
   margin-top: 54px;
@@ -318,7 +325,7 @@
 /* ---- prev / next ---- */
 .pn {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 14px;
   margin-top: 48px;
 }
@@ -397,7 +404,7 @@
 }
 @media (max-width: 860px) {
   .layout {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     gap: 0;
     padding: 0 20px;
   }

@@ -47,6 +47,9 @@ html[data-theme="light"]{
   --inline-bg:rgba(15,163,196,.10);
 }
 *{box-sizing:border-box;}
+/* Safety net: never allow horizontal scroll on small screens. `clip` (unlike
+   `hidden`) does not create a scroll container, so the sticky nav keeps working. */
+html,body{overflow-x:clip;}
 html{scroll-behavior:smooth;}
 body{
   margin:0; background:var(--bg); color:var(--body);

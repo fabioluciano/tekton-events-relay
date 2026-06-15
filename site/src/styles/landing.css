@@ -15,6 +15,9 @@
   padding-top: 84px;
   padding-bottom: 92px;
 }
+.hero-grid > div {
+  min-width: 0;
+}
 .hero h1 {
   font-size: 52px;
   line-height: 1.04;
@@ -286,9 +289,12 @@ section {
 }
 .step {
   display: grid;
-  grid-template-columns: 54px 1fr;
+  grid-template-columns: 54px minmax(0, 1fr);
   gap: 20px;
   align-items: start;
+}
+.step > div {
+  min-width: 0;
 }
 .step .num {
   width: 38px;
@@ -345,7 +351,7 @@ section {
 
 @media (max-width: 900px) {
   .hero-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     padding-top: 56px;
     padding-bottom: 64px;
   }
@@ -392,7 +398,7 @@ section {
     grid-template-columns: 1fr;
   }
   .step {
-    grid-template-columns: 40px 1fr;
+    grid-template-columns: 40px minmax(0, 1fr);
     gap: 14px;
   }
 }

@@ -420,16 +420,15 @@ config:
             # -- Enable or disable this SCM provider instance
             enabled: false
             when: 'stateIn("success", "failure", "error")'
-            template: |
-              ## Build Result: {{.State}}
-              **Run:** {{.RunName}}
-              **Namespace:** {{.Namespace}}
-              {{if .TargetURL}}[View Logs]({{.TargetURL}}){{end}}
-            # OR reference a ConfigMap:
-            # template:
-            #   configmapRef:
-            #     name: my-templates
-            #     key: check-run.tmpl
+            template:
+              configmapRef:
+                key: github-checkrun.tmpl
+            # OR inline:
+            # template: |
+            #   ## Build Result: {{.State}}
+            #   **Run:** {{.RunName}}
+            #   **Namespace:** {{.Namespace}}
+            #   {{if .TargetURL}}[View Logs]({{.TargetURL}}){{end}}
           # Feature 5: Deployment Status - track deployments by environment
           - name: deployment-status
             # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
@@ -450,37 +449,43 @@ config:
             # retries, restarts and multiple replicas.
             # Supported by GitHub, Gitea and Bitbucket Cloud.
             mode: create
-            # Feature 6: Chat Notifier Templates - customizable Go templates
-            template: |
-              ## Pipeline {{.State}}
-              **Run:** {{.RunName}}
-              **Commit:** {{.CommitSHA}}
-              {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
+            template:
+              configmapRef:
+                key: github-pr-comment.tmpl
+            # OR inline:
+            # template: |
+            #   ## Pipeline {{.State}}
+            #   **Run:** {{.RunName}}
+            #   **Commit:** {{.CommitSHA}}
+            #   {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
           - name: issue-comment
             # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
             type: issue_comment
             # -- Enable or disable this SCM provider instance
             enabled: false
             when: 'stateIn("failure", "error")'
-            template: |
-              Pipeline {{.Context}} finished with state: **{{.State}}**
-              {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
+            template:
+              configmapRef:
+                key: github-issue-comment.tmpl
+            # OR inline:
+            # template: |
+            #   Pipeline {{.Context}} finished with state: **{{.State}}**
+            #   {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
           - name: discussion-comment
             # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
             type: discussion_comment
             # -- Enable or disable this SCM provider instance
             enabled: false
             when: 'stateIn("success", "failure")'
-            template: |
-              ## Pipeline {{.State}}
-              **Run:** {{.RunName}}
-              **Commit:** {{.CommitSHA}}
-              {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
-            # OR reference a ConfigMap:
-            # template:
-            #   configmapRef:
-            #     name: my-templates
-            #     key: discussion-comment.tmpl
+            template:
+              configmapRef:
+                key: github-discussion-comment.tmpl
+            # OR inline:
+            # template: |
+            #   ## Pipeline {{.State}}
+            #   **Run:** {{.RunName}}
+            #   **Commit:** {{.CommitSHA}}
+            #   {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
           - name: label
             # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
             type: label
@@ -488,16 +493,15 @@ config:
             enabled: false
             when: 'event.Resource == "pipelinerun"'
             # -- Declarative label effect: add/remove lists with optional colors (hex without #)
-            # Supports both old string format and new object format with color field
             labels:
               add:
                 - name: "ci:passed"
-                  color: "0e8a16"  # green - optional, omit for provider default
+                  color: "0e8a16"
                 - name: "ready-to-merge"
-                  # color field omitted = provider uses default/random color
+                # - name: '{{ if eq .State "success" }}ci:passed{{ else }}ci:failed{{ end }}'
               remove:
                 - name: "ci:failed"
-                  # color field ignored on remove operations
+                # - name: '{{ if eq .State "success" }}ci:failed{{ else }}ci:passed{{ end }}'
 
     # -- GitLab SCM provider configuration
     gitlab:
@@ -539,42 +543,43 @@ config:
             # -- Enable or disable this SCM provider instance
             enabled: false
             when: 'stateIn("failure", "error")'
-            template: |
-              ## Pipeline {{.State}}
-              **Run:** {{.RunName}}
-              **Commit:** {{.CommitSHA}}
-              {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
-            # OR reference a ConfigMap:
-            # template:
-            #   configmapRef:
-            #     name: my-templates
-            #     key: pr-comment.tmpl
+            template:
+              configmapRef:
+                key: gitlab-note.tmpl
+            # OR inline:
+            # template: |
+            #   ## Pipeline {{.State}}
+            #   **Run:** {{.RunName}}
+            #   **Commit:** {{.CommitSHA}}
+            #   {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
           - name: issue-comment
             # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
             type: issue_comment
             # -- Enable or disable this SCM provider instance
             enabled: false
             when: 'stateIn("failure", "error")'
-            template: |
-              Pipeline {{.Context}} finished with state: **{{.State}}**
-              {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
-            # OR reference a ConfigMap:
-            # template:
-            #   configmapRef:
-            #     name: my-templates
-            #     key: issue-comment.tmpl
+            template:
+              configmapRef:
+                key: gitlab-note.tmpl
+            # OR inline:
+            # template: |
+            #   Pipeline {{.Context}} finished with state: **{{.State}}**
+            #   {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
           - name: label
             # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
             type: label
             # -- Enable or disable this SCM provider instance
             enabled: false
             when: ""
-            # -- Declarative label effect: add/remove lists, Go-templated against the event
+            # -- Declarative label effect: add/remove lists with optional colors (hex without #)
             labels:
               add:
-                - '{{ if eq .State "success" }}pipeline::success{{ else }}pipeline::failed{{ end }}'
+                - name: "pipeline::success"
+                  color: "0e8a16"
+                # - name: '{{ if eq .State "success" }}pipeline::success{{ else }}pipeline::failed{{ end }}'
               remove:
-                - '{{ if eq .State "success" }}pipeline::failed{{ else }}pipeline::success{{ end }}'
+                - name: "pipeline::failed"
+                # - name: '{{ if eq .State "success" }}pipeline::failed{{ else }}pipeline::success{{ end }}'
       - name: server
         # -- Deployment model: 'saas' for gitlab.com, 'self-managed' for self-hosted
         variant: self-managed
@@ -611,42 +616,43 @@ config:
             # -- Enable or disable this SCM provider instance
             enabled: false
             when: 'stateIn("failure", "error")'
-            template: |
-              ## Pipeline {{.State}}
-              **Run:** {{.RunName}}
-              **Commit:** {{.CommitSHA}}
-              {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
-            # OR reference a ConfigMap:
-            # template:
-            #   configmapRef:
-            #     name: my-templates
-            #     key: pr-comment.tmpl
+            template:
+              configmapRef:
+                key: gitlab-note.tmpl
+            # OR inline:
+            # template: |
+            #   ## Pipeline {{.State}}
+            #   **Run:** {{.RunName}}
+            #   **Commit:** {{.CommitSHA}}
+            #   {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
           - name: issue-comment
             # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
             type: issue_comment
             # -- Enable or disable this SCM provider instance
             enabled: false
             when: 'stateIn("failure", "error")'
-            template: |
-              Pipeline {{.Context}} finished with state: **{{.State}}**
-              {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
-            # OR reference a ConfigMap:
-            # template:
-            #   configmapRef:
-            #     name: my-templates
-            #     key: issue-comment.tmpl
+            template:
+              configmapRef:
+                key: gitlab-note.tmpl
+            # OR inline:
+            # template: |
+            #   Pipeline {{.Context}} finished with state: **{{.State}}**
+            #   {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
           - name: label
             # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
             type: label
             # -- Enable or disable this SCM provider instance
             enabled: false
             when: ""
-            # -- Declarative label effect: add/remove lists, Go-templated against the event
+            # -- Declarative label effect: add/remove lists with optional colors (hex without #)
             labels:
               add:
-                - '{{ if eq .State "success" }}pipeline::success{{ else }}pipeline::failed{{ end }}'
+                - name: "pipeline::success"
+                  color: "0e8a16"
+                # - name: '{{ if eq .State "success" }}pipeline::success{{ else }}pipeline::failed{{ end }}'
               remove:
-                - '{{ if eq .State "success" }}pipeline::failed{{ else }}pipeline::success{{ end }}'
+                - name: "pipeline::failed"
+                # - name: '{{ if eq .State "success" }}pipeline::failed{{ else }}pipeline::success{{ end }}'
 
     # -- Bitbucket SCM provider configuration
     bitbucket:
@@ -732,12 +738,15 @@ config:
             # -- Enable or disable this SCM provider instance
             enabled: false
             when: ""
-            # -- Declarative label effect: add/remove lists, Go-templated against the event
+            # -- Declarative label effect: add/remove lists with optional colors (hex without #)
             labels:
               add:
-                - '{{ if eq .State "success" }}build-passed{{ else }}build-failed{{ end }}'
+                - name: "build-passed"
+                  color: "0e8a16"
+                # - name: '{{ if eq .State "success" }}build-passed{{ else }}build-failed{{ end }}'
               remove:
-                - '{{ if eq .State "success" }}build-failed{{ else }}build-passed{{ end }}'
+                - name: "build-failed"
+                # - name: '{{ if eq .State "success" }}build-failed{{ else }}build-passed{{ end }}'
 
     # -- Gitea SCM provider configuration
     gitea:
@@ -775,42 +784,43 @@ config:
             # -- Enable or disable this SCM provider instance
             enabled: false
             when: 'stateIn("success", "failure")'
-            template: |
-              ## Pipeline {{.State}}
-              **Run:** {{.RunName}}
-              **Commit:** {{.CommitSHA}}
-              {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
-            # OR reference a ConfigMap:
-            # template:
-            #   configmapRef:
-            #     name: my-templates
-            #     key: pr-comment.tmpl
+            template:
+              configmapRef:
+                key: bitbucket-comment.tmpl
+            # OR inline:
+            # template: |
+            #   ## Pipeline {{.State}}
+            #   **Run:** {{.RunName}}
+            #   **Commit:** {{.CommitSHA}}
+            #   {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
           - name: issue-comment
             # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
             type: issue_comment
             # -- Enable or disable this SCM provider instance
             enabled: false
             when: 'stateIn("failure", "error")'
-            template: |
-              Pipeline {{.Context}} finished: **{{.State}}**
-              {{if .TargetURL}}[Results]({{.TargetURL}}){{end}}
-            # OR reference a ConfigMap:
-            # template:
-            #   configmapRef:
-            #     name: my-templates
-            #     key: issue-comment.tmpl
+            template:
+              configmapRef:
+                key: bitbucket-comment.tmpl
+            # OR inline:
+            # template: |
+            #   Pipeline {{.Context}} finished: **{{.State}}**
+            #   {{if .TargetURL}}[Results]({{.TargetURL}}){{end}}
           - name: label
             # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
             type: label
             # -- Enable or disable this SCM provider instance
             enabled: false
             when: ""
-            # -- Declarative label effect: add/remove lists, Go-templated against the event
+            # -- Declarative label effect: add/remove lists with optional colors (hex without #)
             labels:
               add:
-                - '{{ if eq .State "success" }}ci:passed{{ else }}ci:failed{{ end }}'
+                - name: "ci:passed"
+                  color: "0e8a16"
+                # - name: '{{ if eq .State "success" }}ci:passed{{ else }}ci:failed{{ end }}'
               remove:
-                - '{{ if eq .State "success" }}ci:failed{{ else }}ci:passed{{ end }}'
+                - name: "ci:failed"
+                # - name: '{{ if eq .State "success" }}ci:failed{{ else }}ci:passed{{ end }}'
 
     # -- SourceHut SCM provider configuration
     sourcehut:
@@ -869,12 +879,15 @@ config:
         icon_emoji: ":robot_face:"
         # -- CEL expression to filter which events trigger notifications
         when: 'event.State == "failure" || event.State == "error"'
-        # -- Go template for the Slack message body. Available variables: .State, .RunName, .CommitSHA, .TargetURL
-        template: |
-          :warning: *Pipeline {{.State}}*
-          *Run:* `{{.RunName}}`
-          *Commit:* `{{.CommitSHA}}`
-          {{if .TargetURL}}<{{.TargetURL}}|View in Dashboard>{{end}}
+        template:
+          configmapRef:
+            key: slack-default.tmpl
+        # OR inline:
+        # template: |
+        #   :warning: *Pipeline {{.State}}*
+        #   *Run:* `{{.RunName}}`
+        #   *Commit:* `{{.CommitSHA}}`
+        #   {{if .TargetURL}}<{{.TargetURL}}|View in Dashboard>{{end}}
 
     # -------------------------------------------------------------------------
     # Microsoft Teams
@@ -891,15 +904,18 @@ config:
         #     key: webhook_url
         # -- CEL expression to filter which events trigger notifications
         when: 'event.State == "success" || event.State == "failure" || event.State == "error"'
-        # -- Go template for the Teams message body. Available variables: .State, .RunName, .Namespace, .CommitSHA, .TargetURL
-        template: |
-          **Pipeline {{.State}}**
-          | Field | Value |
-          |-------|-------|
-          | Run | {{.RunName}} |
-          | Namespace | {{.Namespace}} |
-          | Commit | {{.CommitSHA}} |
-          {{if .TargetURL}}[View in Dashboard]({{.TargetURL}}){{end}}
+        template:
+          configmapRef:
+            key: teams-default.tmpl
+        # OR inline:
+        # template: |
+        #   **Pipeline {{.State}}**
+        #   | Field | Value |
+        #   |-------|-------|
+        #   | Run | {{.RunName}} |
+        #   | Namespace | {{.Namespace}} |
+        #   | Commit | {{.CommitSHA}} |
+        #   {{if .TargetURL}}[View in Dashboard]({{.TargetURL}}){{end}}
 
     # -------------------------------------------------------------------------
     # Discord
@@ -926,14 +942,17 @@ config:
         username: "Tekton CI"
         # -- CEL expression to filter which events trigger notifications
         when: 'event.Namespace == "staging" || event.Namespace == "production"'
-        # -- Go template for the Discord message body. Available variables: .State, .RunName, .Namespace, .CommitSHA, .TargetURL
-        template: |
-          **Pipeline {{.State}}** in `{{.Namespace}}`
-          ```
-          Run:    {{.RunName}}
-          Commit: {{.CommitSHA}}
-          ```
-          {{if .TargetURL}}[View in Dashboard]({{.TargetURL}}){{end}}
+        template:
+          configmapRef:
+            key: discord-default.tmpl
+        # OR inline:
+        # template: |
+        #   **Pipeline {{.State}}** in `{{.Namespace}}`
+        #   ```
+        #   Run:    {{.RunName}}
+        #   Commit: {{.CommitSHA}}
+        #   ```
+        #   {{if .TargetURL}}[View in Dashboard]({{.TargetURL}}){{end}}
 
     # -------------------------------------------------------------------------
     # PagerDuty
@@ -1000,8 +1019,7 @@ config:
     # -------------------------------------------------------------------------
     # Grafana
     # -------------------------------------------------------------------------
-    grafana:
-      []
+    grafana: []
       # - name: deploy-markers
       #   enabled: false
       #   url: https://grafana.company.example.com
@@ -1017,8 +1035,7 @@ config:
     # -------------------------------------------------------------------------
     # Sentry
     # -------------------------------------------------------------------------
-    sentry:
-      []
+    sentry: []
       # - name: main
       #   enabled: false
       #   org: acme

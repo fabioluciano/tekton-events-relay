@@ -141,3 +141,27 @@ footer{border-top:1px solid var(--line); margin-top:110px; padding:42px 0 56px; 
 .foot nav{display:flex; flex-wrap:wrap; gap:20px; font-size:14px;}
 .foot nav a{color:var(--muted);}
 .foot nav a:hover{color:var(--cyan-bright);}
+
+/* ============================================================ */
+/* Responsive (shared: nav, headings, buttons, footer, padding) */
+/* ============================================================ */
+@media (max-width: 820px){
+  .wrap, .nav-inner, .foot{ padding-left:20px; padding-right:20px; }
+  /* Let the top nav grow to a second row instead of overflowing. */
+  .nav-inner{
+    height:auto; min-height:58px; flex-wrap:wrap;
+    gap:10px 16px; padding-top:10px; padding-bottom:10px;
+  }
+  .nav-links{ gap:18px; flex-wrap:wrap; justify-content:flex-end; }
+  h2.sec{ font-size:27px; }
+  p.sub{ font-size:15.5px; }
+}
+@media (max-width: 520px){
+  .wrap, .nav-inner, .foot{ padding-left:16px; padding-right:16px; }
+  .nav-links{ gap:14px; row-gap:8px; }
+  /* Collapse the GitHub button to its icon to save room. */
+  .nav-links a.gh{ gap:0; font-size:0; padding:6px 10px; }
+  .btn{ padding:11px 18px; font-size:15px; }
+  .foot{ justify-content:flex-start; gap:16px; }
+  h2.sec{ font-size:23px; }
+}

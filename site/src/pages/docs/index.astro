@@ -1,0 +1,41 @@
+---
+import { getCollection, render } from 'astro:content';
+import Docs from '../../layouts/Docs.astro';
+import { parseSidebar, orderedSlugs } from '../../lib/sidebar';
+import { docsHref } from '../../lib/site';
+
+const pages = await getCollection('wiki');
+const home = pages.find((p) => p.id === 'Home') ?? pages[0];
+const { Content, headings } = await render(home);
+
+const sections = parseSidebar();
+const order = orderedSlugs(sections);
+
+const titleBySlug = new Map<string, string>();
+for (const section of sections) {
+  for (const item of section.items) {
+    if (item.slug && !titleBySlug.has(item.slug)) titleBySlug.set(item.slug, item.title);
+  }
+}
+
+const idx = order.indexOf(home.id);
+const next = idx >= 0 && idx < order.length - 1 ? order[idx + 1] : order[0] !== home.id ? order[0] : null;
+
+const h1 = headings.find((h) => h.depth === 1);
+const title = `${h1?.text ?? 'Documentation'} — Tekton Events Relay`;
+---
+
+<Docs title={title} current={home.id} headings={headings}>
+  <Content />
+
+  {
+    next && (
+      <nav class="pn">
+        <a class="next" href={docsHref(next)}>
+          <span class="lbl">Next</span>
+          <span class="ttl">{titleBySlug.get(next) ?? next}</span>
+        </a>
+      </nav>
+    )
+  }
+</Docs>

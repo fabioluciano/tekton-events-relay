@@ -1,0 +1,20 @@
+---
+import { withBase, REPO_URL } from '../lib/site';
+const icon = withBase('/assets/icon.svg');
+---
+
+<footer>
+  <div class="foot">
+    <div class="fbrand">
+      <img src={icon} alt="" />
+      <span>Tekton Events Relay · MIT License</span>
+    </div>
+    <nav>
+      <a href={REPO_URL}>Repository</a>
+      <a href={`${REPO_URL}/releases`}>Releases</a>
+      <a href="https://artifacthub.io/packages/search?repo=tekton-events-relay">Artifact Hub</a>
+      <a href={`${REPO_URL}/issues`}>Issues</a>
+      <a href={`${REPO_URL}/blob/main/SECURITY.md`}>Security</a>
+    </nav>
+  </div>
+</footer>

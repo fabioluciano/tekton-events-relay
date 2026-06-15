@@ -1,0 +1,33 @@
+---
+import { parseSidebar, type NavItem } from '../lib/sidebar';
+import { docsHref } from '../lib/site';
+
+interface Props {
+  /** Slug of the page currently being viewed. */
+  current: string;
+}
+const { current } = Astro.props;
+const sections = parseSidebar();
+
+const hrefFor = (item: NavItem) => (item.slug ? docsHref(item.slug, item.anchor) : '#');
+const isActive = (item: NavItem) => item.slug === current && !item.anchor;
+---
+
+<nav id="sidebar">
+  {
+    sections.map((section) => (
+      <>
+        {section.title && <h3>{section.title}</h3>}
+        <ul>
+          {section.items.map((item) => (
+            <li>
+              <a class={isActive(item) ? 'active' : ''} href={hrefFor(item)}>
+                {item.title}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </>
+    ))
+  }
+</nav>

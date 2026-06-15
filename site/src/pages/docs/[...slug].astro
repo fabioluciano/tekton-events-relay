@@ -1,0 +1,62 @@
+---
+import { getCollection, render } from 'astro:content';
+import Docs from '../../layouts/Docs.astro';
+import { parseSidebar, orderedSlugs } from '../../lib/sidebar';
+import { docsHref, WIKI_URL } from '../../lib/site';
+
+export async function getStaticPaths() {
+  const pages = await getCollection('wiki');
+  return pages.map((entry) => ({ params: { slug: entry.id }, props: { entry } }));
+}
+
+const { entry } = Astro.props;
+const { Content, headings } = await render(entry);
+
+const sections = parseSidebar();
+const order = orderedSlugs(sections);
+
+// Map slug -> nav title (for prev/next labels).
+const titleBySlug = new Map<string, string>();
+for (const section of sections) {
+  for (const item of section.items) {
+    if (item.slug && !titleBySlug.has(item.slug)) titleBySlug.set(item.slug, item.title);
+  }
+}
+const labelFor = (slug: string) => titleBySlug.get(slug) ?? slug.replace(/-/g, ' ');
+
+const idx = order.indexOf(entry.id);
+const prev = idx > 0 ? order[idx - 1] : null;
+const next = idx >= 0 && idx < order.length - 1 ? order[idx + 1] : null;
+
+const h1 = headings.find((h) => h.depth === 1);
+const pageTitle = h1?.text ?? labelFor(entry.id);
+const title = `${pageTitle} — Tekton Events Relay`;
+---
+
+<Docs title={title} current={entry.id} headings={headings}>
+  <Content />
+
+  <nav class="pn">
+    {
+      prev && (
+        <a class="prev" href={docsHref(prev)}>
+          <span class="lbl">Previous</span>
+          <span class="ttl">{labelFor(prev)}</span>
+        </a>
+      )
+    }
+    {
+      next && (
+        <a class="next" href={docsHref(next)}>
+          <span class="lbl">Next</span>
+          <span class="ttl">{labelFor(next)}</span>
+        </a>
+      )
+    }
+  </nav>
+
+  <div class="doc-footer">
+    <span><a href={`${WIKI_URL}/${entry.id}/_edit`} target="_blank" rel="noopener">Edit this page on the wiki</a></span>
+    <span><a href={`${WIKI_URL}/${entry.id}`} target="_blank" rel="noopener">View on GitHub wiki</a></span>
+  </div>
+</Docs>

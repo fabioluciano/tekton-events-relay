@@ -1,0 +1,27 @@
+---
+interface Heading {
+  depth: number;
+  slug: string;
+  text: string;
+}
+interface Props {
+  headings: Heading[];
+}
+const { headings } = Astro.props;
+const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
+---
+
+<aside class="toc" id="toc" aria-label="On this page">
+  {
+    toc.length > 0 && (
+      <>
+        <p class="toc-title">On this page</p>
+        {toc.map((h) => (
+          <a class={h.depth === 3 ? 't-h3' : ''} href={`#${h.slug}`}>
+            {h.text}
+          </a>
+        ))}
+      </>
+    )
+  }
+</aside>

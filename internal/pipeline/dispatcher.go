@@ -140,12 +140,30 @@ func (d *Dispatcher) Handle(ctx context.Context, env *event.Envelope) error {
 					zap.Error(err),
 				)
 			} else {
-				d.log.Debug("handler succeeded",
+				// Build target description for better observability
+				fields := []zap.Field{
 					zap.String("handler", h.Name()),
 					zap.String("action", string(h.Type())),
 					zap.String("runID", env.Report.RunName),
 					zap.String("state", string(env.Report.State)),
-				)
+				}
+				if env.Report.Repo.Owner != "" && env.Report.Repo.Name != "" {
+					fields = append(fields, zap.String("repo", env.Report.Repo.Owner+"/"+env.Report.Repo.Name))
+				}
+				if env.Report.PRNumber != nil {
+					fields = append(fields, zap.Int("pr", *env.Report.PRNumber))
+				}
+				if env.Report.IssueNumber != nil {
+					fields = append(fields, zap.Int("issue", *env.Report.IssueNumber))
+				}
+				if env.Report.CommitSHA != "" {
+					commitShort := env.Report.CommitSHA
+					if len(commitShort) > 8 {
+						commitShort = commitShort[:8]
+					}
+					fields = append(fields, zap.String("commit", commitShort))
+				}
+				d.log.Info("action_success", fields...)
 			}
 			if d.collectors != nil {
 				d.collectors.HandlerDuration.WithLabelValues(h.Name()).Observe(duration.Seconds())

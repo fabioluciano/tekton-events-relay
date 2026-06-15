@@ -398,6 +398,28 @@ Applied outermost-to-innermost in `internal/http/server.go`:
 
 ## Helm chart
 
+### Installation from OCI registry
+
+```bash
+helm install tekton-events-relay \
+  oci://ghcr.io/fabioluciano/charts/tekton-events-relay \
+  --version 0.7.6 \
+  --namespace tekton-events-relay --create-namespace \
+  -f values.yaml
+```
+
+### Upgrade existing installation
+
+```bash
+helm upgrade tekton-events-relay \
+  oci://ghcr.io/fabioluciano/charts/tekton-events-relay \
+  --version 0.7.6 \
+  --namespace tekton-events-relay \
+  -f values.yaml
+```
+
+### Developer commands
+
 ```bash
 mise run helm-lint
 mise run helm-template       # render templates for debug
@@ -406,6 +428,7 @@ mise run helm-security       # all security checks (kubelinter, kubesec, trivy, 
 ```
 
 - Chart at `charts/tekton-events-relay/`, OCI image: `ghcr.io/fabioluciano/tekton-events-relay`
+- OCI registry: `oci://ghcr.io/fabioluciano/charts/tekton-events-relay`
 - Template files (`charts/*/templates/*.yaml`) **excluded** from yamllint and check-yaml hooks
 - 15 default Go templates in `configmap-templates.yaml` (accumulator, per-provider comment formats)
 - Secrets mounted at `/etc/secrets/{provider}/{instance}/` — config references via `secretRef.name`/`secretRef.key`

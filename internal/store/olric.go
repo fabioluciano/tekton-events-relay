@@ -186,7 +186,7 @@ func (s *olricStore) getTasks(ctx context.Context, uid string) (map[string]*doma
 	return tasks, nil
 }
 
-var olricLogPattern = regexp.MustCompile(`^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2} \[(DEBUG|INFO|WARN|ERROR|ERR)\] (.*)$`)
+var olricLogPattern = regexp.MustCompile(`^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2}[^\[]*\[(DEBUG|INFO|WARN|ERROR|ERR)\] (.*)$`)
 
 // zapLogWriter adapts olric's std log output to structured zap logging.
 type zapLogWriter struct {
@@ -201,6 +201,14 @@ func (w *zapLogWriter) Write(p []byte) (int, error) {
 		level := matches[1]
 		text := matches[2]
 
+		// Strip leading "[LEVEL] " prefix that Olric embeds in the message text,
+		// otherwise it duplicates the zap structured "level" field.
+		if len(text) > 0 && text[0] == '[' {
+			if end := strings.Index(text, "] "); end > 0 {
+				text = text[end+2:]
+			}
+		}
+
 		switch level {
 		case "DEBUG":
 			w.log.Debug(text)
@@ -212,8 +220,12 @@ func (w *zapLogWriter) Write(p []byte) (int, error) {
 			w.log.Error(text)
 		}
 	} else {
-		// Fallback for non-standard format
-		w.log.Info(msg)
+		// Fallback for non-standard format — strip [LEVEL] prefix if present.
+		text := msg
+		if i := strings.Index(text, "] "); i > 0 && text[0] == '[' {
+			text = text[i+2:]
+		}
+		w.log.Info(text)
 	}
 
 	return len(p), nil

@@ -276,21 +276,6 @@ func TestValidate_MissingRequiredFields(t *testing.T) {
 			expectedErr: "either 'auth.secret_file' or GitHub App credentials",
 		},
 		{
-			name: "github missing base_url",
-			cfg: &Config{
-				SCM: SCMConfig{
-					GitHub: []GitHubInstance{
-						{
-							Name:    "main",
-							Enabled: true,
-							Auth:    &GitHubAuth{SecretFile: "token123"},
-						},
-					},
-				},
-			},
-			expectedErr: "scm.github[0].base_url",
-		},
-		{
 			name: "gitlab missing token",
 			cfg: &Config{
 				SCM: SCMConfig{

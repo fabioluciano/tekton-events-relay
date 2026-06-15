@@ -1,0 +1,68 @@
+name: Tekton Events Relay - Site Validation
+
+on:
+  workflow_call:
+  pull_request:
+    branches:
+      - main
+      - "rc/**"
+      - "rc-*"
+    paths:
+      - "site/**"
+      - "wiki/**"
+      - ".github/workflows/ci-site.yaml"
+
+permissions:
+  contents: read
+
+jobs:
+  site-quality:
+    name: Site Quality Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6.0.3
+        with:
+          submodules: true
+
+      - name: Pull latest wiki content
+        run: git submodule update --remote --recursive wiki || true
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+
+      - name: Install dependencies
+        working-directory: site
+        run: npm ci
+
+      - name: Check package-lock.json is up to date
+        working-directory: site
+        run: |
+          npm install --package-lock-only
+          if [ -n "$(git status --porcelain package-lock.json)" ]; then
+            echo "::error::package-lock.json is out of date. Run 'npm install' locally and commit the changes."
+            git diff package-lock.json
+            exit 1
+          fi
+
+      - name: Run astro check (type checking)
+        working-directory: site
+        run: npm run check
+
+      - name: Build site
+        working-directory: site
+        run: npm run build
+
+      - name: Verify build output exists
+        working-directory: site
+        run: |
+          if [ ! -d "dist" ]; then
+            echo "::error::Build output directory 'site/dist' not found"
+            exit 1
+          fi
+          echo "Build output size:"
+          du -sh dist

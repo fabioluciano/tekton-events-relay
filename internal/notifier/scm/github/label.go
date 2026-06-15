@@ -104,9 +104,24 @@ func (h *LabelHandler) ensureLabelExists(ctx context.Context, owner, repo string
 	// Check if label exists via repo-scoped GET
 	labelURL := fmt.Sprintf("%s/repos/%s/%s/labels/%s",
 		h.client.baseURL, owner, repo, url.PathEscape(label.Name))
-	err := h.client.Do(ctx, "GET", labelURL, nil)
+
+	var existingLabel struct {
+		Name  string `json:"name"`
+		Color string `json:"color"`
+	}
+	err := h.client.DoWithResponse(ctx, "GET", labelURL, nil, &existingLabel)
 	if err == nil {
-		// Label exists, cache it and preserve existing color (idempotent)
+		// Label exists - update color if different
+		if existingLabel.Color != label.Color {
+			payload := map[string]string{
+				"name":  label.Name,
+				"color": label.Color,
+			}
+			if err := h.client.Do(ctx, "PATCH", labelURL, payload); err != nil {
+				return fmt.Errorf("update label color: %w", err)
+			}
+		}
+		// Cache it
 		h.cache.mu.Lock()
 		h.cache.checked[cacheKey] = true
 		h.cache.mu.Unlock()

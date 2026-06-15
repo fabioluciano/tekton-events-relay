@@ -391,7 +391,12 @@ type GitHubInstance struct {
 func (g GitHubInstance) isEnabled() bool { return g.Enabled }
 
 // GetBaseURL returns the base URL for the GitHub instance.
-func (g GitHubInstance) GetBaseURL() string { return g.BaseURL }
+func (g GitHubInstance) GetBaseURL() string {
+	if g.BaseURL == "" {
+		return "https://api.github.com"
+	}
+	return g.BaseURL
+}
 
 // GetActions returns the configured actions for the GitHub instance.
 func (g GitHubInstance) GetActions() []Action { return g.Actions }

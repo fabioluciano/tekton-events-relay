@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"go.uber.org/zap"
@@ -412,6 +413,58 @@ func TestLabelHandler_Handle_AddLabelOnIssue(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("Handle() unexpected error: %v", err)
+	}
+}
+
+func TestLabelHandler_Handle_UpdateLabelColor(t *testing.T) {
+	var getCount, patchCount int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// GET /repos/org/repo/labels/passed - return existing label with wrong color
+		if r.Method == "GET" && strings.Contains(r.URL.Path, "/labels/passed") {
+			getCount++
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"name":"passed","color":"ffffff"}`))
+			return
+		}
+		// PATCH /repos/org/repo/labels/passed - update color
+		if r.Method == "PATCH" && strings.Contains(r.URL.Path, "/labels/passed") {
+			patchCount++
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		// POST /repos/org/repo/issues/7/labels - apply to issue
+		if r.Method == "POST" && strings.Contains(r.URL.Path, "/issues/7/labels") {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer server.Close()
+
+	prNum := 7
+	h := NewLabelHandler(LabelConfig{
+		Token:   testHandlerToken,
+		BaseURL: server.URL,
+		Labels:  scm.LabelSet{Add: []scm.Label{{Name: "passed", Color: "0e8a16"}}},
+	}, zap.NewNop())
+
+	err := h.Handle(context.Background(), domain.Event{
+		Provider: providerGitHub,
+		Repo:     domain.Repo{Owner: testHandlerOrg, Name: testHandlerRepo},
+		State:    domain.StateSuccess,
+		PRNumber: &prNum,
+	})
+	if err != nil {
+		t.Fatalf("Handle() unexpected error: %v", err)
+	}
+
+	if getCount != 1 {
+		t.Errorf("expected 1 GET call, got %d", getCount)
+	}
+	if patchCount != 1 {
+		t.Errorf("expected 1 PATCH call to update color, got %d", patchCount)
 	}
 }
 

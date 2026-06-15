@@ -704,12 +704,15 @@
                         "properties": {
                           "configmapRef": {
                             "type": "object",
+                            "description": "Reference to a ConfigMap containing the template. When name is omitted, defaults to tekton-events-relay-templates.",
                             "properties": {
                               "name": {
-                                "type": "string"
+                                "type": "string",
+                                "description": "Kubernetes ConfigMap name. Optional; defaults to tekton-events-relay-templates."
                               },
                               "key": {
-                                "type": "string"
+                                "type": "string",
+                                "description": "Key within the ConfigMap holding the template."
                               }
                             }
                           }
@@ -777,12 +780,15 @@
                             "type": "object",
                             "properties": {
                               "name": {
-                                "type": "string"
+                                "type": "string",
+                                "description": "Kubernetes ConfigMap name. Optional; defaults to tekton-events-relay-templates."
                               },
                               "key": {
-                                "type": "string"
+                                "type": "string",
+                                "description": "Key within the ConfigMap holding the template."
                               }
-                            }
+                            },
+                            "description": "Reference to a ConfigMap containing the template. When name is omitted, defaults to tekton-events-relay-templates."
                           }
                         }
                       }
@@ -885,12 +891,15 @@
                             "type": "object",
                             "properties": {
                               "name": {
-                                "type": "string"
+                                "type": "string",
+                                "description": "Kubernetes ConfigMap name. Optional; defaults to tekton-events-relay-templates."
                               },
                               "key": {
-                                "type": "string"
+                                "type": "string",
+                                "description": "Key within the ConfigMap holding the template."
                               }
-                            }
+                            },
+                            "description": "Reference to a ConfigMap containing the template. When name is omitted, defaults to tekton-events-relay-templates."
                           }
                         }
                       }
@@ -1091,12 +1100,15 @@
                             "type": "object",
                             "properties": {
                               "name": {
-                                "type": "string"
+                                "type": "string",
+                                "description": "Kubernetes ConfigMap name. Optional; defaults to tekton-events-relay-templates."
                               },
                               "key": {
-                                "type": "string"
+                                "type": "string",
+                                "description": "Key within the ConfigMap holding the template."
                               }
-                            }
+                            },
+                            "description": "Reference to a ConfigMap containing the template. When name is omitted, defaults to tekton-events-relay-templates."
                           }
                         }
                       }
@@ -1426,12 +1438,15 @@
                         "type": "object",
                         "properties": {
                           "name": {
-                            "type": "string"
+                            "type": "string",
+                            "description": "Kubernetes ConfigMap name. Optional; defaults to tekton-events-relay-templates."
                           },
                           "key": {
-                            "type": "string"
+                            "type": "string",
+                            "description": "Key within the ConfigMap holding the template."
                           }
-                        }
+                        },
+                        "description": "Reference to a ConfigMap containing the template. When name is omitted, defaults to tekton-events-relay-templates."
                       }
                     }
                   },
@@ -1447,12 +1462,15 @@
                         "type": "object",
                         "properties": {
                           "name": {
-                            "type": "string"
+                            "type": "string",
+                            "description": "Kubernetes ConfigMap name. Optional; defaults to tekton-events-relay-templates."
                           },
                           "key": {
-                            "type": "string"
+                            "type": "string",
+                            "description": "Key within the ConfigMap holding the template."
                           }
-                        }
+                        },
+                        "description": "Reference to a ConfigMap containing the template. When name is omitted, defaults to tekton-events-relay-templates."
                       }
                     }
                   },
@@ -1549,12 +1567,15 @@
                       },
                       "configmapRef": {
                         "type": "object",
+                        "description": "Reference to a ConfigMap containing the template. When name is omitted, defaults to tekton-events-relay-templates.",
                         "properties": {
                           "name": {
-                            "type": "string"
+                            "type": "string",
+                            "description": "Kubernetes ConfigMap name. Optional; defaults to tekton-events-relay-templates."
                           },
                           "key": {
-                            "type": "string"
+                            "type": "string",
+                            "description": "Key within the ConfigMap holding the template."
                           }
                         }
                       },
@@ -1604,12 +1625,15 @@
                         },
                         "configmapRef": {
                           "type": "object",
+                          "description": "Reference to a ConfigMap containing the template. When name is omitted, defaults to tekton-events-relay-templates.",
                           "properties": {
                             "name": {
-                              "type": "string"
+                              "type": "string",
+                              "description": "Kubernetes ConfigMap name. Optional; defaults to tekton-events-relay-templates."
                             },
                             "key": {
-                              "type": "string"
+                              "type": "string",
+                              "description": "Key within the ConfigMap holding the template."
                             }
                           }
                         }
@@ -2529,12 +2553,15 @@
               "properties": {
                 "configmapRef": {
                   "type": "object",
+                  "description": "Reference to a ConfigMap containing the template. When name is omitted, defaults to tekton-events-relay-templates.",
                   "properties": {
                     "name": {
-                      "type": "string"
+                      "type": "string",
+                      "description": "Kubernetes ConfigMap name. Optional; defaults to tekton-events-relay-templates."
                     },
                     "key": {
-                      "type": "string"
+                      "type": "string",
+                      "description": "Key within the ConfigMap holding the template."
                     }
                   }
                 }
@@ -3390,18 +3417,68 @@
                 "properties": {
                   "labels": {
                     "type": "object",
-                    "description": "Declarative label effect: add/remove lists, entries support Go templates evaluated against the event",
+                    "description": "Declarative label effect: add/remove lists with optional colors (hex without #). Supports both string format and object format with color field.",
                     "properties": {
                       "add": {
                         "type": "array",
                         "items": {
-                          "type": "string"
+                          "oneOf": [
+                            {
+                              "type": "string",
+                              "description": "Label name (string format)"
+                            },
+                            {
+                              "type": "object",
+                              "description": "Label with optional color",
+                              "properties": {
+                                "name": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "description": "Label name (supports Go templates)"
+                                },
+                                "color": {
+                                  "type": "string",
+                                  "pattern": "^[0-9a-fA-F]{6}$",
+                                  "description": "Hex color without # (e.g. 0e8a16)"
+                                }
+                              },
+                              "required": [
+                                "name"
+                              ],
+                              "additionalProperties": false
+                            }
+                          ]
                         }
                       },
                       "remove": {
                         "type": "array",
                         "items": {
-                          "type": "string"
+                          "oneOf": [
+                            {
+                              "type": "string",
+                              "description": "Label name (string format)"
+                            },
+                            {
+                              "type": "object",
+                              "description": "Label with optional color",
+                              "properties": {
+                                "name": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "description": "Label name (supports Go templates)"
+                                },
+                                "color": {
+                                  "type": "string",
+                                  "pattern": "^[0-9a-fA-F]{6}$",
+                                  "description": "Hex color without # (e.g. 0e8a16)"
+                                }
+                              },
+                              "required": [
+                                "name"
+                              ],
+                              "additionalProperties": false
+                            }
+                          ]
                         }
                       }
                     },

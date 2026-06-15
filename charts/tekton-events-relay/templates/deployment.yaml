@@ -145,7 +145,10 @@ spec:
             {{- range $inst := $instances }}
             {{- range $action := $inst.actions }}
             {{- if and $action.template (kindIs "map" $action.template) $action.template.configmapRef }}
-            {{- $configmapMounts = append $configmapMounts $action.template.configmapRef.name }}
+            {{- $cmName := default "tekton-events-relay-templates" $action.template.configmapRef.name }}
+            {{- if ne $cmName "tekton-events-relay-templates" }}
+            {{- $configmapMounts = append $configmapMounts $cmName }}
+            {{- end }}
             {{- end }}
             {{- end }}
             {{- end }}
@@ -153,23 +156,35 @@ spec:
             {{- range $provider, $instances := .Values.config.notifiers }}
             {{- range $inst := $instances }}
             {{- if and $inst.template (kindIs "map" $inst.template) $inst.template.configmapRef }}
-            {{- $configmapMounts = append $configmapMounts $inst.template.configmapRef.name }}
+            {{- $cmName := default "tekton-events-relay-templates" $inst.template.configmapRef.name }}
+            {{- if ne $cmName "tekton-events-relay-templates" }}
+            {{- $configmapMounts = append $configmapMounts $cmName }}
+            {{- end }}
             {{- end }}
             {{- end }}
             {{- end }}
             {{- range $inst := .Values.config.jira }}
             {{- range $action := $inst.actions }}
             {{- if and $action.template (kindIs "map" $action.template) $action.template.configmapRef }}
-            {{- $configmapMounts = append $configmapMounts $action.template.configmapRef.name }}
+            {{- $cmName := default "tekton-events-relay-templates" $action.template.configmapRef.name }}
+            {{- if ne $cmName "tekton-events-relay-templates" }}
+            {{- $configmapMounts = append $configmapMounts $cmName }}
+            {{- end }}
             {{- end }}
             {{- end }}
             {{- end }}
             {{- range $inst := .Values.config.notifiers.email }}
             {{- if and $inst.template (kindIs "map" $inst.template) $inst.template.configmapRef }}
-            {{- $configmapMounts = append $configmapMounts $inst.template.configmapRef.name }}
+            {{- $cmName := default "tekton-events-relay-templates" $inst.template.configmapRef.name }}
+            {{- if ne $cmName "tekton-events-relay-templates" }}
+            {{- $configmapMounts = append $configmapMounts $cmName }}
+            {{- end }}
             {{- end }}
             {{- if and $inst.subject $inst.subject.configmapRef }}
-            {{- $configmapMounts = append $configmapMounts $inst.subject.configmapRef.name }}
+            {{- $cmName := default "tekton-events-relay-templates" $inst.subject.configmapRef.name }}
+            {{- if ne $cmName "tekton-events-relay-templates" }}
+            {{- $configmapMounts = append $configmapMounts $cmName }}
+            {{- end }}
             {{- end }}
             {{- end }}
             {{- range $cmName := uniq $configmapMounts }}
@@ -177,7 +192,7 @@ spec:
               name: tpl-{{ $cmName }}
               readOnly: true
             {{- end }}
-            - mountPath: /etc/templates
+            - mountPath: /etc/templates/tekton-events-relay-templates
               name: templates
               readOnly: true
       {{- with .Values.dnsConfig }}
@@ -255,7 +270,10 @@ spec:
         {{- range $inst := $instances }}
         {{- range $action := $inst.actions }}
         {{- if and $action.template (kindIs "map" $action.template) $action.template.configmapRef }}
-        {{- $configmapRefs = append $configmapRefs $action.template.configmapRef.name }}
+        {{- $cmName := default "tekton-events-relay-templates" $action.template.configmapRef.name }}
+        {{- if ne $cmName "tekton-events-relay-templates" }}
+        {{- $configmapRefs = append $configmapRefs $cmName }}
+        {{- end }}
         {{- end }}
         {{- end }}
         {{- end }}
@@ -263,23 +281,35 @@ spec:
         {{- range $provider, $instances := .Values.config.notifiers }}
         {{- range $inst := $instances }}
         {{- if and $inst.template (kindIs "map" $inst.template) $inst.template.configmapRef }}
-        {{- $configmapRefs = append $configmapRefs $inst.template.configmapRef.name }}
+        {{- $cmName := default "tekton-events-relay-templates" $inst.template.configmapRef.name }}
+        {{- if ne $cmName "tekton-events-relay-templates" }}
+        {{- $configmapRefs = append $configmapRefs $cmName }}
+        {{- end }}
         {{- end }}
         {{- end }}
         {{- end }}
         {{- range $inst := .Values.config.jira }}
         {{- range $action := $inst.actions }}
         {{- if and $action.template (kindIs "map" $action.template) $action.template.configmapRef }}
-        {{- $configmapRefs = append $configmapRefs $action.template.configmapRef.name }}
+        {{- $cmName := default "tekton-events-relay-templates" $action.template.configmapRef.name }}
+        {{- if ne $cmName "tekton-events-relay-templates" }}
+        {{- $configmapRefs = append $configmapRefs $cmName }}
+        {{- end }}
         {{- end }}
         {{- end }}
         {{- end }}
         {{- range $inst := .Values.config.notifiers.email }}
         {{- if and $inst.template (kindIs "map" $inst.template) $inst.template.configmapRef }}
-        {{- $configmapRefs = append $configmapRefs $inst.template.configmapRef.name }}
+        {{- $cmName := default "tekton-events-relay-templates" $inst.template.configmapRef.name }}
+        {{- if ne $cmName "tekton-events-relay-templates" }}
+        {{- $configmapRefs = append $configmapRefs $cmName }}
+        {{- end }}
         {{- end }}
         {{- if and $inst.subject $inst.subject.configmapRef }}
-        {{- $configmapRefs = append $configmapRefs $inst.subject.configmapRef.name }}
+        {{- $cmName := default "tekton-events-relay-templates" $inst.subject.configmapRef.name }}
+        {{- if ne $cmName "tekton-events-relay-templates" }}
+        {{- $configmapRefs = append $configmapRefs $cmName }}
+        {{- end }}
         {{- end }}
         {{- end }}
         {{- range $cmName := uniq $configmapRefs }}

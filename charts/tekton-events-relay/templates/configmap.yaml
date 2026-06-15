@@ -168,7 +168,7 @@ data:
               context_per_task: true
               {{- end }}
               {{- if and .template (kindIs "map" .template) .template.configmapRef }}
-              template_file: "/etc/templates/{{ .template.configmapRef.name }}/{{ .template.configmapRef.key }}"
+              template_file: "/etc/templates/{{ default "tekton-events-relay-templates" .template.configmapRef.name }}/{{ .template.configmapRef.key }}"
               {{- else if .template }}
               template: |
 {{- if kindIs "map" .template }}
@@ -249,6 +249,16 @@ data:
               {{- end }}
               {{- if .context_per_task }}
               context_per_task: true
+              {{- end }}
+              {{- if and .template (kindIs "map" .template) .template.configmapRef }}
+              template_file: "/etc/templates/{{ default "tekton-events-relay-templates" .template.configmapRef.name }}/{{ .template.configmapRef.key }}"
+              {{- else if .template }}
+              template: |
+{{- if kindIs "map" .template }}
+{{ .template.value | nindent 16 }}
+{{- else }}
+{{ .template | nindent 16 }}
+{{- end }}
               {{- end }}
               {{- if .labels }}
               labels:
@@ -435,7 +445,7 @@ data:
               context_per_task: true
               {{- end }}
               {{- if and .template (kindIs "map" .template) .template.configmapRef }}
-              template_file: "/etc/templates/{{ .template.configmapRef.name }}/{{ .template.configmapRef.key }}"
+              template_file: "/etc/templates/{{ default "tekton-events-relay-templates" .template.configmapRef.name }}/{{ .template.configmapRef.key }}"
               {{- else if .template }}
               template: |
 {{- if kindIs "map" .template }}
@@ -542,7 +552,7 @@ data:
           when: {{ .when | quote }}
           {{- end }}
           {{- if and .template (kindIs "map" .template) .template.configmapRef }}
-          template_file: "/etc/templates/{{ .template.configmapRef.name }}/{{ .template.configmapRef.key }}"
+          template_file: "/etc/templates/{{ default "tekton-events-relay-templates" .template.configmapRef.name }}/{{ .template.configmapRef.key }}"
           {{- else if .template }}
           template: |
 {{- if kindIs "map" .template }}
@@ -566,7 +576,7 @@ data:
           when: {{ .when | quote }}
           {{- end }}
           {{- if and .template (kindIs "map" .template) .template.configmapRef }}
-          template_file: "/etc/templates/{{ .template.configmapRef.name }}/{{ .template.configmapRef.key }}"
+          template_file: "/etc/templates/{{ default "tekton-events-relay-templates" .template.configmapRef.name }}/{{ .template.configmapRef.key }}"
           {{- else if .template }}
           template: |
 {{- if kindIs "map" .template }}
@@ -602,7 +612,7 @@ data:
           when: {{ .when | quote }}
           {{- end }}
           {{- if and .template (kindIs "map" .template) .template.configmapRef }}
-          template_file: "/etc/templates/{{ .template.configmapRef.name }}/{{ .template.configmapRef.key }}"
+          template_file: "/etc/templates/{{ default "tekton-events-relay-templates" .template.configmapRef.name }}/{{ .template.configmapRef.key }}"
           {{- else if .template }}
           template: |
 {{- if kindIs "map" .template }}
@@ -673,7 +683,7 @@ data:
           when: {{ .when | quote }}
           {{- end }}
           {{- if and .template (kindIs "map" .template) .template.configmapRef }}
-          template_file: "/etc/templates/{{ .template.configmapRef.name }}/{{ .template.configmapRef.key }}"
+          template_file: "/etc/templates/{{ default "tekton-events-relay-templates" .template.configmapRef.name }}/{{ .template.configmapRef.key }}"
           {{- else if .template }}
           template: |
 {{- if kindIs "map" .template }}
@@ -735,7 +745,7 @@ data:
           {{- if and .subject .subject.value }}
           subject: {{ .subject.value | quote }}
           {{- else if and .subject .subject.configmapRef }}
-          subject: "/etc/templates/{{ .subject.configmapRef.name }}/{{ .subject.configmapRef.key }}"
+          subject: "/etc/templates/{{ default "tekton-events-relay-templates" .subject.configmapRef.name }}/{{ .subject.configmapRef.key }}"
           {{- else }}
           subject: "/etc/templates/email-subject.tmpl"
           {{- end }}
@@ -749,7 +759,7 @@ data:
           when: {{ .when | quote }}
           {{- end }}
           {{- if and .template (kindIs "map" .template) .template.configmapRef }}
-          template: "/etc/templates/{{ .template.configmapRef.name }}/{{ .template.configmapRef.key }}"
+            template: "/etc/templates/{{ default "tekton-events-relay-templates" .template.configmapRef.name }}/{{ .template.configmapRef.key }}"
           {{- else if and .template .template.value }}
           template: |
 {{ .template.value | nindent 12 }}
@@ -794,7 +804,7 @@ data:
             {{- .headers | toYaml | nindent 12 }}
           {{- end }}
           {{- if and .template (kindIs "map" .template) .template.configmapRef }}
-          template_file: "/etc/templates/{{ .template.configmapRef.name }}/{{ .template.configmapRef.key }}"
+          template_file: "/etc/templates/{{ default "tekton-events-relay-templates" .template.configmapRef.name }}/{{ .template.configmapRef.key }}"
           {{- else if .template }}
           template: |
 {{- if kindIs "map" .template }}
@@ -836,7 +846,7 @@ data:
             transition: {{ .transition | quote }}
             {{- end }}
             {{- if and .template (kindIs "map" .template) .template.configmapRef }}
-            template: "/etc/templates/{{ .template.configmapRef.name }}/{{ .template.configmapRef.key }}"
+          template: "/etc/templates/{{ default "tekton-events-relay-templates" .template.configmapRef.name }}/{{ .template.configmapRef.key }}"
             {{- else if and .template .template.value }}
             template: |
 {{ .template.value | nindent 14 }}

@@ -102,6 +102,22 @@ repos:
         types: [go]
         pass_filenames: true
 
+  - repo: local
+    hooks:
+      - id: astro-check
+        name: astro-check (via mise)
+        entry: mise run site-check
+        language: system
+        files: ^site/(src|public)/.+\.(astro|ts|mjs|js|css|json)$
+        pass_filenames: false
+
+      - id: astro-build
+        name: astro-build (via mise)
+        entry: mise run site-build
+        language: system
+        files: ^site/(src|public)/.+\.(astro|ts|mjs|js|css|json|md)$
+        pass_filenames: false
+
   - repo: https://github.com/compilerla/conventional-pre-commit
     rev: v4.4.0
     hooks:
@@ -207,4 +223,6 @@ ci:
     - helm-kubesec-mise
     - helm-kubelinter-mise
     - helm-trivy-mise
+    - astro-check
+    - astro-build
   submodules: false

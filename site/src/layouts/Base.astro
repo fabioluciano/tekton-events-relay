@@ -1,0 +1,73 @@
+---
+import '../styles/site.css';
+import Nav from '../components/Nav.astro';
+import Footer from '../components/Footer.astro';
+import { withBase } from '../lib/site';
+
+interface Props {
+  title: string;
+  description?: string;
+  /** Render the docs search box in the nav. */
+  search?: boolean;
+}
+
+const {
+  title,
+  description = 'Tekton emits CloudEvents. Your platforms get updated. Automatically. Commit statuses, PR comments, labels, deployments and chat notifications across 6 SCM platforms and 8 notification channels.',
+  search = false,
+} = Astro.props;
+
+const icon = withBase('/assets/icon.svg');
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <link rel="icon" type="image/svg+xml" href={icon} />
+    {/* Set the theme before first paint to avoid a flash of the wrong colors. */}
+    <script is:inline>
+      (function () {
+        var t;
+        try {
+          t = localStorage.getItem('ter-theme');
+        } catch (e) {}
+        if (!t) {
+          t =
+            window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches
+              ? 'light'
+              : 'dark';
+        }
+        document.documentElement.setAttribute('data-theme', t);
+      })();
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <slot name="head" />
+  </head>
+  <body>
+    <Nav search={search} />
+    <slot />
+    <Footer />
+    <script is:inline>
+      function terToggleTheme() {
+        var h = document.documentElement;
+        var t = h.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+        h.setAttribute('data-theme', t);
+        try {
+          localStorage.setItem('ter-theme', t);
+        } catch (e) {}
+      }
+      window.terToggleTheme = terToggleTheme;
+    </script>
+  </body>
+</html>

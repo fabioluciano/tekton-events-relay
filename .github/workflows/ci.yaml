@@ -31,6 +31,11 @@ jobs:
     uses: ./.github/workflows/ci-docker.yaml
     secrets: inherit
 
+  ci-site:
+    name: Site CI
+    uses: ./.github/workflows/ci-site.yaml
+    secrets: inherit
+
   ci-helm:
     name: Helm CI
     uses: ./.github/workflows/ci-helm.yaml

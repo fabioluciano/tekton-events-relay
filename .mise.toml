@@ -144,6 +144,20 @@ run = '''
   echo "\n✅ Helm chart validation complete"
 '''
 
+[tasks.site-check]
+description = "Run astro check (type checking) on the site"
+run = "npm run check"
+dir = "site"
+
+[tasks.site-build]
+description = "Build the Astro site"
+run = "npm run build"
+dir = "site"
+
+[tasks.site-validate]
+description = "Run all site validations (check + build)"
+depends = ["site-check", "site-build"]
+
 [tasks.helm-security-report]
 description = "Generate comprehensive security report for Helm charts"
 run = '''

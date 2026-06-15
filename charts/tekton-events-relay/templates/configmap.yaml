@@ -182,13 +182,23 @@ data:
                 {{- if .labels.add }}
                 add:
                   {{- range .labels.add }}
+                  {{- if kindIs "map" . }}
+                  - name: {{ .name | quote }}
+                    color: {{ .color | default "" | quote }}
+                  {{- else }}
                   - {{ . | quote }}
+                  {{- end }}
                   {{- end }}
                 {{- end }}
                 {{- if .labels.remove }}
                 remove:
                   {{- range .labels.remove }}
+                  {{- if kindIs "map" . }}
+                  - name: {{ .name | quote }}
+                    color: {{ .color | default "" | quote }}
+                  {{- else }}
                   - {{ . | quote }}
+                  {{- end }}
                   {{- end }}
                 {{- end }}
               {{- end }}
@@ -245,13 +255,23 @@ data:
                 {{- if .labels.add }}
                 add:
                   {{- range .labels.add }}
+                  {{- if kindIs "map" . }}
+                  - name: {{ .name | quote }}
+                    color: {{ .color | default "" | quote }}
+                  {{- else }}
                   - {{ . | quote }}
+                  {{- end }}
                   {{- end }}
                 {{- end }}
                 {{- if .labels.remove }}
                 remove:
                   {{- range .labels.remove }}
+                  {{- if kindIs "map" . }}
+                  - name: {{ .name | quote }}
+                    color: {{ .color | default "" | quote }}
+                  {{- else }}
                   - {{ . | quote }}
+                  {{- end }}
                   {{- end }}
                 {{- end }}
               {{- end }}
@@ -349,13 +369,23 @@ data:
                 {{- if .labels.add }}
                 add:
                   {{- range .labels.add }}
+                  {{- if kindIs "map" . }}
+                  - name: {{ .name | quote }}
+                    color: {{ .color | default "" | quote }}
+                  {{- else }}
                   - {{ . | quote }}
+                  {{- end }}
                   {{- end }}
                 {{- end }}
                 {{- if .labels.remove }}
                 remove:
                   {{- range .labels.remove }}
+                  {{- if kindIs "map" . }}
+                  - name: {{ .name | quote }}
+                    color: {{ .color | default "" | quote }}
+                  {{- else }}
                   - {{ . | quote }}
+                  {{- end }}
                   {{- end }}
                 {{- end }}
               {{- end }}
@@ -419,13 +449,23 @@ data:
                 {{- if .labels.add }}
                 add:
                   {{- range .labels.add }}
+                  {{- if kindIs "map" . }}
+                  - name: {{ .name | quote }}
+                    color: {{ .color | default "" | quote }}
+                  {{- else }}
                   - {{ . | quote }}
+                  {{- end }}
                   {{- end }}
                 {{- end }}
                 {{- if .labels.remove }}
                 remove:
                   {{- range .labels.remove }}
+                  {{- if kindIs "map" . }}
+                  - name: {{ .name | quote }}
+                    color: {{ .color | default "" | quote }}
+                  {{- else }}
                   - {{ . | quote }}
+                  {{- end }}
                   {{- end }}
                 {{- end }}
               {{- end }}

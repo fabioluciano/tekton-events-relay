@@ -61,10 +61,15 @@ jobs:
       actions: read
       contents: read
 
+  ci-site:
+    name: Site CI
+    uses: ./.github/workflows/ci-site.yaml
+    secrets: inherit
+
   release:
     name: Semantic Release
     runs-on: ubuntu-latest
-    needs: [ci-go, ci-docker, ci-helm]
+    needs: [ci-go, ci-docker, ci-helm, ci-site]
     outputs:
       released: ${{ steps.release.outputs.new_release_published }}
       version: ${{ steps.release.outputs.new_release_version }}

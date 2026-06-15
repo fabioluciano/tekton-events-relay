@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"regexp"
 	"strings"
 	"time"
@@ -40,7 +41,7 @@ func newOlricStore(cfg config.StoreConfig, opts Options) (*olricStore, error) {
 		env = "lan"
 	}
 	oc := olricconfig.New(env)
-	oc.LogOutput = &zapLogWriter{log: opts.Log.Named("olric")}
+	oc.Logger = log.New(&zapLogWriter{log: opts.Log.Named("olric")}, "", 0)
 	if cfg.Olric.BindAddr != "" {
 		oc.BindAddr = cfg.Olric.BindAddr
 		oc.MemberlistConfig.BindAddr = cfg.Olric.BindAddr

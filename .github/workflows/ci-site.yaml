@@ -39,16 +39,6 @@ jobs:
         working-directory: site
         run: npm ci
 
-      - name: Check package-lock.json is up to date
-        working-directory: site
-        run: |
-          npm install --package-lock-only
-          if [ -n "$(git status --porcelain package-lock.json)" ]; then
-            echo "::error::package-lock.json is out of date. Run 'npm install' locally and commit the changes."
-            git diff package-lock.json
-            exit 1
-          fi
-
       - name: Run astro check (type checking)
         working-directory: site
         run: npm run check

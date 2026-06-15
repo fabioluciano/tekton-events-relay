@@ -4,6 +4,12 @@ All notable changes to tekton-events-relay are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.7](https://github.com/fabioluciano/tekton-events-relay/compare/v0.7.6...v0.7.7) (2026-06-15)
+
+### Bug Fixes
+
+* **styles:** ensure responsive layout by preventing overflow on small screens ([#16](https://github.com/fabioluciano/tekton-events-relay/issues/16)) ([6cdcf33](https://github.com/fabioluciano/tekton-events-relay/commit/6cdcf33a5b9f3aa9fa76b279f183d3e94fe41cbf))
+
 ## [0.7.6](https://github.com/fabioluciano/tekton-events-relay/compare/v0.7.5...v0.7.6) (2026-06-15)
 
 ### Bug Fixes

@@ -4,6 +4,8 @@ on:
   # Source code / site changes.
   push:
     branches: ["main"]
+    paths:
+      - "site/**"
   # Wiki page edits (docs content lives in the GitHub wiki).
   gollum:
   workflow_dispatch:

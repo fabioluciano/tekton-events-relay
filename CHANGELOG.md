@@ -4,6 +4,12 @@ All notable changes to tekton-events-relay are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.2](https://github.com/fabioluciano/tekton-events-relay/compare/v0.7.1...v0.7.2) (2026-06-15)
+
+### Bug Fixes
+
+* update log pattern to include 'ERR' level logging ([#11](https://github.com/fabioluciano/tekton-events-relay/issues/11)) ([adce20e](https://github.com/fabioluciano/tekton-events-relay/commit/adce20e34df433588e8e968188abf78a53fd1380))
+
 ## [0.7.1](https://github.com/fabioluciano/tekton-events-relay/compare/v0.7.0...v0.7.1) (2026-06-14)
 
 ### Bug Fixes

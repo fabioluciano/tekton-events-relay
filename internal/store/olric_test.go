@@ -22,9 +22,9 @@ func TestZapLogWriter(t *testing.T) {
 	}{
 		{
 			name:      "olric INFO",
-			input:     "2026/06/15 00:22:42 [INFO] The cluster coordinator has been bootstrapped => discovery.go:43\n",
+			input:     "2026/06/15 00:22:42 [INFO] Olric bindAddr: 10.244.1.200, bindPort: 3320 => olric.go:402\n",
 			wantLevel: zapcore.InfoLevel,
-			wantMsg:   "The cluster coordinator has been bootstrapped => discovery.go:43",
+			wantMsg:   "Olric bindAddr: 10.244.1.200, bindPort: 3320 => olric.go:402",
 		},
 		{
 			name:      "olric DEBUG",

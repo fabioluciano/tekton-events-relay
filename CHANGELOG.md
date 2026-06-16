@@ -4,6 +4,12 @@ All notable changes to tekton-events-relay are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.1](https://github.com/fabioluciano/tekton-events-relay/compare/v0.8.0...v0.8.1) (2026-06-16)
+
+### Bug Fixes
+
+* implement template handling rules for notifiers and SCM providers ([#19](https://github.com/fabioluciano/tekton-events-relay/issues/19)) ([b60d04c](https://github.com/fabioluciano/tekton-events-relay/commit/b60d04c2c2d685ebe38e343d7d2bc8e2f4929cee))
+
 ## [0.8.0](https://github.com/fabioluciano/tekton-events-relay/compare/v0.7.8...v0.8.0) (2026-06-16)
 
 ### Features

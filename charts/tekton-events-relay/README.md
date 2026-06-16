@@ -1,6 +1,6 @@
 # tekton-events-relay
 
-![Version: 0.8.0](https://img.shields.io/badge/Version-0.8.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.8.0](https://img.shields.io/badge/AppVersion-0.8.0-informational?style=flat-square)
+![Version: 0.8.1](https://img.shields.io/badge/Version-0.8.1-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.8.1](https://img.shields.io/badge/AppVersion-0.8.1-informational?style=flat-square)
 
 **Your pipelines run. Your platforms get updated. You write zero notification code.**
 
@@ -25,7 +25,7 @@ Tekton Events Relay turns the CloudEvents your Tekton pipelines already emit int
 ```bash
 helm install tekton-events-relay \
   oci://ghcr.io/fabioluciano/charts/tekton-events-relay \
-  --version 0.8.0 \
+  --version 0.8.1 \
   --namespace tekton-events-relay --create-namespace \
   -f values.yaml
 ```
@@ -89,12 +89,12 @@ Images and charts are signed with [Cosign](https://github.com/sigstore/cosign) (
 cosign verify \
   --certificate-identity-regexp='https://github.com/fabioluciano/tekton-events-relay' \
   --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
-  ghcr.io/fabioluciano/tekton-events-relay:0.8.0
+  ghcr.io/fabioluciano/tekton-events-relay:0.8.1
 
 cosign verify \
   --certificate-identity-regexp='https://github.com/fabioluciano/tekton-events-relay' \
   --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
-  oci://ghcr.io/fabioluciano/charts/tekton-events-relay:0.8.0
+  oci://ghcr.io/fabioluciano/charts/tekton-events-relay:0.8.1
 ```
 
 ## Scaling note
@@ -216,13 +216,15 @@ The default in-memory state backend is per-pod: run **one replica**, or set `con
 | config.retry.initial_backoff | string | `"250ms"` | First backoff delay (Go duration format) |
 | config.retry.max_attempts | int | `4` | Total attempts including the first request |
 | config.retry.max_backoff | string | `"30s"` | Backoff ceiling (Go duration format) |
-| config.scm.azure_devops | list | `[{"actions":[{"enabled":false,"name":"commit-status","type":"commit_status","when":""},{"enabled":false,"labels":{"add":[{"color":"0e8a16","name":"build-passed"}],"remove":[{"name":"build-failed"}]},"name":"label","type":"label","when":""}],"base_url":"https://dev.azure.com","enabled":false,"genre":"tekton-ci","insecure_skip_verify":false,"name":"default"}]` | Azure DevOps SCM provider configuration |
-| config.scm.azure_devops[0].actions | list | `[{"enabled":false,"name":"commit-status","type":"commit_status","when":""},{"enabled":false,"labels":{"add":[{"color":"0e8a16","name":"build-passed"}],"remove":[{"name":"build-failed"}]},"name":"label","type":"label","when":""}]` | Actions to perform when events are received |
+| config.scm.azure_devops | list | `[{"actions":[{"enabled":false,"name":"commit-status","type":"commit_status","when":""},{"enabled":false,"name":"pr-comment","template":{"configmapRef":{"key":"azuredevops-comment.tmpl"}},"type":"pr_comment","when":"stateIn(\"success\", \"failure\")"},{"enabled":false,"labels":{"add":[{"color":"0e8a16","name":"build-passed"}],"remove":[{"name":"build-failed"}]},"name":"label","type":"label","when":""}],"base_url":"https://dev.azure.com","enabled":false,"genre":"tekton-ci","insecure_skip_verify":false,"name":"default"}]` | Azure DevOps SCM provider configuration |
+| config.scm.azure_devops[0].actions | list | `[{"enabled":false,"name":"commit-status","type":"commit_status","when":""},{"enabled":false,"name":"pr-comment","template":{"configmapRef":{"key":"azuredevops-comment.tmpl"}},"type":"pr_comment","when":"stateIn(\"success\", \"failure\")"},{"enabled":false,"labels":{"add":[{"color":"0e8a16","name":"build-passed"}],"remove":[{"name":"build-failed"}]},"name":"label","type":"label","when":""}]` | Actions to perform when events are received |
 | config.scm.azure_devops[0].actions[0].enabled | bool | `false` | Enable or disable this SCM provider instance |
 | config.scm.azure_devops[0].actions[0].type | string | `"commit_status"` | Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status) |
 | config.scm.azure_devops[0].actions[1].enabled | bool | `false` | Enable or disable this SCM provider instance |
-| config.scm.azure_devops[0].actions[1].labels | object | `{"add":[{"color":"0e8a16","name":"build-passed"}],"remove":[{"name":"build-failed"}]}` | Declarative label effect: add/remove lists with optional colors (hex without #) |
-| config.scm.azure_devops[0].actions[1].type | string | `"label"` | Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status) |
+| config.scm.azure_devops[0].actions[1].type | string | `"pr_comment"` | Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status) |
+| config.scm.azure_devops[0].actions[2].enabled | bool | `false` | Enable or disable this SCM provider instance |
+| config.scm.azure_devops[0].actions[2].labels | object | `{"add":[{"color":"0e8a16","name":"build-passed"}],"remove":[{"name":"build-failed"}]}` | Declarative label effect: add/remove lists with optional colors (hex without #) |
+| config.scm.azure_devops[0].actions[2].type | string | `"label"` | Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status) |
 | config.scm.azure_devops[0].base_url | string | `"https://dev.azure.com"` | API base URL for Azure DevOps |
 | config.scm.azure_devops[0].enabled | bool | `false` | Enable or disable this SCM provider instance |
 | config.scm.azure_devops[0].genre | string | `"tekton-ci"` | Build status context/genre identifier |
@@ -239,8 +241,8 @@ The default in-memory state backend is per-pod: run **one replica**, or set `con
 | config.scm.bitbucket[1].base_url | string | `"https://bitbucket.company.example.com"` | API base URL for the SCM provider |
 | config.scm.bitbucket[1].enabled | bool | `false` | Enable or disable this SCM provider instance |
 | config.scm.bitbucket[1].variant | string | `"server"` | SCM variant (cloud or server) |
-| config.scm.gitea | list | `[{"actions":[{"enabled":false,"name":"commit-status","type":"commit_status","when":""},{"enabled":false,"name":"pr-comment","template":{"configmapRef":{"key":"bitbucket-comment.tmpl"}},"type":"pr_comment","when":"stateIn(\"success\", \"failure\")"},{"enabled":false,"name":"issue-comment","template":{"configmapRef":{"key":"bitbucket-comment.tmpl"}},"type":"issue_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"labels":{"add":[{"color":"0e8a16","name":"ci:passed"}],"remove":[{"name":"ci:failed"}]},"name":"label","type":"label","when":""}],"base_url":"https://gitea.company.example.com","enabled":false,"name":"default"}]` | Gitea SCM provider configuration |
-| config.scm.gitea[0].actions | list | `[{"enabled":false,"name":"commit-status","type":"commit_status","when":""},{"enabled":false,"name":"pr-comment","template":{"configmapRef":{"key":"bitbucket-comment.tmpl"}},"type":"pr_comment","when":"stateIn(\"success\", \"failure\")"},{"enabled":false,"name":"issue-comment","template":{"configmapRef":{"key":"bitbucket-comment.tmpl"}},"type":"issue_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"labels":{"add":[{"color":"0e8a16","name":"ci:passed"}],"remove":[{"name":"ci:failed"}]},"name":"label","type":"label","when":""}]` | Actions to perform when events are received |
+| config.scm.gitea | list | `[{"actions":[{"enabled":false,"name":"commit-status","type":"commit_status","when":""},{"enabled":false,"name":"pr-comment","template":{"configmapRef":{"key":"gitea-pr-comment.tmpl"}},"type":"pr_comment","when":"stateIn(\"success\", \"failure\")"},{"enabled":false,"name":"issue-comment","template":{"configmapRef":{"key":"gitea-issue-comment.tmpl"}},"type":"issue_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"labels":{"add":[{"color":"0e8a16","name":"ci:passed"}],"remove":[{"name":"ci:failed"}]},"name":"label","type":"label","when":""}],"base_url":"https://gitea.company.example.com","enabled":false,"name":"default"}]` | Gitea SCM provider configuration |
+| config.scm.gitea[0].actions | list | `[{"enabled":false,"name":"commit-status","type":"commit_status","when":""},{"enabled":false,"name":"pr-comment","template":{"configmapRef":{"key":"gitea-pr-comment.tmpl"}},"type":"pr_comment","when":"stateIn(\"success\", \"failure\")"},{"enabled":false,"name":"issue-comment","template":{"configmapRef":{"key":"gitea-issue-comment.tmpl"}},"type":"issue_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"labels":{"add":[{"color":"0e8a16","name":"ci:passed"}],"remove":[{"name":"ci:failed"}]},"name":"label","type":"label","when":""}]` | Actions to perform when events are received |
 | config.scm.gitea[0].actions[0].enabled | bool | `false` | Enable or disable this SCM provider instance |
 | config.scm.gitea[0].actions[0].type | string | `"commit_status"` | Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status) |
 | config.scm.gitea[0].actions[1].enabled | bool | `false` | Enable or disable this SCM provider instance |

@@ -7,7 +7,6 @@ import (
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/grafana"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/middleware"
-	"github.com/fabioluciano/tekton-events-relay/internal/secrets"
 )
 
 // GrafanaFactory builds ActionHandlers from Grafana instance configurations.
@@ -24,7 +23,10 @@ func (f *GrafanaFactory) Build(inst config.GrafanaInstance, log *zap.Logger) ([]
 		tokenFile = inst.Auth.TokenFile
 		tokenKey = inst.Auth.TokenKey
 	}
-	token, err := secrets.ResolveOrInfer(tokenFile, "grafana", inst.Name, "token", tokenKey, log)
+	// Grafana's API auth is a service-account token (Bearer); it does not accept
+	// OAuth2 client_credentials. Re-read the mounted secret per request so a
+	// rotated token is picked up without a pod restart.
+	token, err := resolveFileRefresher(tokenFile, tokenKey, "grafana", inst.Name, "token", log)
 	if err != nil {
 		return nil, err
 	}

@@ -56,9 +56,12 @@ func resolveGitLabClient(inst config.GitLabInstance, log *zap.Logger) (*gitlab.C
 	return gitlab.NewClient(token, inst.BaseURL, inst.InsecureSkipVerify, false, log)
 }
 
-// resolveOAuth2Refresher creates an OAuth2 TokenRefresher from client_credentials config.
-// The returned refresher auto-refreshes tokens via x/oauth2 TokenSource.
-func resolveOAuth2Refresher(oauth2cfg *config.OAuth2ClientCredentials, provider, name string, log *zap.Logger) (scm.TokenRefresher, error) {
+// resolveOAuth2Refresher creates an OAuth2 TokenRefresher from an OAuth2Config.
+// It supports the two headless grants — client_credentials (default) and
+// refresh_token — both of which auto-refresh via the x/oauth2 TokenSource.
+// This helper is shared by every factory (SCM and notifiers), so any provider
+// whose API accepts an OAuth2 access token reuses the same implementation.
+func resolveOAuth2Refresher(oauth2cfg *config.OAuth2Config, provider, name string, log *zap.Logger) (scm.TokenRefresher, error) {
 	clientID, err := secrets.ResolveOrInfer(oauth2cfg.ClientIDFile, provider, name, "client_id", oauth2cfg.ClientIDKey, log)
 	if err != nil {
 		return nil, fmt.Errorf("oauth2 client_id: %w", err)
@@ -67,11 +70,29 @@ func resolveOAuth2Refresher(oauth2cfg *config.OAuth2ClientCredentials, provider,
 	if err != nil {
 		return nil, fmt.Errorf("oauth2 client_secret: %w", err)
 	}
-	return scmoauth2.NewClient(scmoauth2.ClientCredentials{
-		ClientID:     clientID,
-		ClientSecret: clientSecret,
-		TokenURL:     oauth2cfg.TokenURL,
-	}, nil), nil
+
+	switch oauth2cfg.GrantType {
+	case "", config.OAuth2GrantClientCredentials:
+		return scmoauth2.NewClient(scmoauth2.ClientCredentials{
+			ClientID:     clientID,
+			ClientSecret: clientSecret,
+			TokenURL:     oauth2cfg.TokenURL,
+		}, nil), nil
+	case config.OAuth2GrantRefreshToken:
+		refreshToken, rErr := secrets.ResolveOrInfer(oauth2cfg.RefreshTokenFile, provider, name, "refresh_token", oauth2cfg.RefreshTokenKey, log)
+		if rErr != nil {
+			return nil, fmt.Errorf("oauth2 refresh_token: %w", rErr)
+		}
+		return scmoauth2.NewRefreshTokenClient(scmoauth2.RefreshTokenCredentials{
+			ClientID:     clientID,
+			ClientSecret: clientSecret,
+			TokenURL:     oauth2cfg.TokenURL,
+			RefreshToken: refreshToken,
+		}, nil), nil
+	default:
+		return nil, fmt.Errorf("unsupported oauth2 grant_type %q (use %q or %q)",
+			oauth2cfg.GrantType, config.OAuth2GrantClientCredentials, config.OAuth2GrantRefreshToken)
+	}
 }
 
 // buildHandler creates the appropriate handler based on action type.

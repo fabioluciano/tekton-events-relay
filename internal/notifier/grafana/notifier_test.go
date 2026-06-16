@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
+	"github.com/fabioluciano/tekton-events-relay/internal/notifier/scm"
 )
 
 func TestNotifier_PostsAnnotation(t *testing.T) {
@@ -28,7 +29,7 @@ func TestNotifier_PostsAnnotation(t *testing.T) {
 	defer srv.Close()
 
 	n, err := New(Config{
-		Name: "grafana-prod", URL: srv.URL, Token: "sa-token",
+		Name: "grafana-prod", URL: srv.URL, Token: scm.NewStaticToken("sa-token"),
 		Tags: []string{"deploy"}, Log: zap.NewNop(),
 	})
 	if err != nil {

@@ -38,8 +38,10 @@ Logs: {{ .TargetURL }}
 type ClientConfig struct {
 	BaseURL string // https://yourorg.atlassian.net (Cloud) or Data Center URL
 	// Cloud: Email + Token (basic auth). Data Center: Token only (bearer PAT).
-	Email              string
-	Token              string
+	Email string
+	// Token resolves the credential fresh per request (file re-read or OAuth2
+	// refresh), so rotated secrets and expiring tokens never go stale.
+	Token              scm.TokenRefresher
 	InsecureSkipVerify bool
 	Debug              bool
 }
@@ -49,20 +51,40 @@ type Client struct {
 	*scm.BaseClient
 }
 
-// NewClient builds a Jira client. With Email set it uses Cloud basic auth;
-// otherwise the token is sent as a bearer (Data Center PAT).
+// NewClient builds a Jira client. With Email set it uses Cloud basic auth
+// (email + token); otherwise the token is sent as a bearer (Data Center PAT or
+// OAuth2 access token). The token is resolved per request via authTransport.
 func NewClient(cfg ClientConfig, log *zap.Logger) *Client {
-	authFn := func(req *http.Request) {
-		if cfg.Email != "" {
-			req.SetBasicAuth(cfg.Email, cfg.Token)
-			return
-		}
-		req.Header.Set("Authorization", "Bearer "+cfg.Token)
+	bc := scm.NewBaseClient(strings.TrimSuffix(cfg.BaseURL, "/"),
+		cfg.InsecureSkipVerify, cfg.Debug, log, notifierName, nil)
+	bc.HTTP.Transport = &authTransport{
+		base:      bc.HTTP.Transport,
+		email:     cfg.Email,
+		refresher: cfg.Token,
 	}
-	return &Client{
-		BaseClient: scm.NewBaseClient(strings.TrimSuffix(cfg.BaseURL, "/"),
-			cfg.InsecureSkipVerify, cfg.Debug, log, notifierName, authFn),
+	return &Client{BaseClient: bc}
+}
+
+// authTransport injects a freshly resolved Jira credential on every request.
+// Cloud uses basic auth (email + token); Data Center / OAuth2 uses Bearer.
+type authTransport struct {
+	base      http.RoundTripper
+	email     string
+	refresher scm.TokenRefresher
+}
+
+func (t *authTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	tok, err := t.refresher.Token(req.Context())
+	if err != nil {
+		return nil, fmt.Errorf("jira: resolve token: %w", err)
 	}
+	req = req.Clone(req.Context())
+	if t.email != "" {
+		req.SetBasicAuth(t.email, tok)
+	} else {
+		req.Header.Set("Authorization", "Bearer "+tok)
+	}
+	return t.base.RoundTrip(req)
 }
 
 // CommentHandler posts a comment on the linked Jira issue.

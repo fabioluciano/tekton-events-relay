@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
+	"github.com/fabioluciano/tekton-events-relay/internal/notifier/scm"
 )
 
 const testRunName = "test"
@@ -268,8 +269,8 @@ func TestNotify_BearerAuth(t *testing.T) {
 	cfg := Config{
 		URL: server.URL,
 		Auth: &ResolvedAuth{
-			Type:  "bearer",
-			Token: "test-token-123",
+			Type:  authTypeBearer,
+			Token: scm.NewStaticToken("test-token-123"),
 		},
 	}
 	n, _ := New(cfg, nil)
@@ -296,9 +297,9 @@ func TestNotify_BasicAuth(t *testing.T) {
 	cfg := Config{
 		URL: server.URL,
 		Auth: &ResolvedAuth{
-			Type:     "basic",
+			Type:     authTypeBasic,
 			Username: "user",
-			Password: "pass",
+			Password: scm.NewStaticToken("pass"),
 		},
 	}
 	n, _ := New(cfg, nil)
@@ -325,8 +326,8 @@ func TestNotify_APIKeyAuth(t *testing.T) {
 	cfg := Config{
 		URL: server.URL,
 		Auth: &ResolvedAuth{
-			Type:   "apikey",
-			Token:  "secret-key",
+			Type:   authTypeAPIKey,
+			Token:  scm.NewStaticToken("secret-key"),
 			Header: "X-API-Key",
 		},
 	}
@@ -361,8 +362,8 @@ func TestNotify_HMACAuth(t *testing.T) {
 	cfg := Config{
 		URL: server.URL,
 		Auth: &ResolvedAuth{
-			Type:   "hmac",
-			Secret: secret,
+			Type:   authTypeHMAC,
+			Secret: scm.NewStaticToken(secret),
 		},
 	}
 	n, _ := New(cfg, nil)
@@ -400,8 +401,8 @@ func TestNotify_HeaderConflictResolution(t *testing.T) {
 	cfg := Config{
 		URL: server.URL,
 		Auth: &ResolvedAuth{
-			Type:  "bearer",
-			Token: "auth-token",
+			Type:  authTypeBearer,
+			Token: scm.NewStaticToken("auth-token"),
 		},
 		Headers: map[string]string{
 			"Authorization": "Custom override-token",

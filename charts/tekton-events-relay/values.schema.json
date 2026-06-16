@@ -1222,7 +1222,8 @@
 													"bearer",
 													"basic",
 													"apikey",
-													"hmac"
+													"hmac",
+													"oauth2"
 												]
 											},
 											"token": {
@@ -1318,6 +1319,111 @@
 															"name",
 															"key"
 														]
+													}
+												}
+											},
+											"oauth2": {
+												"type": "object",
+												"description": "OAuth2 client_credentials configuration (type: oauth2); not combinable with token/username/password/secret/header",
+												"properties": {
+													"client_id": {
+														"type": "object",
+														"description": "OAuth2 client ID source",
+														"properties": {
+															"secretRef": {
+																"type": "object",
+																"description": "Reference to a Kubernetes Secret",
+																"properties": {
+																	"name": {
+																		"type": "string",
+																		"description": "Name of the Kubernetes Secret"
+																	},
+																	"key": {
+																		"type": "string",
+																		"description": "Key within the secret"
+																	}
+																},
+																"required": [
+																	"name",
+																	"key"
+																]
+															},
+															"configmapRef": {
+																"type": "object",
+																"description": "Reference to a Kubernetes ConfigMap",
+																"properties": {
+																	"name": {
+																		"type": "string",
+																		"description": "Name of the Kubernetes ConfigMap"
+																	},
+																	"key": {
+																		"type": "string",
+																		"description": "Key within the ConfigMap"
+																	}
+																},
+																"required": [
+																	"name",
+																	"key"
+																]
+															}
+														}
+													},
+													"client_secret": {
+														"type": "object",
+														"description": "OAuth2 client secret source",
+														"properties": {
+															"secretRef": {
+																"type": "object",
+																"description": "Reference to a Kubernetes Secret",
+																"properties": {
+																	"name": {
+																		"type": "string",
+																		"description": "Name of the Kubernetes Secret"
+																	},
+																	"key": {
+																		"type": "string",
+																		"description": "Key within the secret"
+																	}
+																},
+																"required": [
+																	"name",
+																	"key"
+																]
+															}
+														}
+													},
+													"token_url": {
+														"type": "string",
+														"description": "OAuth2 token endpoint URL"
+													},
+													"grant_type": {
+														"type": "string",
+														"enum": ["client_credentials", "refresh_token"],
+														"description": "OAuth2 grant type: client_credentials (default) or refresh_token"
+													},
+													"refresh_token": {
+														"type": "object",
+														"description": "Pre-obtained refresh token source (grant_type: refresh_token)",
+														"properties": {
+															"secretRef": {
+																"type": "object",
+																"description": "Reference to a Kubernetes Secret",
+																"properties": {
+																	"name": {
+																		"type": "string",
+																		"description": "Name of the Kubernetes Secret"
+																	},
+																	"key": {
+																		"type": "string",
+																		"description": "Key within the secret"
+																	}
+																},
+																"required": [
+																	"name",
+																	"key"
+																]
+															}
+														}
 													}
 												}
 											},
@@ -1581,6 +1687,111 @@
 											},
 											"value": {
 												"type": "string"
+											}
+										}
+									},
+									"oauth2": {
+										"type": "object",
+										"description": "OAuth2 client_credentials configuration (Data Center/gateway); not combinable with email or token",
+										"properties": {
+											"client_id": {
+												"type": "object",
+												"description": "OAuth2 client ID source",
+												"properties": {
+													"secretRef": {
+														"type": "object",
+														"description": "Reference to a Kubernetes Secret",
+														"properties": {
+															"name": {
+																"type": "string",
+																"description": "Name of the Kubernetes Secret"
+															},
+															"key": {
+																"type": "string",
+																"description": "Key within the secret"
+															}
+														},
+														"required": [
+															"name",
+															"key"
+														]
+													},
+													"configmapRef": {
+														"type": "object",
+														"description": "Reference to a Kubernetes ConfigMap",
+														"properties": {
+															"name": {
+																"type": "string",
+																"description": "Name of the Kubernetes ConfigMap"
+															},
+															"key": {
+																"type": "string",
+																"description": "Key within the ConfigMap"
+															}
+														},
+														"required": [
+															"name",
+															"key"
+														]
+													}
+												}
+											},
+											"client_secret": {
+												"type": "object",
+												"description": "OAuth2 client secret source",
+												"properties": {
+													"secretRef": {
+														"type": "object",
+														"description": "Reference to a Kubernetes Secret",
+														"properties": {
+															"name": {
+																"type": "string",
+																"description": "Name of the Kubernetes Secret"
+															},
+															"key": {
+																"type": "string",
+																"description": "Key within the secret"
+															}
+														},
+														"required": [
+															"name",
+															"key"
+														]
+													}
+												}
+											},
+											"token_url": {
+												"type": "string",
+												"description": "OAuth2 token endpoint URL"
+											},
+											"grant_type": {
+												"type": "string",
+												"enum": ["client_credentials", "refresh_token"],
+												"description": "OAuth2 grant type: client_credentials (default) or refresh_token"
+											},
+											"refresh_token": {
+												"type": "object",
+												"description": "Pre-obtained refresh token source (grant_type: refresh_token)",
+												"properties": {
+													"secretRef": {
+														"type": "object",
+														"description": "Reference to a Kubernetes Secret",
+														"properties": {
+															"name": {
+																"type": "string",
+																"description": "Name of the Kubernetes Secret"
+															},
+															"key": {
+																"type": "string",
+																"description": "Key within the secret"
+															}
+														},
+														"required": [
+															"name",
+															"key"
+														]
+													}
+												}
 											}
 										}
 									}
@@ -3131,6 +3342,35 @@
 								"token_url": {
 									"type": "string",
 									"description": "OAuth2 token endpoint URL"
+								},
+								"grant_type": {
+									"type": "string",
+									"enum": ["client_credentials", "refresh_token"],
+									"description": "OAuth2 grant type: client_credentials (default) or refresh_token"
+								},
+								"refresh_token": {
+									"type": "object",
+									"description": "Pre-obtained refresh token source (grant_type: refresh_token)",
+									"properties": {
+										"secretRef": {
+											"type": "object",
+											"description": "Reference to a Kubernetes Secret",
+											"properties": {
+												"name": {
+													"type": "string",
+													"description": "Name of the Kubernetes Secret"
+												},
+												"key": {
+													"type": "string",
+													"description": "Key within the secret"
+												}
+											},
+											"required": [
+												"name",
+												"key"
+											]
+										}
+									}
 								}
 							}
 						}
@@ -3341,6 +3581,35 @@
 									"type": "string",
 									"description": "OAuth2 token endpoint URL",
 									"default": "https://bitbucket.org/site/oauth2/access_token"
+								},
+								"grant_type": {
+									"type": "string",
+									"enum": ["client_credentials", "refresh_token"],
+									"description": "OAuth2 grant type: client_credentials (default) or refresh_token"
+								},
+								"refresh_token": {
+									"type": "object",
+									"description": "Pre-obtained refresh token source (grant_type: refresh_token)",
+									"properties": {
+										"secretRef": {
+											"type": "object",
+											"description": "Reference to a Kubernetes Secret",
+											"properties": {
+												"name": {
+													"type": "string",
+													"description": "Name of the Kubernetes Secret"
+												},
+												"key": {
+													"type": "string",
+													"description": "Key within the secret"
+												}
+											},
+											"required": [
+												"name",
+												"key"
+											]
+										}
+									}
 								}
 							}
 						}
@@ -3610,6 +3879,35 @@
 								"token_url": {
 									"type": "string",
 									"description": "OAuth2 token endpoint URL"
+								},
+								"grant_type": {
+									"type": "string",
+									"enum": ["client_credentials", "refresh_token"],
+									"description": "OAuth2 grant type: client_credentials (default) or refresh_token"
+								},
+								"refresh_token": {
+									"type": "object",
+									"description": "Pre-obtained refresh token source (grant_type: refresh_token)",
+									"properties": {
+										"secretRef": {
+											"type": "object",
+											"description": "Reference to a Kubernetes Secret",
+											"properties": {
+												"name": {
+													"type": "string",
+													"description": "Name of the Kubernetes Secret"
+												},
+												"key": {
+													"type": "string",
+													"description": "Key within the secret"
+												}
+											},
+											"required": [
+												"name",
+												"key"
+											]
+										}
+									}
 								}
 							}
 						}

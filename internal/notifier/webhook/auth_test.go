@@ -7,13 +7,15 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/fabioluciano/tekton-events-relay/internal/notifier/scm"
 )
 
 func TestApplyBearerAuth(t *testing.T) {
 	req, _ := http.NewRequestWithContext(context.Background(), "POST", "http://example.com", nil)
 	auth := &ResolvedAuth{
-		Type:  "bearer",
-		Token: "test-token-123",
+		Type:  authTypeBearer,
+		Token: scm.NewStaticToken("test-token-123"),
 	}
 
 	err := applyAuth(req, auth)
@@ -31,9 +33,9 @@ func TestApplyBearerAuth(t *testing.T) {
 func TestApplyBasicAuth(t *testing.T) {
 	req, _ := http.NewRequestWithContext(context.Background(), "POST", "http://example.com", nil)
 	auth := &ResolvedAuth{
-		Type:     "basic",
+		Type:     authTypeBasic,
 		Username: "admin",
-		Password: "secret",
+		Password: scm.NewStaticToken("secret"),
 	}
 
 	err := applyAuth(req, auth)
@@ -52,8 +54,8 @@ func TestApplyBasicAuth(t *testing.T) {
 func TestApplyAPIKeyAuth(t *testing.T) {
 	req, _ := http.NewRequestWithContext(context.Background(), "POST", "http://example.com", nil)
 	auth := &ResolvedAuth{
-		Type:   "apikey",
-		Token:  "my-api-key",
+		Type:   authTypeAPIKey,
+		Token:  scm.NewStaticToken("my-api-key"),
 		Header: "X-API-Key",
 	}
 
@@ -75,8 +77,8 @@ func TestApplyHMACAuth(t *testing.T) {
 	reader := bytes.NewReader(body)
 	req, _ := http.NewRequestWithContext(context.Background(), "POST", "http://example.com", reader)
 	auth := &ResolvedAuth{
-		Type:   "hmac",
-		Secret: "my-secret-key",
+		Type:   authTypeHMAC,
+		Secret: scm.NewStaticToken("my-secret-key"),
 	}
 
 	err := applyAuth(req, auth)

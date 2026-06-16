@@ -226,6 +226,12 @@ data:
               {{- if .auth.oauth2.client_secret }}
               client_secret_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .auth.oauth2.client_secret "provider" "gitlab" "instance" .name "key" (default "client_secret" (or .auth.oauth2.client_secret.secretRef.key .auth.oauth2.client_secret.configmapRef.key))) }}
               {{- end }}
+              {{- if .auth.oauth2.grant_type }}
+              grant_type: {{ .auth.oauth2.grant_type | quote }}
+              {{- end }}
+              {{- if .auth.oauth2.refresh_token }}
+              refresh_token_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .auth.oauth2.refresh_token "provider" "gitlab" "instance" .name "key" (default "refresh_token" (or .auth.oauth2.refresh_token.secretRef.key .auth.oauth2.refresh_token.configmapRef.key))) }}
+              {{- end }}
               token_url: {{ .auth.oauth2.token_url | quote }}
             {{- end }}
           {{- end }}
@@ -314,6 +320,12 @@ data:
               {{- end }}
               {{- if .auth.oauth2.client_secret }}
               client_secret_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .auth.oauth2.client_secret "provider" "bitbucket" "instance" .name "key" (default "client_secret" (or .auth.oauth2.client_secret.secretRef.key .auth.oauth2.client_secret.configmapRef.key))) }}
+              {{- end }}
+              {{- if .auth.oauth2.grant_type }}
+              grant_type: {{ .auth.oauth2.grant_type | quote }}
+              {{- end }}
+              {{- if .auth.oauth2.refresh_token }}
+              refresh_token_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .auth.oauth2.refresh_token "provider" "bitbucket" "instance" .name "key" (default "refresh_token" (or .auth.oauth2.refresh_token.secretRef.key .auth.oauth2.refresh_token.configmapRef.key))) }}
               {{- end }}
               token_url: {{ .auth.oauth2.token_url | quote }}
             {{- end }}
@@ -421,6 +433,12 @@ data:
               {{- end }}
               {{- if .auth.oauth2.client_secret }}
               client_secret_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .auth.oauth2.client_secret "provider" "gitea" "instance" .name "key" (default "client_secret" (or .auth.oauth2.client_secret.secretRef.key .auth.oauth2.client_secret.configmapRef.key))) }}
+              {{- end }}
+              {{- if .auth.oauth2.grant_type }}
+              grant_type: {{ .auth.oauth2.grant_type | quote }}
+              {{- end }}
+              {{- if .auth.oauth2.refresh_token }}
+              refresh_token_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .auth.oauth2.refresh_token "provider" "gitea" "instance" .name "key" (default "refresh_token" (or .auth.oauth2.refresh_token.secretRef.key .auth.oauth2.refresh_token.configmapRef.key))) }}
               {{- end }}
               token_url: {{ .auth.oauth2.token_url | quote }}
             {{- end }}
@@ -792,6 +810,22 @@ data:
             {{- if .auth.hmac_secret }}
             secret_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .auth.hmac_secret "provider" "webhook" "instance" .name "key" (default "hmac_secret" .auth.hmac_secret.secretRef.key)) }}
             {{- end }}
+            {{- if .auth.oauth2 }}
+            oauth2:
+              {{- if .auth.oauth2.client_id }}
+              client_id_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .auth.oauth2.client_id "provider" "webhook" "instance" .name "key" (default "client_id" (or .auth.oauth2.client_id.secretRef.key .auth.oauth2.client_id.configmapRef.key))) }}
+              {{- end }}
+              {{- if .auth.oauth2.client_secret }}
+              client_secret_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .auth.oauth2.client_secret "provider" "webhook" "instance" .name "key" (default "client_secret" (or .auth.oauth2.client_secret.secretRef.key .auth.oauth2.client_secret.configmapRef.key))) }}
+              {{- end }}
+              {{- if .auth.oauth2.grant_type }}
+              grant_type: {{ .auth.oauth2.grant_type | quote }}
+              {{- end }}
+              {{- if .auth.oauth2.refresh_token }}
+              refresh_token_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .auth.oauth2.refresh_token "provider" "webhook" "instance" .name "key" (default "refresh_token" (or .auth.oauth2.refresh_token.secretRef.key .auth.oauth2.refresh_token.configmapRef.key))) }}
+              {{- end }}
+              token_url: {{ .auth.oauth2.token_url | quote }}
+            {{- end }}
             {{- if .auth.header }}
             header: {{ .auth.header | quote }}
             {{- end }}
@@ -823,12 +857,30 @@ data:
       - name: {{ .name }}
         enabled: {{ .enabled }}
         base_url: {{ .base_url | quote }}
-        {{- if and .auth .auth.token }}
+        {{- if and .auth (or .auth.token .auth.oauth2) }}
         auth:
           {{- if .auth.email }}
           email: {{ .auth.email | quote }}
           {{- end }}
+          {{- if .auth.token }}
           token_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .auth.token "provider" "jira" "instance" .name "key" (default "token" .auth.token.secretRef.key)) }}
+          {{- end }}
+          {{- if .auth.oauth2 }}
+          oauth2:
+            {{- if .auth.oauth2.client_id }}
+            client_id_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .auth.oauth2.client_id "provider" "jira" "instance" .name "key" (default "client_id" (or .auth.oauth2.client_id.secretRef.key .auth.oauth2.client_id.configmapRef.key))) }}
+            {{- end }}
+            {{- if .auth.oauth2.client_secret }}
+            client_secret_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .auth.oauth2.client_secret "provider" "jira" "instance" .name "key" (default "client_secret" (or .auth.oauth2.client_secret.secretRef.key .auth.oauth2.client_secret.configmapRef.key))) }}
+            {{- end }}
+            {{- if .auth.oauth2.grant_type }}
+            grant_type: {{ .auth.oauth2.grant_type | quote }}
+            {{- end }}
+            {{- if .auth.oauth2.refresh_token }}
+            refresh_token_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .auth.oauth2.refresh_token "provider" "jira" "instance" .name "key" (default "refresh_token" (or .auth.oauth2.refresh_token.secretRef.key .auth.oauth2.refresh_token.configmapRef.key))) }}
+            {{- end }}
+            token_url: {{ .auth.oauth2.token_url | quote }}
+          {{- end }}
         {{- end }}
         {{- if .insecure_skip_verify }}
         insecure_skip_verify: {{ .insecure_skip_verify }}

@@ -1009,6 +1009,19 @@ config:
         #   secretRef:
         #     name: custom-webhook
         #     key: url
+        # Outbound authentication (type: bearer/basic/apikey/hmac/oauth2)
+        # auth:
+        #   type: oauth2
+        #   oauth2:
+        #     client_id:
+        #       configmapRef:
+        #         name: webhook-oauth2-creds
+        #         key: client_id
+        #     client_secret:
+        #       secretRef:
+        #         name: webhook-oauth2-creds
+        #         key: client_secret
+        #     token_url: "https://auth.company.example.com/oauth/token"
         # -- CEL expression to filter which events trigger webhook calls
         when: 'event.State == "success" || event.State == "failure" || event.State == "error"'
         # Custom HTTP headers for authentication and routing
@@ -1109,12 +1122,24 @@ config:
       base_url: "https://yourorg.atlassian.net"
       # Credentials: token via secretRef (key "token"). With auth.email set,
       # Cloud basic auth (email + API token); without it, Data Center bearer PAT.
+      # OAuth2 client_credentials (Data Center/gateway) is also supported and is
+      # not combinable with email or token.
       auth: {}
         # email: ci@example.com
         # token:
         #   secretRef:
         #     name: jira-default-token
         #     key: token
+        # oauth2:
+        #   client_id:
+        #     configmapRef:
+        #       name: jira-oauth2-creds
+        #       key: client_id
+        #   client_secret:
+        #     secretRef:
+        #       name: jira-oauth2-creds
+        #       key: client_secret
+        #   token_url: "https://jira.company.example.com/oauth/token"
       # -- Skip TLS verification (self-hosted Data Center only)
       # insecure_skip_verify: false
       actions:

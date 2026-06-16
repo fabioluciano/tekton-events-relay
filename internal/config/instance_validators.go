@@ -160,6 +160,28 @@ func validateTemplate(prefix string, inst any) []ValidationError {
 	return nil
 }
 
+// validateOAuth2 checks the minimal required fields of an oauth2 block for the
+// headless grants the relay supports (client_credentials, refresh_token).
+func validateOAuth2(prefix string, o *OAuth2Config) []ValidationError {
+	if o == nil {
+		return nil
+	}
+	var errs []ValidationError
+	switch o.GrantType {
+	case "", OAuth2GrantClientCredentials, OAuth2GrantRefreshToken:
+		// supported headless grants
+	default:
+		errs = append(errs, ValidationError{
+			Path:    prefix + ".oauth2.grant_type",
+			Message: fmt.Sprintf("must be '%s' or '%s' (authorization_code is not supported — the relay has no redirect endpoint; seed a refresh_token instead)", OAuth2GrantClientCredentials, OAuth2GrantRefreshToken),
+		})
+	}
+	if o.TokenURL == "" {
+		errs = append(errs, ValidationError{Path: prefix + ".oauth2.token_url", Message: "oauth2 requires 'token_url'"})
+	}
+	return errs
+}
+
 func validateWebhookAuth(prefix string, inst any) []ValidationError {
 	type hasEnabled interface {
 		isEnabled() bool
@@ -177,44 +199,71 @@ func validateWebhookAuth(prefix string, inst any) []ValidationError {
 		return nil
 	}
 
-	// Validate based on auth type
+	// Validate based on auth type (split per type to keep complexity low).
 	switch auth.Type {
 	case "bearer":
-		if auth.TokenFile == "" {
-			return []ValidationError{{Path: prefix + ".auth", Message: "type 'bearer' requires 'token_file'"}}
-		}
-		// Check for invalid fields
-		if auth.UsernameFile != "" || auth.PasswordFile != "" || auth.SecretFile != "" || auth.Header != "" {
-			return []ValidationError{{Path: prefix + ".auth", Message: "type 'bearer' does not accept 'username_file', 'password_file', 'secret_file', or 'header'"}}
-		}
+		return validateWebhookBearerAuth(prefix, auth)
 	case "basic":
-		if auth.UsernameFile == "" || auth.PasswordFile == "" {
-			return []ValidationError{{Path: prefix + ".auth", Message: "type 'basic' requires 'username_file' and 'password_file'"}}
-		}
-		// Check for invalid fields
-		if auth.TokenFile != "" || auth.SecretFile != "" || auth.Header != "" {
-			return []ValidationError{{Path: prefix + ".auth", Message: "type 'basic' does not accept 'token_file', 'secret_file', or 'header'"}}
-		}
+		return validateWebhookBasicAuth(prefix, auth)
 	case "apikey":
-		if auth.TokenFile == "" || auth.Header == "" {
-			return []ValidationError{{Path: prefix + ".auth", Message: "type 'apikey' requires 'token_file' and 'header'"}}
-		}
-		// Check for invalid fields
-		if auth.UsernameFile != "" || auth.PasswordFile != "" || auth.SecretFile != "" {
-			return []ValidationError{{Path: prefix + ".auth", Message: "type 'apikey' does not accept 'username_file', 'password_file', or 'secret_file'"}}
-		}
+		return validateWebhookAPIKeyAuth(prefix, auth)
 	case "hmac":
-		if auth.SecretFile == "" {
-			return []ValidationError{{Path: prefix + ".auth", Message: "type 'hmac' requires 'secret_file'"}}
-		}
-		// Check for invalid fields
-		if auth.TokenFile != "" || auth.UsernameFile != "" || auth.PasswordFile != "" || auth.Header != "" {
-			return []ValidationError{{Path: prefix + ".auth", Message: "type 'hmac' does not accept 'token_file', 'username_file', 'password_file', or 'header'"}}
-		}
+		return validateWebhookHMACAuth(prefix, auth)
+	case "oauth2":
+		return validateWebhookOAuth2Auth(prefix, auth)
 	default:
 		return []ValidationError{{Path: prefix + ".auth.type", Message: fmt.Sprintf("invalid type '%s'", auth.Type)}}
 	}
+}
+
+func validateWebhookBearerAuth(prefix string, auth *WebhookAuthConfig) []ValidationError {
+	if auth.TokenFile == "" {
+		return []ValidationError{{Path: prefix + ".auth", Message: "type 'bearer' requires 'token_file'"}}
+	}
+	if auth.UsernameFile != "" || auth.PasswordFile != "" || auth.SecretFile != "" || auth.Header != "" {
+		return []ValidationError{{Path: prefix + ".auth", Message: "type 'bearer' does not accept 'username_file', 'password_file', 'secret_file', or 'header'"}}
+	}
 	return nil
+}
+
+func validateWebhookBasicAuth(prefix string, auth *WebhookAuthConfig) []ValidationError {
+	if auth.UsernameFile == "" || auth.PasswordFile == "" {
+		return []ValidationError{{Path: prefix + ".auth", Message: "type 'basic' requires 'username_file' and 'password_file'"}}
+	}
+	if auth.TokenFile != "" || auth.SecretFile != "" || auth.Header != "" {
+		return []ValidationError{{Path: prefix + ".auth", Message: "type 'basic' does not accept 'token_file', 'secret_file', or 'header'"}}
+	}
+	return nil
+}
+
+func validateWebhookAPIKeyAuth(prefix string, auth *WebhookAuthConfig) []ValidationError {
+	if auth.TokenFile == "" || auth.Header == "" {
+		return []ValidationError{{Path: prefix + ".auth", Message: "type 'apikey' requires 'token_file' and 'header'"}}
+	}
+	if auth.UsernameFile != "" || auth.PasswordFile != "" || auth.SecretFile != "" {
+		return []ValidationError{{Path: prefix + ".auth", Message: "type 'apikey' does not accept 'username_file', 'password_file', or 'secret_file'"}}
+	}
+	return nil
+}
+
+func validateWebhookHMACAuth(prefix string, auth *WebhookAuthConfig) []ValidationError {
+	if auth.SecretFile == "" {
+		return []ValidationError{{Path: prefix + ".auth", Message: "type 'hmac' requires 'secret_file'"}}
+	}
+	if auth.TokenFile != "" || auth.UsernameFile != "" || auth.PasswordFile != "" || auth.Header != "" {
+		return []ValidationError{{Path: prefix + ".auth", Message: "type 'hmac' does not accept 'token_file', 'username_file', 'password_file', or 'header'"}}
+	}
+	return nil
+}
+
+func validateWebhookOAuth2Auth(prefix string, auth *WebhookAuthConfig) []ValidationError {
+	if auth.OAuth2 == nil {
+		return []ValidationError{{Path: prefix + ".auth", Message: "type 'oauth2' requires an 'oauth2' block"}}
+	}
+	if auth.TokenFile != "" || auth.UsernameFile != "" || auth.PasswordFile != "" || auth.SecretFile != "" || auth.Header != "" {
+		return []ValidationError{{Path: prefix + ".auth", Message: "type 'oauth2' does not accept 'token_file', 'username_file', 'password_file', 'secret_file', or 'header'"}}
+	}
+	return validateOAuth2(prefix+".auth", auth.OAuth2)
 }
 
 func validateTransform(prefix string, inst any) []ValidationError {
@@ -683,6 +732,14 @@ func validateJiraInstance(prefix string, inst JiraInstance) []ValidationError {
 		}
 		if inst.Auth == nil {
 			errs = append(errs, ValidationError{Path: prefix + ValidationPathAuth, Message: ValidationMsgAuthRequired})
+		} else {
+			if inst.Auth.Email != "" && inst.Auth.OAuth2 != nil {
+				errs = append(errs, ValidationError{Path: prefix + ".auth", Message: "cannot use both auth.email (basic auth) and auth.oauth2; choose one"})
+			}
+			if inst.Auth.TokenFile != "" && inst.Auth.OAuth2 != nil {
+				errs = append(errs, ValidationError{Path: prefix + ".auth", Message: "cannot use both auth.token_file and auth.oauth2; choose one"})
+			}
+			errs = append(errs, validateOAuth2(prefix+".auth", inst.Auth.OAuth2)...)
 		}
 	}
 	for i, action := range inst.Actions {

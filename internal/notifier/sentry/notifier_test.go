@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
+	"github.com/fabioluciano/tekton-events-relay/internal/notifier/scm"
 )
 
 func TestNotifier_CreatesReleaseAndDeploy(t *testing.T) {
@@ -25,7 +26,7 @@ func TestNotifier_CreatesReleaseAndDeploy(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	n := New(Config{Name: "sentry-prod", BaseURL: srv.URL, Token: "t", Org: "acme",
+	n := New(Config{Name: "sentry-prod", BaseURL: srv.URL, Token: scm.NewStaticToken("t"), Org: "acme",
 		Projects: []string{"api"}, Log: zap.NewNop()})
 
 	e := domain.Event{

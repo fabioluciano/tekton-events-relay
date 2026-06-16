@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -12,6 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
+	"github.com/fabioluciano/tekton-events-relay/internal/notifier/scm"
 )
 
 const (
@@ -47,7 +49,7 @@ func TestCommentHandler_PostsComment(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := NewClient(ClientConfig{BaseURL: srv.URL, Email: testEmail, Token: testToken}, zap.NewNop())
+	client := NewClient(ClientConfig{BaseURL: srv.URL, Email: testEmail, Token: scm.NewStaticToken(testToken)}, zap.NewNop())
 	h, err := NewCommentHandler(client, "", zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewCommentHandler: %v", err)
@@ -83,7 +85,7 @@ func TestCommentHandler_CustomTemplate(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := NewClient(ClientConfig{BaseURL: srv.URL, Token: testToken}, zap.NewNop())
+	client := NewClient(ClientConfig{BaseURL: srv.URL, Token: scm.NewStaticToken(testToken)}, zap.NewNop())
 	h, err := NewCommentHandler(client, "state={{ .State }}", zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewCommentHandler: %v", err)
@@ -105,7 +107,7 @@ func TestCommentHandler_SkipsWithoutIssueKey(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := NewClient(ClientConfig{BaseURL: srv.URL, Token: testToken}, zap.NewNop())
+	client := NewClient(ClientConfig{BaseURL: srv.URL, Token: scm.NewStaticToken(testToken)}, zap.NewNop())
 	h, _ := NewCommentHandler(client, "", zap.NewNop())
 
 	e := testEvent()
@@ -134,7 +136,7 @@ func TestTransitionHandler_ResolvesByNameAndApplies(t *testing.T) {
 	defer srv.Close()
 
 	// no email = Data Center bearer mode
-	client := NewClient(ClientConfig{BaseURL: srv.URL, Token: testToken}, zap.NewNop())
+	client := NewClient(ClientConfig{BaseURL: srv.URL, Token: scm.NewStaticToken(testToken)}, zap.NewNop())
 	h, err := NewTransitionHandler(client, "done", zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewTransitionHandler: %v", err)
@@ -166,7 +168,7 @@ func TestTransitionHandler_UnavailableTransitionIsSkipped(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := NewClient(ClientConfig{BaseURL: srv.URL, Token: testToken}, zap.NewNop())
+	client := NewClient(ClientConfig{BaseURL: srv.URL, Token: scm.NewStaticToken(testToken)}, zap.NewNop())
 	h, _ := NewTransitionHandler(client, "Done", zap.NewNop())
 
 	if err := h.Handle(context.Background(), testEvent()); err != nil {
@@ -178,15 +180,62 @@ func TestTransitionHandler_UnavailableTransitionIsSkipped(t *testing.T) {
 }
 
 func TestNewTransitionHandler_RequiresTransition(t *testing.T) {
-	client := NewClient(ClientConfig{BaseURL: "https://x", Token: testToken}, zap.NewNop())
+	client := NewClient(ClientConfig{BaseURL: "https://x", Token: scm.NewStaticToken(testToken)}, zap.NewNop())
 	if _, err := NewTransitionHandler(client, "", zap.NewNop()); err == nil {
 		t.Error("expected error for empty transition")
 	}
 }
 
 func TestNewCommentHandler_InvalidTemplateRejected(t *testing.T) {
-	client := NewClient(ClientConfig{BaseURL: "https://x", Token: testToken}, zap.NewNop())
+	client := NewClient(ClientConfig{BaseURL: "https://x", Token: scm.NewStaticToken(testToken)}, zap.NewNop())
 	if _, err := NewCommentHandler(client, "{{ .Oops", zap.NewNop()); err == nil {
 		t.Error("expected error for invalid template")
+	}
+}
+
+// rotatingRefresher returns a fresh token on each call, simulating OAuth2
+// refresh or a re-read of a rotated mounted secret.
+type rotatingRefresher struct {
+	mu sync.Mutex
+	n  int
+}
+
+func (r *rotatingRefresher) Token(_ context.Context) (string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.n++
+	return "rotated-" + strconv.Itoa(r.n), nil
+}
+
+func TestClient_ResolvesTokenPerRequest(t *testing.T) {
+	var mu sync.Mutex
+	var auths []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		auths = append(auths, r.Header.Get("Authorization"))
+		mu.Unlock()
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer srv.Close()
+
+	client := NewClient(ClientConfig{BaseURL: srv.URL, Token: &rotatingRefresher{}}, zap.NewNop())
+	h, err := NewCommentHandler(client, "x", zap.NewNop())
+	if err != nil {
+		t.Fatalf("NewCommentHandler: %v", err)
+	}
+
+	for i := 0; i < 2; i++ {
+		if err := h.Handle(context.Background(), testEvent()); err != nil {
+			t.Fatalf("Handle #%d: %v", i, err)
+		}
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(auths) != 2 {
+		t.Fatalf("expected 2 requests, got %d", len(auths))
+	}
+	if auths[0] != "Bearer rotated-1" || auths[1] != "Bearer rotated-2" {
+		t.Fatalf("token not refreshed per request: %v", auths)
 	}
 }

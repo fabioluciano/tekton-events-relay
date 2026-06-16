@@ -91,6 +91,40 @@ func TestClient_Token_cache_hit_no_second_request(t *testing.T) {
 	}
 }
 
+func TestRefreshTokenClient_Token_success(t *testing.T) {
+	srv := newTokenServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			t.Errorf("parse form: %v", err)
+		}
+		if r.FormValue("grant_type") != "refresh_token" {
+			t.Errorf("expected grant_type=refresh_token, got %s", r.FormValue("grant_type"))
+		}
+		if r.FormValue("refresh_token") != "seeded-refresh" {
+			t.Errorf("expected refresh_token=seeded-refresh, got %s", r.FormValue("refresh_token"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			jsonAccessToken: "rotated-access",
+			"expires_in":    3600,
+		})
+	})
+
+	c := NewRefreshTokenClient(RefreshTokenCredentials{
+		ClientID:     "id",
+		ClientSecret: testClientSecret,
+		TokenURL:     srv.URL,
+		RefreshToken: "seeded-refresh",
+	}, nil)
+
+	tok, err := c.Token(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if tok != "rotated-access" {
+		t.Errorf("expected 'rotated-access', got %q", tok)
+	}
+}
+
 func TestClient_Token_http_error(t *testing.T) {
 	// Use a server that immediately closes the connection.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

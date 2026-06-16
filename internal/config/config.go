@@ -334,27 +334,41 @@ type GitHubAuth struct {
 	PrivateKeyFile string `yaml:"private_key_file,omitempty"` // Path to GitHub App RSA private key PEM
 }
 
-// OAuth2ClientCredentials configures OAuth2 client_credentials grant.
-type OAuth2ClientCredentials struct {
+// OAuth2Config configures an OAuth2 grant the relay can perform headlessly
+// (no inbound redirect / ingress): client_credentials (default) or refresh_token.
+// authorization_code is intentionally unsupported — perform that flow out of
+// band and seed the resulting refresh_token via refresh_token_file.
+type OAuth2Config struct {
+	// GrantType selects the grant: "client_credentials" (default) or "refresh_token".
+	GrantType        string `yaml:"grant_type,omitempty"`
 	ClientIDFile     string `yaml:"client_id_file"`
 	ClientIDKey      string `yaml:"client_id_key,omitempty"`
 	ClientSecretFile string `yaml:"client_secret_file"`
 	ClientSecretKey  string `yaml:"client_secret_key,omitempty"`
 	TokenURL         string `yaml:"token_url"`
+	// RefreshTokenFile holds a pre-obtained refresh token (grant_type: refresh_token).
+	RefreshTokenFile string `yaml:"refresh_token_file,omitempty"`
+	RefreshTokenKey  string `yaml:"refresh_token_key,omitempty"`
 }
+
+// OAuth2 grant types the relay can execute without an inbound redirect.
+const (
+	OAuth2GrantClientCredentials = "client_credentials"
+	OAuth2GrantRefreshToken      = "refresh_token"
+)
 
 // GitLabAuth contains authentication configuration for GitLab.
 type GitLabAuth struct {
-	SecretFile string                   `yaml:"secret_file,omitempty"`
-	SecretKey  string                   `yaml:"secret_key,omitempty"`
-	OAuth2     *OAuth2ClientCredentials `yaml:"oauth2,omitempty"`
+	SecretFile string        `yaml:"secret_file,omitempty"`
+	SecretKey  string        `yaml:"secret_key,omitempty"`
+	OAuth2     *OAuth2Config `yaml:"oauth2,omitempty"`
 }
 
 // GiteaAuth contains authentication configuration for Gitea.
 type GiteaAuth struct {
-	SecretFile string                   `yaml:"secret_file,omitempty"`
-	SecretKey  string                   `yaml:"secret_key,omitempty"`
-	OAuth2     *OAuth2ClientCredentials `yaml:"oauth2,omitempty"`
+	SecretFile string        `yaml:"secret_file,omitempty"`
+	SecretKey  string        `yaml:"secret_key,omitempty"`
+	OAuth2     *OAuth2Config `yaml:"oauth2,omitempty"`
 }
 
 // SourceHutAuth contains authentication configuration for SourceHut.
@@ -369,13 +383,13 @@ type SourceHutAuth struct {
 // - cloud: use (username_file + app_password_file) OR oauth2
 // - server: use token_file
 type BitbucketAuth struct {
-	UsernameFile    string                   `yaml:"username_file,omitempty"`
-	UsernameKey     string                   `yaml:"username_key,omitempty"`
-	AppPasswordFile string                   `yaml:"app_password_file,omitempty"`
-	AppPasswordKey  string                   `yaml:"app_password_key,omitempty"`
-	TokenFile       string                   `yaml:"token_file,omitempty"`
-	TokenKey        string                   `yaml:"token_key,omitempty"`
-	OAuth2          *OAuth2ClientCredentials `yaml:"oauth2,omitempty"`
+	UsernameFile    string        `yaml:"username_file,omitempty"`
+	UsernameKey     string        `yaml:"username_key,omitempty"`
+	AppPasswordFile string        `yaml:"app_password_file,omitempty"`
+	AppPasswordKey  string        `yaml:"app_password_key,omitempty"`
+	TokenFile       string        `yaml:"token_file,omitempty"`
+	TokenKey        string        `yaml:"token_key,omitempty"`
+	OAuth2          *OAuth2Config `yaml:"oauth2,omitempty"`
 }
 
 // GitHubInstance represents a single GitHub instance configuration.
@@ -664,6 +678,10 @@ type JiraAuth struct {
 	Email     string `yaml:"email,omitempty"`
 	TokenFile string `yaml:"token_file,omitempty"`
 	TokenKey  string `yaml:"token_key,omitempty"`
+	// OAuth2 configures the client_credentials grant (Data Center / gateway
+	// fronted by an OAuth2 server). The access token is sent as a Bearer header
+	// and auto-refreshed before expiry. Not combinable with email (basic auth).
+	OAuth2 *OAuth2Config `yaml:"oauth2,omitempty"`
 }
 
 // JiraAction configures one Jira action within an instance.
@@ -735,12 +753,15 @@ func (w WebhookInstance) GetWhen() string { return w.When }
 
 // WebhookAuthConfig defines authentication configuration for webhook notifiers.
 type WebhookAuthConfig struct {
-	Type         string `yaml:"type"`                    // bearer, basic, apikey, hmac
+	Type         string `yaml:"type"`                    // bearer, basic, apikey, hmac, oauth2
 	TokenFile    string `yaml:"token_file,omitempty"`    // for bearer and apikey
 	UsernameFile string `yaml:"username_file,omitempty"` // for basic
 	PasswordFile string `yaml:"password_file,omitempty"` // for basic
 	Header       string `yaml:"header,omitempty"`        // for apikey (e.g., "X-API-Key")
 	SecretFile   string `yaml:"secret_file,omitempty"`   // for hmac
+	// OAuth2 configures the client_credentials grant for type "oauth2"; the
+	// access token is sent as a Bearer header and auto-refreshed before expiry.
+	OAuth2 *OAuth2Config `yaml:"oauth2,omitempty"`
 }
 
 // GrafanaAuth holds authentication configuration for Grafana notifiers.

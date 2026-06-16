@@ -19,8 +19,6 @@ import (
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/scm"
 )
 
-const defaultText = "{{.PipelineName}} {{.State}} ({{.RunName}})"
-
 // Notifier posts annotations to Grafana.
 type Notifier struct {
 	base     *notifier.Base
@@ -61,11 +59,10 @@ func New(cfg Config) (*Notifier, error) {
 		return nil, fmt.Errorf("invalid Grafana URL: %w", err)
 	}
 
-	tmplSrc := cfg.Template
-	if tmplSrc == "" {
-		tmplSrc = defaultText
+	if cfg.Template == "" {
+		return nil, fmt.Errorf("grafana: template is required (must be provided via ConfigMap)")
 	}
-	tmpl, err := scm.CompileTemplate("grafana", tmplSrc, nil)
+	tmpl, err := scm.CompileTemplate("grafana", cfg.Template, nil)
 	if err != nil {
 		return nil, fmt.Errorf("compile template: %w", err)
 	}

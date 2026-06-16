@@ -732,6 +732,22 @@ config:
             # -- Enable or disable this SCM provider instance
             enabled: false
             when: ""
+          - name: pr-comment
+            # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
+            type: pr_comment
+            # -- Enable or disable this SCM provider instance
+            enabled: false
+            when: 'stateIn("success", "failure")'
+            # Optional: omit `template` for the relay's built-in "Build <State> for <RunName>"
+            # body. Reference the shipped rich template via configmapRef:
+            template:
+              configmapRef:
+                key: azuredevops-comment.tmpl
+            # OR inline:
+            # template: |
+            #   ## Pipeline {{.State}}
+            #   **Run:** {{.RunName}}
+            #   {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
           - name: label
             # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
             type: label
@@ -786,7 +802,7 @@ config:
             when: 'stateIn("success", "failure")'
             template:
               configmapRef:
-                key: bitbucket-comment.tmpl
+                key: gitea-pr-comment.tmpl
             # OR inline:
             # template: |
             #   ## Pipeline {{.State}}
@@ -801,7 +817,7 @@ config:
             when: 'stateIn("failure", "error")'
             template:
               configmapRef:
-                key: bitbucket-comment.tmpl
+                key: gitea-issue-comment.tmpl
             # OR inline:
             # template: |
             #   Pipeline {{.Context}} finished: **{{.State}}**
@@ -1028,6 +1044,11 @@ config:
         # -- Custom HTTP headers sent with the webhook request (e.g., authentication tokens, routing keys)
         headers:
           X-Source: "tekton-events-relay"
+        # Webhook does NOT use Go templates — shape the JSON payload with a
+        # gojq `transform` expression instead. Omit to send the raw event JSON.
+        # transform: |
+        #   {pipeline: .pipeline_name, result: .state, sha: .commit_sha,
+        #    startedDate: .started_at, finishedDate: .finished_at}
 
     # -------------------------------------------------------------------------
     # Grafana

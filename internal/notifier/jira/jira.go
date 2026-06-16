@@ -19,20 +19,7 @@ import (
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/scm"
 )
 
-const (
-	notifierName = "jira"
-
-	// defaultCommentTemplate mirrors the in-code default style of the other
-	// notifiers; override per action with `template`.
-	defaultCommentTemplate = `Pipeline {{ .State }}: {{ if .PipelineName }}{{ .PipelineName }}{{ else }}{{ .RunName }}{{ end }}
-Run: {{ .RunName }}
-{{- if .CommitSHA }}
-Commit: {{ printf "%.8s" .CommitSHA }}
-{{- end }}
-{{- if .TargetURL }}
-Logs: {{ .TargetURL }}
-{{- end }}`
-)
+const notifierName = "jira"
 
 // ClientConfig holds connection and authentication settings.
 type ClientConfig struct {
@@ -94,10 +81,10 @@ type CommentHandler struct {
 	log    *zap.Logger
 }
 
-// NewCommentHandler builds a comment handler; an empty template uses the default.
+// NewCommentHandler builds a comment handler; template must come from ConfigMap.
 func NewCommentHandler(client *Client, tmplSrc string, log *zap.Logger) (*CommentHandler, error) {
 	if tmplSrc == "" {
-		tmplSrc = defaultCommentTemplate
+		return nil, fmt.Errorf("jira: comment template is required (must be provided via ConfigMap)")
 	}
 	tmpl, err := scm.CompileTemplate("jira_comment", tmplSrc, nil)
 	if err != nil {

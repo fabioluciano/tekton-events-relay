@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -50,7 +51,15 @@ func TestCommentHandler_PostsComment(t *testing.T) {
 	defer srv.Close()
 
 	client := NewClient(ClientConfig{BaseURL: srv.URL, Email: testEmail, Token: scm.NewStaticToken(testToken)}, zap.NewNop())
-	h, err := NewCommentHandler(client, "", zap.NewNop())
+	tmpl := `Pipeline {{ .State }}: {{ if .PipelineName }}{{ .PipelineName }}{{ else }}{{ .RunName }}{{ end }}
+Run: {{ .RunName }}
+{{- if .CommitSHA }}
+Commit: {{ printf "%.8s" .CommitSHA }}
+{{- end }}
+{{- if .TargetURL }}
+Logs: {{ .TargetURL }}
+{{- end }}`
+	h, err := NewCommentHandler(client, tmpl, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewCommentHandler: %v", err)
 	}
@@ -237,5 +246,34 @@ func TestClient_ResolvesTokenPerRequest(t *testing.T) {
 	}
 	if auths[0] != "Bearer rotated-1" || auths[1] != "Bearer rotated-2" {
 		t.Fatalf("token not refreshed per request: %v", auths)
+	}
+}
+
+func TestCommentHandler_FileTemplate(t *testing.T) {
+	tmpfile, err := os.CreateTemp("", "jira-test-*.tmpl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Remove(tmpfile.Name()) }()
+
+	if _, err := tmpfile.Write([]byte("File template {{ .State }}")); err != nil {
+		t.Fatal(err)
+	}
+	if err := tmpfile.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer srv.Close()
+
+	client := NewClient(ClientConfig{BaseURL: srv.URL, Email: testEmail, Token: scm.NewStaticToken(testToken)}, zap.NewNop())
+	h, err := NewCommentHandler(client, tmpfile.Name(), zap.NewNop())
+	if err != nil {
+		t.Fatalf("NewCommentHandler with file: %v", err)
+	}
+	if h == nil {
+		t.Error("expected handler, got nil")
 	}
 }

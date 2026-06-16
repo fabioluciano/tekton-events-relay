@@ -4,6 +4,12 @@ All notable changes to tekton-events-relay are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0](https://github.com/fabioluciano/tekton-events-relay/compare/v0.7.8...v0.8.0) (2026-06-16)
+
+### Features
+
+* add support for OAuth2 token refresh in Bitbucket Cloud and Git… ([#18](https://github.com/fabioluciano/tekton-events-relay/issues/18)) ([88982e8](https://github.com/fabioluciano/tekton-events-relay/commit/88982e83f83de1c9de586604325b2d0be13f7af3))
+
 ## [0.7.8](https://github.com/fabioluciano/tekton-events-relay/compare/v0.7.7...v0.7.8) (2026-06-15)
 
 ### Bug Fixes

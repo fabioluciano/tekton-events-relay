@@ -386,6 +386,16 @@ data:
               {{- if .context_per_task }}
               context_per_task: true
               {{- end }}
+              {{- if and .template (kindIs "map" .template) .template.configmapRef }}
+              template_file: "/etc/templates/{{ default "tekton-events-relay-templates" .template.configmapRef.name }}/{{ .template.configmapRef.key }}"
+              {{- else if .template }}
+              template: |
+{{- if kindIs "map" .template }}
+{{ .template.value | nindent 16 }}
+{{- else }}
+{{ .template | nindent 16 }}
+{{- end }}
+              {{- end }}
               {{- if .labels }}
               labels:
                 {{- if .labels.add }}
@@ -701,14 +711,15 @@ data:
           when: {{ .when | quote }}
           {{- end }}
           {{- if and .template (kindIs "map" .template) .template.configmapRef }}
-          template_file: "/etc/templates/{{ default "tekton-events-relay-templates" .template.configmapRef.name }}/{{ .template.configmapRef.key }}"
+          template: "/etc/templates/{{ default "tekton-events-relay-templates" .template.configmapRef.name }}/{{ .template.configmapRef.key }}"
+          {{- else if and .template .template.value }}
+          template: |
+{{ .template.value | nindent 12 }}
           {{- else if .template }}
           template: |
-{{- if kindIs "map" .template }}
-{{ .template.value | nindent 12 }}
-{{- else }}
 {{ .template | nindent 12 }}
-{{- end }}
+          {{- else }}
+          template: "/etc/templates/deploy-marker.tmpl"
           {{- end }}
         {{- end }}
       {{- end }}

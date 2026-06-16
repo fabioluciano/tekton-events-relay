@@ -33,35 +33,6 @@ const (
 
 	defaultPort    = 587
 	defaultTimeout = 15 * time.Second
-
-	defaultSubjectTemplate = `[tekton] {{ if .PipelineName }}{{ .PipelineName }}{{ else }}{{ .RunName }}{{ end }} — {{ .State }}`
-
-	defaultBodyTemplate = `Pipeline {{ .State }}: {{ if .PipelineName }}{{ .PipelineName }}{{ else }}{{ .RunName }}{{ end }}
-
-Run:       {{ .RunName }}
-Namespace: {{ .Namespace }}
-{{- if .CommitSHA }}
-Commit:    {{ printf "%.8s" .CommitSHA }}
-{{- end }}
-{{- if .Context }}
-Context:   {{ .Context }}
-{{- end }}
-{{- if .Description }}
-
-{{ .Description }}
-{{- end }}
-{{- if .Results }}
-
-Results:
-{{- range .Results }}
-- {{ .Name }}: {{ .Value }}
-{{- end }}
-{{- end }}
-{{- if .TargetURL }}
-
-View logs: {{ .TargetURL }}
-{{- end }}
-`
 )
 
 // Config holds the email notifier configuration.
@@ -74,8 +45,8 @@ type Config struct {
 	Password           string
 	From               string
 	To                 []string
-	Subject            string // Go template; default: defaultSubjectTemplate
-	Template           string // body Go template (inline or /etc/templates path); default: defaultBodyTemplate
+	Subject            string // Go template (must be provided via ConfigMap)
+	Template           string // body Go template (must be provided via ConfigMap)
 	HTML               bool   // send body as text/html instead of text/plain
 	Timeout            time.Duration
 	InsecureSkipVerify bool // skip TLS verification (self-hosted relays)
@@ -115,15 +86,14 @@ func New(cfg Config, log *zap.Logger) (*Notifier, error) {
 		cfg.Timeout = defaultTimeout
 	}
 
-	// Subject and body templates may be inline strings or absolute file
-	// paths (the chart renders the configmap default / configmapRef as a
-	// /etc/templates/... path); LoadTemplateString resolves either.
+	// Subject and body templates must come from ConfigMap (chart default or configmapRef).
+	// LoadTemplateString resolves paths mounted at /etc/templates or inline strings.
 	subjectSrc, err := scm.LoadTemplateString(cfg.Subject)
 	if err != nil {
 		return nil, fmt.Errorf("email %s: load subject template: %w", cfg.Name, err)
 	}
 	if subjectSrc == "" {
-		subjectSrc = defaultSubjectTemplate
+		return nil, fmt.Errorf("email %s: subject template is required (must be provided via ConfigMap)", cfg.Name)
 	}
 	subjectTmpl, err := template.New("subject").Parse(subjectSrc)
 	if err != nil {
@@ -135,7 +105,7 @@ func New(cfg Config, log *zap.Logger) (*Notifier, error) {
 		return nil, fmt.Errorf("email %s: load template: %w", cfg.Name, err)
 	}
 	if bodySrc == "" {
-		bodySrc = defaultBodyTemplate
+		return nil, fmt.Errorf("email %s: body template is required (must be provided via ConfigMap)", cfg.Name)
 	}
 	bodyTmpl, err := template.New("body").Parse(bodySrc)
 	if err != nil {

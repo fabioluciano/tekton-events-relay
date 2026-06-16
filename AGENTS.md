@@ -1317,3 +1317,90 @@ notifiers:
 - `fmt.Errorf` with `%w` for error wrapping
 - No global mutable state except process-wide defaults (retry policy, metrics)
 - `zap.Logger` passed explicitly, never global
+
+## Template handling rules
+
+**CRITICAL**: NO hardcoded Go template defaults baked into handler code as `const`
+strings. A handler must never carry its own fallback template literal. Default
+template *content* lives only in the chart's `configmap-templates.yaml`.
+
+Template handlers fall into **three categories**. Know which one you are touching
+before changing anything — the rules differ per category.
+
+### Category 1 — REQUIRED (error if empty)
+
+The handler refuses to construct without a template. Empty → constructor returns an error.
+
+- **email** — both `subject` and `template` (body) (`internal/notifier/email/notifier.go`)
+- **grafana** — `template` (`internal/notifier/grafana/notifier.go`)
+- **jira** comment action — `template` (`internal/notifier/jira/jira.go`)
+
+For these, all four chart/code layers must agree (see checklist below), including a
+chart `omitted → /etc/templates/<default>.tmpl` branch so an omitted field still
+resolves to a shipped default (`email-subject.tmpl`, `email-default.tmpl`,
+`deploy-marker.tmpl`, `jira-comment.tmpl`).
+
+### Category 2 — OPTIONAL with native fallback (no error, no shipped-default wiring)
+
+The handler accepts an empty template and falls back to behaviour built into the relay.
+There is **no** chart `omitted → default` branch for these; omitting the field is valid.
+
+- **slack / teams / discord** — empty → structured card / native message (`if templateContent != ""`)
+- **webhook** — no Go template; payload shaped by the `transform` gojq expression
+- **accumulator** — empty → `generateMarkdown` table
+- **all SCM comment handlers** (github / gitlab / gitea / bitbucket / azuredevops) —
+  empty → `scm.RenderTemplate(nil, e)` returns `"Build <State> for <RunName>"`
+  (`internal/notifier/scm/template.go`). These are **NOT** error-if-empty.
+
+Rich SCM templates are still available **opt-in** via `configmapRef`; the chart ships
+example bodies (`github-pr-comment.tmpl`, `gitlab-note.tmpl`, etc.) that `values.yaml`
+references explicitly. They are not auto-wired when the field is omitted.
+
+### Category 3 — OPTIONAL skip
+
+Some SCM actions (e.g. github `check_run`, `pr_comment`) guard with `if cfg.Template != ""`
+and simply skip template compilation when empty — a narrower form of Category 2. Treat
+them as Category 2 for documentation/test purposes.
+
+### Loader semantics
+
+`scm.LoadTemplateString` resolves an absolute path (starts with `/`, e.g.
+`/etc/templates/<name>.tmpl`) by reading the file; any other non-empty string is treated
+as an inline template. The chart's `configmapRef` form emits such a path; the inline form
+emits the literal string.
+
+### Validation note
+
+`--validate` (`internal/config/instance_validators.go` `validateTemplate`) only parses
+*non-empty* templates for syntax — it does **not** reject an empty required template.
+Category-1 enforcement happens at handler **construction** time (email/grafana/jira
+constructors error on empty), not at config-load. Do not claim config validation rejects
+empty required templates; it does not.
+
+### Three ways the user supplies a template (values → chart → Go)
+
+Each template field in `values.yaml` accepts these three forms. The chart
+(`templates/configmap.yaml`) resolves them to a single Go config string:
+
+1. **Inline string** — `template: "Pipeline {{ .State }}"` (or `template: { value: "..." }`)
+   → chart emits the literal string inline into the rendered config.
+2. **ConfigMap reference** — `template: { configmapRef: { name: my-cm, key: body.tmpl } }`
+   → chart emits a path `/etc/templates/<name>/<key>`; the referenced ConfigMap is
+   volume-mounted and `scm.LoadTemplateString` reads the file at runtime.
+   `name` is optional and defaults to `tekton-events-relay-templates`.
+3. **Omitted** — Category 1 only: chart emits the shipped default path
+   (`/etc/templates/email-default.tmpl`, `/etc/templates/deploy-marker.tmpl`, …).
+   Category 2/3: omitting is valid and uses the handler's native fallback — no default path.
+
+**When adding a Category-1 template field, all four layers MUST agree:**
+
+- **values.schema.json**: the field is `oneOf: [string, object{value, configmapRef}]`
+  (match the slack/teams/discord/grafana/email pattern — never bare `type: object`).
+- **values.yaml**: documented example showing inline AND configmapRef forms.
+- **configmap.yaml**: render branches for inline value, `configmapRef` path, and the
+  omitted→default path.
+- **Go handler**: errors on empty template and resolves it via `scm.LoadTemplateString`.
+- **Tests**: one case for the inline form AND one for the `/etc/templates` file path.
+
+For Category 2/3 fields, skip the omitted→default branch and instead test the
+empty→native-fallback path.

@@ -1533,52 +1533,68 @@
 										"description": "Recipient list"
 									},
 									"subject": {
-										"type": "object",
-										"description": "Subject template (inline value or configmapRef); omit for the shipped default",
-										"properties": {
-											"value": {
+										"oneOf": [
+											{
 												"type": "string",
-												"description": "Inline template"
+												"description": "Inline subject template string"
 											},
-											"configmapRef": {
+											{
 												"type": "object",
+												"description": "Subject template from ConfigMap; omit for shipped default",
 												"properties": {
-													"name": {
+													"value": {
 														"type": "string",
-														"description": "Kubernetes ConfigMap name. Optional; defaults to tekton-events-relay-templates."
+														"description": "Inline template"
 													},
-													"key": {
-														"type": "string",
-														"description": "Key within the ConfigMap holding the template."
+													"configmapRef": {
+														"type": "object",
+														"properties": {
+															"name": {
+																"type": "string",
+																"description": "Kubernetes ConfigMap name. Optional; defaults to tekton-events-relay-templates."
+															},
+															"key": {
+																"type": "string",
+																"description": "Key within the ConfigMap holding the template."
+															}
+														},
+														"description": "Reference to a ConfigMap containing the template. When name is omitted, defaults to tekton-events-relay-templates."
 													}
-												},
-												"description": "Reference to a ConfigMap containing the template. When name is omitted, defaults to tekton-events-relay-templates."
+												}
 											}
-										}
+										]
 									},
 									"template": {
-										"type": "object",
-										"description": "Body template (inline value or configmapRef); omit for the shipped default",
-										"properties": {
-											"value": {
+										"oneOf": [
+											{
 												"type": "string",
-												"description": "Inline template"
+												"description": "Inline body template string"
 											},
-											"configmapRef": {
+											{
 												"type": "object",
+												"description": "Body template from ConfigMap; omit for shipped default",
 												"properties": {
-													"name": {
+													"value": {
 														"type": "string",
-														"description": "Kubernetes ConfigMap name. Optional; defaults to tekton-events-relay-templates."
+														"description": "Inline template"
 													},
-													"key": {
-														"type": "string",
-														"description": "Key within the ConfigMap holding the template."
+													"configmapRef": {
+														"type": "object",
+														"properties": {
+															"name": {
+																"type": "string",
+																"description": "Kubernetes ConfigMap name. Optional; defaults to tekton-events-relay-templates."
+															},
+															"key": {
+																"type": "string",
+																"description": "Key within the ConfigMap holding the template."
+															}
+														},
+														"description": "Reference to a ConfigMap containing the template. When name is omitted, defaults to tekton-events-relay-templates."
 													}
-												},
-												"description": "Reference to a ConfigMap containing the template. When name is omitted, defaults to tekton-events-relay-templates."
+												}
 											}
-										}
+										]
 									},
 									"html": {
 										"type": "boolean",
@@ -1827,28 +1843,36 @@
 											"description": "Target transition name or id (transition actions)"
 										},
 										"template": {
-											"type": "object",
-											"description": "Comment body template (inline value or configmapRef); omit for the shipped default",
-											"properties": {
-												"value": {
+											"oneOf": [
+												{
 													"type": "string",
-													"description": "Inline template"
+													"description": "Inline comment body template string"
 												},
-												"configmapRef": {
+												{
 													"type": "object",
-													"description": "Reference to a ConfigMap containing the template. When name is omitted, defaults to tekton-events-relay-templates.",
+													"description": "Comment body template from ConfigMap; omit for the shipped default (jira-comment.tmpl)",
 													"properties": {
-														"name": {
+														"value": {
 															"type": "string",
-															"description": "Kubernetes ConfigMap name. Optional; defaults to tekton-events-relay-templates."
+															"description": "Inline template"
 														},
-														"key": {
-															"type": "string",
-															"description": "Key within the ConfigMap holding the template."
+														"configmapRef": {
+															"type": "object",
+															"description": "Reference to a ConfigMap containing the template. When name is omitted, defaults to tekton-events-relay-templates.",
+															"properties": {
+																"name": {
+																	"type": "string",
+																	"description": "Kubernetes ConfigMap name. Optional; defaults to tekton-events-relay-templates."
+																},
+																"key": {
+																	"type": "string",
+																	"description": "Key within the ConfigMap holding the template."
+																}
+															}
 														}
 													}
 												}
-											}
+											]
 										}
 									}
 								}

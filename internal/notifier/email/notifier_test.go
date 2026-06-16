@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"net"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -144,6 +145,32 @@ func TestHandle_SendsMessage(t *testing.T) {
 	n, err := New(Config{
 		Name: "default", Host: host, Port: port, Encryption: EncryptionNone,
 		From: "ci@example.com", To: []string{"team@example.com", "lead@example.com"},
+		Subject: "[tekton] {{ if .PipelineName }}{{ .PipelineName }}{{ else }}{{ .RunName }}{{ end }} — {{ .State }}",
+		Template: `Pipeline {{ .State }}: {{ if .PipelineName }}{{ .PipelineName }}{{ else }}{{ .RunName }}{{ end }}
+
+Run:       {{ .RunName }}
+Namespace: {{ .Namespace }}
+{{- if .CommitSHA }}
+Commit:    {{ printf "%.8s" .CommitSHA }}
+{{- end }}
+{{- if .Context }}
+Context:   {{ .Context }}
+{{- end }}
+{{- if .Description }}
+
+{{ .Description }}
+{{- end }}
+{{- if .Results }}
+
+Results:
+{{- range .Results }}
+- {{ .Name }}: {{ .Value }}
+{{- end }}
+{{- end }}
+{{- if .TargetURL }}
+
+View logs: {{ .TargetURL }}
+{{- end }}`,
 	}, zap.NewNop())
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -220,7 +247,8 @@ func TestHandle_SubjectHeaderInjectionStripped(t *testing.T) {
 	n, err := New(Config{
 		Name: "inj", Host: host, Port: port, Encryption: EncryptionNone,
 		From: "ci@example.com", To: []string{"team@example.com"},
-		Subject: "{{ .Description }}",
+		Subject:  "{{ .Description }}",
+		Template: "Body {{ .RunName }}",
 	}, zap.NewNop())
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -250,15 +278,21 @@ func TestHandle_SubjectHeaderInjectionStripped(t *testing.T) {
 
 func TestNew_Validation(t *testing.T) {
 	log := zap.NewNop()
-	base := Config{Host: "smtp.example.com", From: "a@b.c", To: []string{"d@e.f"}}
+	base := Config{
+		Host:     "smtp.example.com",
+		From:     "a@b.c",
+		To:       []string{"d@e.f"},
+		Subject:  "Test {{ .State }}",
+		Template: "Body {{ .RunName }}",
+	}
 
-	if _, err := New(Config{From: base.From, To: base.To}, log); err == nil {
+	if _, err := New(Config{From: base.From, To: base.To, Subject: base.Subject, Template: base.Template}, log); err == nil {
 		t.Error("expected error for missing host")
 	}
-	if _, err := New(Config{Host: base.Host, To: base.To}, log); err == nil {
+	if _, err := New(Config{Host: base.Host, To: base.To, Subject: base.Subject, Template: base.Template}, log); err == nil {
 		t.Error("expected error for missing from")
 	}
-	if _, err := New(Config{Host: base.Host, From: base.From}, log); err == nil {
+	if _, err := New(Config{Host: base.Host, From: base.From, Subject: base.Subject, Template: base.Template}, log); err == nil {
 		t.Error("expected error for missing recipients")
 	}
 	bad := base
@@ -270,6 +304,16 @@ func TestNew_Validation(t *testing.T) {
 	bad.Subject = "{{ .Oops"
 	if _, err := New(bad, log); err == nil {
 		t.Error("expected error for bad subject template")
+	}
+	bad = base
+	bad.Subject = ""
+	if _, err := New(bad, log); err == nil {
+		t.Error("expected error for missing subject template")
+	}
+	bad = base
+	bad.Template = ""
+	if _, err := New(bad, log); err == nil {
+		t.Error("expected error for missing body template")
 	}
 	if _, err := New(base, log); err != nil {
 		t.Errorf("valid config rejected: %v", err)
@@ -296,6 +340,8 @@ func TestHandle_ContextCancellation(t *testing.T) {
 	n, err := New(Config{
 		Name: "hang", Host: addr.IP.String(), Port: addr.Port, Encryption: EncryptionNone,
 		From: "a@b.c", To: []string{"d@e.f"},
+		Subject:  "Test {{ .State }}",
+		Template: "Body {{ .RunName }}",
 	}, zap.NewNop())
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -309,5 +355,37 @@ func TestHandle_ContextCancellation(t *testing.T) {
 	}
 	if time.Since(start) > 2*time.Second {
 		t.Error("Handle did not honor context deadline")
+	}
+}
+
+func TestNew_FileTemplate(t *testing.T) {
+	log := zap.NewNop()
+	tmpfile, err := os.CreateTemp("", "email-test-*.tmpl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Remove(tmpfile.Name()) }()
+
+	if _, err := tmpfile.Write([]byte("File template {{ .State }}")); err != nil {
+		t.Fatal(err)
+	}
+	if err := tmpfile.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := Config{
+		Host:     "smtp.example.com",
+		From:     "test@example.com",
+		To:       []string{"user@example.com"},
+		Subject:  "Test {{ .State }}",
+		Template: tmpfile.Name(),
+	}
+
+	n, err := New(cfg, log)
+	if err != nil {
+		t.Fatalf("New with file template: %v", err)
+	}
+	if n == nil {
+		t.Error("expected notifier, got nil")
 	}
 }

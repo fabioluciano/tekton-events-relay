@@ -301,6 +301,8 @@ Exposed by `internal/http/server.go`:
 6. Handler files in `internal/notifier/scm/<name>/` — one per action type
 7. Tests
 
+**OAuth2 support**: If the provider supports OAuth2, use `resolveOAuth2Refresher()` from `factory/gitlab.go` (shared by all factories) to create a `TokenRefresher`. Pass it to the client via a transport-based or AuthSource-based constructor. NEVER call `client.Token()` at build time and pass the static string to handlers.
+
 ## Adding a new action type to existing provider
 
 1. Add to `notifier.ActionType` constants in `internal/notifier/notifier.go`
@@ -318,7 +320,7 @@ Exposed by `internal/http/server.go`:
 | `internal/event/tekton/` | 4 decoders: TaskRun, PipelineRun, CustomRun, EventListener |
 | `internal/notifier/` | ActionHandler interface, Registry, Base (Template Method), FilteredHandler, ConditionalHandler |
 | `internal/notifier/middleware/` | CEL wrap, filter wrap, context_per_task wrap |
-| `internal/notifier/scm/` | Shared SCM: BaseClient, templates, upsert markers, state maps, labels, limits, refs |
+| `internal/notifier/scm/` | Shared SCM: BaseClient, TokenRefresher, TokenTransport, templates, upsert markers, state maps, labels, limits, refs |
 | `internal/notifier/scm/github/` | 8 handlers + go-github client + App auth |
 | `internal/notifier/scm/gitlab/` | 6 handlers + GitLab SDK (SaaS + self-managed) |
 | `internal/notifier/scm/gitea/` | 4 handlers + Gitea SDK |
@@ -373,6 +375,7 @@ Applied outermost-to-innermost in `internal/http/server.go`:
 - Template rendering via `scm.CompileTemplate()` with sprig functions (dangerous ones like `env`, `expandenv`, `base64` stripped)
 - GitHub App auth via RSA private key + installation token (`internal/notifier/scm/github/app_client.go`)
 - Bitbucket has dual-variant support: `CloudClient` (Basic auth) and `ServerClient` (Bearer token) with separate handler implementations
+- **Token refresh**: OAuth2 and GitHub App tokens auto-refresh via `scm.TokenRefresher` interface. GitHub handlers accept `HTTPDoer` (shared client with auto-refresh). GitLab uses `AuthSource` interface. Gitea uses `TokenTransport` (custom `http.RoundTripper`). NEVER pass static token strings to handler constructors.
 
 ## Notifier patterns
 
@@ -944,6 +947,38 @@ func (m *mockHandler) Handle(ctx context.Context, e domain.Event) error {
 - Fields: `client_id_file`, `client_secret_file`, `token_url`
 - Token cached and auto-refreshed before expiry
 - Used by `scm.BaseClient` as the auth function
+
+### Token refresh mechanism (`internal/notifier/scm/token.go`)
+
+All SCM providers use a unified token refresh pattern to avoid stale tokens:
+
+**`TokenRefresher` interface** — provides a valid token, refreshing automatically:
+```go
+type TokenRefresher interface {
+    Token(ctx context.Context) (string, error)
+}
+```
+
+**Implementations:**
+- `StaticToken` — wraps a fixed token (PATs, static credentials)
+- `oauth2.Client` — auto-refreshes via `x/oauth2` TokenSource
+- `github.AppClient` — auto-refreshes JWT→installation token
+
+**Provider-specific strategies:**
+
+| Provider | Strategy | Files changed |
+|----------|----------|---------------|
+| **GitHub** | All handlers accept `HTTPDoer` interface (shared client with auto-refresh) | handler configs, `comment_common.go` |
+| **GitLab** | `NewClientWithRefresher()` — uses SDK's `AuthSource` interface for per-request token injection | `gitlab/client.go`, factory |
+| **Gitea** | `NewClientWithRefresher()` — uses `TokenTransport` (custom `http.RoundTripper`) | `gitea/client.go`, factory |
+| **Bitbucket Cloud** | `resolveOAuth2Refresher()` — factory fetches token via refresher | factory only |
+
+**Key rule: NEVER call `client.Token()` at factory build time and pass the static string to handlers.** The token will expire. Always pass the `TokenRefresher` or `HTTPDoer` so tokens refresh at request time.
+
+**`TokenTransport`** (`internal/notifier/scm/token.go`) — `http.RoundTripper` that injects fresh tokens:
+- `AuthStyleBearer` — `Authorization: Bearer {token}` (OAuth2 standard)
+- `AuthStyleToken` — `Authorization: token {token}` (Gitea convention)
+- `AuthStyleHeader` — custom header (e.g., `PRIVATE-TOKEN` for GitLab)
 
 ## Webhook transform (`internal/notifier/webhook/transform.go`)
 

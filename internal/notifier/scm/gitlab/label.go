@@ -21,22 +21,16 @@ type LabelHandler struct {
 
 // LabelConfig configures the label handler.
 type LabelConfig struct {
-	Token              string
-	BaseURL            string
-	Name               string
-	Labels             scm.LabelSet
-	InsecureSkipVerify bool
-	Log                *zap.Logger
+	Client *Client
+	Name   string
+	Labels scm.LabelSet
+	Log    *zap.Logger
 }
 
 // NewLabelHandler creates a new GitLab label handler.
 func NewLabelHandler(cfg LabelConfig) (notifier.ActionHandler, error) {
-	c, err := NewClient(cfg.Token, cfg.BaseURL, cfg.InsecureSkipVerify, false, cfg.Log)
-	if err != nil {
-		return nil, err
-	}
 	return &LabelHandler{
-		client: c,
+		client: cfg.Client,
 		name:   cfg.Name,
 		labels: cfg.Labels,
 	}, nil

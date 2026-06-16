@@ -57,9 +57,13 @@ func TestPRCommentHandler_UpsertEditsExistingComment(t *testing.T) {
 	server := httptest.NewServer(mock.handler())
 	defer server.Close()
 
+	client, err := NewClient("token", server.URL, false, false, zap.NewNop())
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
 	h, err := NewPRCommentHandler(PRCommentConfig{
-		Token:    "token",
-		BaseURL:  server.URL,
+		Client:   client,
+		Name:     "gitea",
 		Template: "Run {{.RunName}}: {{.State}}",
 		Mode:     "upsert",
 		Log:      zap.NewNop(),
@@ -95,7 +99,15 @@ func TestPRCommentHandler_UpsertEditsExistingComment(t *testing.T) {
 }
 
 func TestPRCommentHandler_InvalidModeRejected(t *testing.T) {
-	_, err := NewPRCommentHandler(PRCommentConfig{Token: "t", BaseURL: "http://localhost", Mode: "replace", Log: zap.NewNop()})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]string{mockGiteaKey: mockGiteaVersion})
+	}))
+	defer srv.Close()
+	client, err := NewClient("t", srv.URL, false, false, zap.NewNop())
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	_, err = NewPRCommentHandler(PRCommentConfig{Client: client, Name: "gitea", Mode: "replace", Log: zap.NewNop()})
 	if err == nil {
 		t.Fatal("expected error for invalid mode")
 	}

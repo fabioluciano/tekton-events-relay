@@ -20,16 +20,12 @@ type StatusReporter struct {
 }
 
 // NewStatusReporter creates a new GitLab commit status reporter.
-func NewStatusReporter(token, baseURL, name string, insecureSkipVerify bool, log *zap.Logger) (notifier.ActionHandler, error) {
+func NewStatusReporter(client *Client, name string, log *zap.Logger) (notifier.ActionHandler, error) {
 	if log == nil {
 		log = zap.NewNop()
 	}
-	c, err := NewClient(token, baseURL, insecureSkipVerify, false, log)
-	if err != nil {
-		return nil, err
-	}
 	return &StatusReporter{
-		client: c,
+		client: client,
 		name:   name,
 		log:    log,
 	}, nil

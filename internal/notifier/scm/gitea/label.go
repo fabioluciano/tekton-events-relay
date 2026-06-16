@@ -21,11 +21,10 @@ type LabelHandler struct {
 
 // LabelConfig configures the label handler.
 type LabelConfig struct {
-	Token              string
-	BaseURL            string
-	Labels             scm.LabelSet
-	InsecureSkipVerify bool
-	Log                *zap.Logger
+	Client *Client
+	Name   string
+	Labels scm.LabelSet
+	Log    *zap.Logger
 }
 
 // NewLabelHandler creates a new Gitea label handler.
@@ -34,12 +33,8 @@ func NewLabelHandler(cfg LabelConfig) (notifier.ActionHandler, error) {
 	if log == nil {
 		log = zap.NewNop()
 	}
-	c, err := NewClient(cfg.Token, cfg.BaseURL, cfg.InsecureSkipVerify, false, cfg.Log)
-	if err != nil {
-		return nil, err
-	}
 	return &LabelHandler{
-		client: c,
+		client: cfg.Client,
 		labels: cfg.Labels,
 		log:    log,
 	}, nil

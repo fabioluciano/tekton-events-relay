@@ -24,12 +24,10 @@ type CommitCommentHandler struct {
 
 // CommitCommentConfig configures the commit comment handler.
 type CommitCommentConfig struct {
-	Token              string
-	BaseURL            string
-	Name               string
-	Template           string
-	InsecureSkipVerify bool
-	Log                *zap.Logger
+	Client   *Client
+	Name     string
+	Template string
+	Log      *zap.Logger
 }
 
 // NewCommitCommentHandler creates a new GitLab commit comment handler.
@@ -46,13 +44,9 @@ func NewCommitCommentHandler(cfg CommitCommentConfig) (notifier.ActionHandler, e
 	if log == nil {
 		log = zap.NewNop()
 	}
-	c, err := NewClient(cfg.Token, cfg.BaseURL, cfg.InsecureSkipVerify, false, cfg.Log)
-	if err != nil {
-		return nil, err
-	}
 
 	return &CommitCommentHandler{
-		client:   c,
+		client:   cfg.Client,
 		name:     cfg.Name,
 		template: tmpl,
 		log:      log,

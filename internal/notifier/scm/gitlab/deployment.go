@@ -23,11 +23,9 @@ type DeploymentHandler struct {
 
 // DeploymentConfig configures the deployment handler.
 type DeploymentConfig struct {
-	Token              string
-	BaseURL            string
-	Name               string
-	InsecureSkipVerify bool
-	Log                *zap.Logger
+	Client *Client
+	Name   string
+	Log    *zap.Logger
 }
 
 // NewDeploymentHandler creates a new GitLab deployment handler.
@@ -36,12 +34,8 @@ func NewDeploymentHandler(cfg DeploymentConfig) (notifier.ActionHandler, error) 
 	if log == nil {
 		log = zap.NewNop()
 	}
-	c, err := NewClient(cfg.Token, cfg.BaseURL, cfg.InsecureSkipVerify, false, cfg.Log)
-	if err != nil {
-		return nil, err
-	}
 	return &DeploymentHandler{
-		client: c,
+		client: cfg.Client,
 		name:   cfg.Name,
 		log:    log,
 	}, nil

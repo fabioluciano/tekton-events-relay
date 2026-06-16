@@ -23,11 +23,14 @@ const (
 
 func newLabelTestHandler(t *testing.T, baseURL string) notifier.ActionHandler {
 	t.Helper()
+	client, err := NewClient("token", baseURL, false, false, zap.NewNop())
+	if err != nil {
+		t.Fatal(err)
+	}
 	h, err := NewLabelHandler(LabelConfig{
-		Token:   "token",
-		BaseURL: baseURL,
-		Labels:  scm.LabelSet{Add: []scm.Label{{Name: "ci:passed"}}, Remove: []scm.Label{{Name: "ci:failed"}}},
-		Log:     zap.NewNop(),
+		Client: client,
+		Labels: scm.LabelSet{Add: []scm.Label{{Name: "ci:passed"}}, Remove: []scm.Label{{Name: "ci:failed"}}},
+		Log:    zap.NewNop(),
 	})
 	if err != nil {
 		t.Fatal(err)

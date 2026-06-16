@@ -41,6 +41,7 @@ func newOlricStore(cfg config.StoreConfig, opts Options) (*olricStore, error) {
 		env = "lan"
 	}
 	oc := olricconfig.New(env)
+	oc.LogLevel = "WARN"
 	oc.Logger = log.New(&zapLogWriter{log: opts.Log.Named("olric")}, "", 0)
 	if cfg.Olric.BindAddr != "" {
 		oc.BindAddr = cfg.Olric.BindAddr
@@ -201,31 +202,18 @@ func (w *zapLogWriter) Write(p []byte) (int, error) {
 		level := matches[1]
 		text := matches[2]
 
-		// Strip leading "[LEVEL] " prefix that Olric embeds in the message text,
-		// otherwise it duplicates the zap structured "level" field.
-		if len(text) > 0 && text[0] == '[' {
-			if end := strings.Index(text, "] "); end > 0 {
-				text = text[end+2:]
-			}
-		}
-
 		switch level {
 		case "DEBUG":
 			w.log.Debug(text)
 		case "INFO":
-			w.log.Info(text)
+			w.log.Debug(text)
 		case "WARN":
 			w.log.Warn(text)
 		case "ERROR", "ERR":
 			w.log.Error(text)
 		}
 	} else {
-		// Fallback for non-standard format — strip [LEVEL] prefix if present.
-		text := msg
-		if i := strings.Index(text, "] "); i > 0 && text[0] == '[' {
-			text = text[i+2:]
-		}
-		w.log.Info(text)
+		w.log.Warn(msg)
 	}
 
 	return len(p), nil

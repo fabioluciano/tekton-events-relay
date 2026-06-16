@@ -16,6 +16,7 @@ import (
 // IssueCommentHandler posts comments to Gitea issues.
 type IssueCommentHandler struct {
 	client   *Client
+	name     string
 	template *template.Template
 	mode     string
 	log      *zap.Logger
@@ -23,12 +24,11 @@ type IssueCommentHandler struct {
 
 // IssueCommentConfig configures the issue comment handler.
 type IssueCommentConfig struct {
-	Token              string
-	BaseURL            string
-	Template           string
-	Mode               string // scm.ModeCreate (default) or scm.ModeUpsert
-	InsecureSkipVerify bool
-	Log                *zap.Logger
+	Client   *Client
+	Name     string
+	Template string
+	Mode     string // scm.ModeCreate (default) or scm.ModeUpsert
+	Log      *zap.Logger
 }
 
 // NewIssueCommentHandler creates a new Gitea issue comment handler.
@@ -51,13 +51,9 @@ func NewIssueCommentHandler(cfg IssueCommentConfig) (notifier.ActionHandler, err
 		log = zap.NewNop()
 	}
 
-	c, err := NewClient(cfg.Token, cfg.BaseURL, cfg.InsecureSkipVerify, false, cfg.Log)
-	if err != nil {
-		return nil, err
-	}
-
 	return &IssueCommentHandler{
-		client:   c,
+		client:   cfg.Client,
+		name:     cfg.Name,
 		template: tmpl,
 		mode:     mode,
 		log:      log,
@@ -65,14 +61,14 @@ func NewIssueCommentHandler(cfg IssueCommentConfig) (notifier.ActionHandler, err
 }
 
 // Name returns the handler name.
-func (h *IssueCommentHandler) Name() string { return providerGitea }
+func (h *IssueCommentHandler) Name() string { return h.name }
 
 // Type returns the action type.
 func (h *IssueCommentHandler) Type() notifier.ActionType { return notifier.ActionIssueComment }
 
 // Handle posts a comment to a Gitea issue.
 func (h *IssueCommentHandler) Handle(_ context.Context, e domain.Event) error {
-	if e.Provider != providerGitea {
+	if e.Provider != h.name {
 		return nil
 	}
 

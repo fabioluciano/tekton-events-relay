@@ -1,6 +1,7 @@
 package factory
 
 import (
+	"context"
 	"fmt"
 
 	"go.uber.org/zap"
@@ -41,8 +42,9 @@ func (f *BitbucketFactory) Build(inst config.BitbucketInstance, log *zap.Logger)
 	})
 }
 
-// resolveCloudAuth resolves username and app_password for Bitbucket Cloud.
-// It supports both basic auth (username_file + app_password_file) and OAuth2.
+// resolveCloudAuth resolves authentication for Bitbucket Cloud.
+// Supports both basic auth (username_file + app_password_file) and OAuth2.
+// For OAuth2, the token is resolved via TokenRefresher and passed as x-token-auth.
 func resolveCloudAuth(inst config.BitbucketInstance, log *zap.Logger) (username, appPassword string, err error) {
 	if inst.Auth == nil {
 		username, err = secrets.ResolveOrInfer("", "bitbucket", inst.Name, "username", "", log)
@@ -54,12 +56,14 @@ func resolveCloudAuth(inst config.BitbucketInstance, log *zap.Logger) (username,
 	}
 
 	if inst.Auth.OAuth2 != nil {
-		tok, err := resolveOAuth2Token(inst.Auth.OAuth2, "bitbucket", inst.Name, log)
-		if err != nil {
-			return "", "", fmt.Errorf("cloud oauth2: %w", err)
+		refresher, rErr := resolveOAuth2Refresher(inst.Auth.OAuth2, "bitbucket", inst.Name, log)
+		if rErr != nil {
+			return "", "", fmt.Errorf("cloud oauth2: %w", rErr)
 		}
-		// For OAuth2 on Bitbucket Cloud, use the token as a Bearer token via appPassword field
-		// and empty username (Bitbucket Cloud supports x-token-auth scheme).
+		tok, tErr := refresher.Token(context.Background())
+		if tErr != nil {
+			return "", "", fmt.Errorf("cloud oauth2 token: %w", tErr)
+		}
 		return "x-token-auth", tok, nil
 	}
 

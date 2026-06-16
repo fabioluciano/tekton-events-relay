@@ -294,7 +294,7 @@ notifiers:
 
 		// Verify each SCM provider produced a commit_testStatus handler
 		// Name() returns the provider identifier, not the config instance name
-		expectedSCM := []string{"github", "test-gitlab", "bitbucket-cloud", "azure-devops", "gitea", "sourcehut"}
+		expectedSCM := []string{"github", "test-gitlab", "bitbucket-cloud", "azure-devops", "test-gitea", "sourcehut"}
 		for _, name := range expectedSCM {
 			found := false
 			for _, h := range handlers {

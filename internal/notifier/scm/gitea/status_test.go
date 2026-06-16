@@ -52,7 +52,11 @@ func TestStatusReporter_NameAndType(t *testing.T) {
 	srv := giteaAPIServer(t, &calls, &last)
 	defer srv.Close()
 
-	r, err := NewStatusReporter("token", srv.URL, false, zap.NewNop())
+	client, err := NewClient("token", srv.URL, false, false, zap.NewNop())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := NewStatusReporter(client, "gitea", zap.NewNop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +74,11 @@ func TestStatusReporter_SkipsWrongProvider(t *testing.T) {
 	srv := giteaAPIServer(t, &calls, &last)
 	defer srv.Close()
 
-	r, err := NewStatusReporter("token", srv.URL, false, zap.NewNop())
+	client, err := NewClient("token", srv.URL, false, false, zap.NewNop())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := NewStatusReporter(client, "gitea", zap.NewNop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +98,11 @@ func TestStatusReporter_SkipsMissingFields(t *testing.T) {
 	srv := giteaAPIServer(t, &calls, &last)
 	defer srv.Close()
 
-	r, err := NewStatusReporter("token", srv.URL, false, zap.NewNop())
+	client, err := NewClient("token", srv.URL, false, false, zap.NewNop())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := NewStatusReporter(client, "gitea", zap.NewNop())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +128,11 @@ func TestStatusReporter_PostsMappedState(t *testing.T) {
 	srv := giteaAPIServer(t, &calls, &last)
 	defer srv.Close()
 
-	r, err := NewStatusReporter("token", srv.URL, false, zap.NewNop())
+	client, err := NewClient("token", srv.URL, false, false, zap.NewNop())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := NewStatusReporter(client, "gitea", zap.NewNop())
 	if err != nil {
 		t.Fatal(err)
 	}

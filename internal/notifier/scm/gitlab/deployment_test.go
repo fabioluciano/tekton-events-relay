@@ -28,8 +28,12 @@ func TestDeploymentHandler_CreatesDeployment(t *testing.T) {
 	}))
 	defer srv.Close()
 
+	client, err := NewClient("t", srv.URL, false, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
 	h, err := NewDeploymentHandler(DeploymentConfig{
-		Token: "t", BaseURL: srv.URL, Name: "gitlab-main", Log: zap.NewNop(),
+		Client: client, Name: "gitlab-main", Log: zap.NewNop(),
 	})
 	if err != nil {
 		t.Fatal(err)

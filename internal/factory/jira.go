@@ -9,7 +9,6 @@ import (
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/jira"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/middleware"
-	"github.com/fabioluciano/tekton-events-relay/internal/secrets"
 )
 
 // JiraFactory builds ActionHandlers from Jira instance configurations.
@@ -21,13 +20,15 @@ func (f *JiraFactory) Build(inst config.JiraInstance, log *zap.Logger) ([]notifi
 		return nil, nil
 	}
 
+	var oauth2cfg *config.OAuth2Config
 	email, tokenFile, tokenKey := "", "", ""
 	if inst.Auth != nil {
+		oauth2cfg = inst.Auth.OAuth2
 		email = inst.Auth.Email
 		tokenFile = inst.Auth.TokenFile
 		tokenKey = inst.Auth.TokenKey
 	}
-	token, err := secrets.ResolveOrInfer(tokenFile, "jira", inst.Name, "token", tokenKey, log)
+	token, err := resolveBearerRefresher(oauth2cfg, tokenFile, tokenKey, "jira", inst.Name, log)
 	if err != nil {
 		return nil, err
 	}

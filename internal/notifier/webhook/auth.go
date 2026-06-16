@@ -11,6 +11,15 @@ import (
 	"net/http"
 )
 
+// Webhook auth type identifiers (ResolvedAuth.Type / WebhookAuthConfig.Type).
+const (
+	authTypeBearer = "bearer"
+	authTypeBasic  = "basic"
+	authTypeAPIKey = "apikey"
+	authTypeHMAC   = "hmac"
+	authTypeOAuth2 = "oauth2"
+)
+
 // applyAuth applies structured authentication based on the resolved auth.
 // Returns an error if auth setup fails.
 func applyAuth(req *http.Request, auth *ResolvedAuth) error {
@@ -19,13 +28,13 @@ func applyAuth(req *http.Request, auth *ResolvedAuth) error {
 	}
 
 	switch auth.Type {
-	case "bearer":
+	case authTypeBearer, authTypeOAuth2:
 		return applyBearerAuth(req, auth)
-	case "basic":
+	case authTypeBasic:
 		return applyBasicAuth(req, auth)
-	case "apikey":
+	case authTypeAPIKey:
 		return applyAPIKeyAuth(req, auth)
-	case "hmac":
+	case authTypeHMAC:
 		return applyHMACAuth(req, auth)
 	default:
 		return fmt.Errorf("unsupported auth type: %s", auth.Type)
@@ -33,14 +42,23 @@ func applyAuth(req *http.Request, auth *ResolvedAuth) error {
 }
 
 // applyBearerAuth sets the Authorization header with a Bearer token.
+// Used for both static/rotating bearer tokens and OAuth2 access tokens.
 func applyBearerAuth(req *http.Request, auth *ResolvedAuth) error {
-	req.Header.Set("Authorization", "Bearer "+auth.Token)
+	tok, err := auth.Token.Token(req.Context())
+	if err != nil {
+		return fmt.Errorf("resolve bearer token: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+tok)
 	return nil
 }
 
 // applyBasicAuth sets the Authorization header with Basic authentication.
 func applyBasicAuth(req *http.Request, auth *ResolvedAuth) error {
-	credentials := auth.Username + ":" + auth.Password
+	password, err := auth.Password.Token(req.Context())
+	if err != nil {
+		return fmt.Errorf("resolve basic auth password: %w", err)
+	}
+	credentials := auth.Username + ":" + password
 	encoded := base64.StdEncoding.EncodeToString([]byte(credentials))
 	req.Header.Set("Authorization", "Basic "+encoded)
 	return nil
@@ -48,7 +66,11 @@ func applyBasicAuth(req *http.Request, auth *ResolvedAuth) error {
 
 // applyAPIKeyAuth sets a custom header with the API key.
 func applyAPIKeyAuth(req *http.Request, auth *ResolvedAuth) error {
-	req.Header.Set(auth.Header, auth.Token)
+	tok, err := auth.Token.Token(req.Context())
+	if err != nil {
+		return fmt.Errorf("resolve api key: %w", err)
+	}
+	req.Header.Set(auth.Header, tok)
 	return nil
 }
 
@@ -64,6 +86,11 @@ func applyHMACAuth(req *http.Request, auth *ResolvedAuth) error {
 		return fmt.Errorf("request body is nil, cannot compute HMAC")
 	}
 
+	secret, err := auth.Secret.Token(req.Context())
+	if err != nil {
+		return fmt.Errorf("resolve hmac secret: %w", err)
+	}
+
 	// Read the body bytes
 	bodyBytes, err := io.ReadAll(req.Body)
 	if err != nil {
@@ -74,7 +101,7 @@ func applyHMACAuth(req *http.Request, auth *ResolvedAuth) error {
 	_ = req.Body.Close()
 
 	// Compute HMAC-SHA256
-	mac := hmac.New(sha256.New, []byte(auth.Secret))
+	mac := hmac.New(sha256.New, []byte(secret))
 	if _, err := mac.Write(bodyBytes); err != nil {
 		return fmt.Errorf("failed to compute HMAC: %w", err)
 	}

@@ -27,8 +27,18 @@ func newStatusServer(t *testing.T, statusCode int) *httptest.Server {
 	}))
 }
 
+func newTestClient(t *testing.T, baseURL string) *Client {
+	t.Helper()
+	c, err := NewClient(testStatusToken, baseURL, false, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c
+}
+
 func TestStatusReporter_Name(t *testing.T) {
-	r, err := NewStatusReporter(testStatusToken, testGitLabBaseURL, testStatusName, false, nil)
+	client := newTestClient(t, testGitLabBaseURL)
+	r, err := NewStatusReporter(client, testStatusName, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +48,8 @@ func TestStatusReporter_Name(t *testing.T) {
 }
 
 func TestStatusReporter_Type(t *testing.T) {
-	r, err := NewStatusReporter(testStatusToken, testGitLabBaseURL, testStatusName, false, nil)
+	client := newTestClient(t, testGitLabBaseURL)
+	r, err := NewStatusReporter(client, testStatusName, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +72,8 @@ func TestStatusReporter_Handle_Success(t *testing.T) {
 	}))
 	defer server.Close()
 
-	r, err := NewStatusReporter(testStatusToken, server.URL, testStatusName, false, nil)
+	client := newTestClient(t, server.URL)
+	r, err := NewStatusReporter(client, testStatusName, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +96,8 @@ func TestStatusReporter_Handle_4xx(t *testing.T) {
 	server := newStatusServer(t, http.StatusNotFound)
 	defer server.Close()
 
-	r, err := NewStatusReporter(testStatusToken, server.URL, testStatusName, false, nil)
+	client := newTestClient(t, server.URL)
+	r, err := NewStatusReporter(client, testStatusName, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +120,8 @@ func TestStatusReporter_Handle_5xx(t *testing.T) {
 	server := newStatusServer(t, http.StatusInternalServerError)
 	defer server.Close()
 
-	r, err := NewStatusReporter(testStatusToken, server.URL, testStatusName, false, nil)
+	client := newTestClient(t, server.URL)
+	r, err := NewStatusReporter(client, testStatusName, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +142,8 @@ func TestStatusReporter_Handle_5xx(t *testing.T) {
 
 func TestStatusReporter_Handle_EmptyCommitSHA(t *testing.T) {
 	// No server needed — should return nil before any HTTP call.
-	r, err := NewStatusReporter(testStatusToken, "http://localhost:0", testStatusName, false, nil)
+	client := newTestClient(t, "http://localhost:0")
+	r, err := NewStatusReporter(client, testStatusName, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +164,8 @@ func TestStatusReporter_Handle_EmptyCommitSHA(t *testing.T) {
 
 func TestStatusReporter_Handle_WrongProvider(t *testing.T) {
 	// No server needed — should return nil without making HTTP call.
-	r, err := NewStatusReporter(testStatusToken, "http://localhost:0", testStatusName, false, nil)
+	client := newTestClient(t, "http://localhost:0")
+	r, err := NewStatusReporter(client, testStatusName, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +186,8 @@ func TestStatusReporter_Handle_WrongProvider(t *testing.T) {
 
 func TestStatusReporter_Handle_ValidationFailure(t *testing.T) {
 	// No server needed — validation should fail before HTTP call.
-	r, err := NewStatusReporter(testStatusToken, "http://localhost:0", testStatusName, false, nil)
+	client := newTestClient(t, "http://localhost:0")
+	r, err := NewStatusReporter(client, testStatusName, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,10 +209,10 @@ func TestStatusReporter_Handle_ValidationFailure(t *testing.T) {
 // --- LabelHandler Name/Type ---
 
 func TestLabelHandler_Name(t *testing.T) {
+	client := newTestClient(t, testGitLabBaseURL)
 	h, err := NewLabelHandler(LabelConfig{
-		Token:   testStatusToken,
-		BaseURL: testGitLabBaseURL,
-		Name:    testStatusName,
+		Client: client,
+		Name:   testStatusName,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -206,10 +223,10 @@ func TestLabelHandler_Name(t *testing.T) {
 }
 
 func TestLabelHandler_Type(t *testing.T) {
+	client := newTestClient(t, testGitLabBaseURL)
 	h, err := NewLabelHandler(LabelConfig{
-		Token:   testStatusToken,
-		BaseURL: testGitLabBaseURL,
-		Name:    testStatusName,
+		Client: client,
+		Name:   testStatusName,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -220,10 +237,10 @@ func TestLabelHandler_Type(t *testing.T) {
 }
 
 func TestLabelHandler_Handle_WrongProvider(t *testing.T) {
+	client := newTestClient(t, "http://localhost:0")
 	h, err := NewLabelHandler(LabelConfig{
-		Token:   testStatusToken,
-		BaseURL: "http://localhost:0",
-		Name:    testStatusName,
+		Client: client,
+		Name:   testStatusName,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -265,12 +282,12 @@ func TestLabelHandler_Handle_FailureLabel(t *testing.T) {
 	}))
 	defer server.Close()
 
+	client := newTestClient(t, server.URL)
 	issueNum := 3
 	h, err := NewLabelHandler(LabelConfig{
-		Token:   testStatusToken,
-		BaseURL: server.URL,
-		Name:    testStatusName,
-		Labels:  scm.LabelSet{Add: []scm.Label{{Name: "ci-passed"}}},
+		Client: client,
+		Name:   testStatusName,
+		Labels: scm.LabelSet{Add: []scm.Label{{Name: "ci-passed"}}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -317,12 +334,12 @@ func TestLabelHandler_Handle_Success(t *testing.T) {
 	}))
 	defer server.Close()
 
+	client := newTestClient(t, server.URL)
 	prNum := 7
 	h, err := NewLabelHandler(LabelConfig{
-		Token:   testStatusToken,
-		BaseURL: server.URL,
-		Name:    testStatusName,
-		Labels:  scm.LabelSet{Add: []scm.Label{{Name: "ci-passed"}}},
+		Client: client,
+		Name:   testStatusName,
+		Labels: scm.LabelSet{Add: []scm.Label{{Name: "ci-passed"}}},
 	})
 	if err != nil {
 		t.Fatal(err)

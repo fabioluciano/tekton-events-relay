@@ -16,6 +16,7 @@ import (
 // PRCommentHandler posts comments to Gitea pull requests.
 type PRCommentHandler struct {
 	client   *Client
+	name     string
 	template *template.Template
 	mode     string
 	log      *zap.Logger
@@ -23,12 +24,11 @@ type PRCommentHandler struct {
 
 // PRCommentConfig configures the PR comment handler.
 type PRCommentConfig struct {
-	Token              string
-	BaseURL            string
-	Template           string
-	Mode               string // scm.ModeCreate (default) or scm.ModeUpsert
-	InsecureSkipVerify bool
-	Log                *zap.Logger
+	Client   *Client
+	Name     string
+	Template string
+	Mode     string // scm.ModeCreate (default) or scm.ModeUpsert
+	Log      *zap.Logger
 }
 
 // NewPRCommentHandler creates a new Gitea PR comment handler.
@@ -51,13 +51,9 @@ func NewPRCommentHandler(cfg PRCommentConfig) (notifier.ActionHandler, error) {
 		log = zap.NewNop()
 	}
 
-	c, err := NewClient(cfg.Token, cfg.BaseURL, cfg.InsecureSkipVerify, false, cfg.Log)
-	if err != nil {
-		return nil, err
-	}
-
 	return &PRCommentHandler{
-		client:   c,
+		client:   cfg.Client,
+		name:     cfg.Name,
 		template: tmpl,
 		mode:     mode,
 		log:      log,
@@ -65,14 +61,14 @@ func NewPRCommentHandler(cfg PRCommentConfig) (notifier.ActionHandler, error) {
 }
 
 // Name returns the handler name.
-func (h *PRCommentHandler) Name() string { return providerGitea }
+func (h *PRCommentHandler) Name() string { return h.name }
 
 // Type returns the action type.
 func (h *PRCommentHandler) Type() notifier.ActionType { return notifier.ActionPRComment }
 
 // Handle posts a comment to a Gitea PR.
 func (h *PRCommentHandler) Handle(_ context.Context, e domain.Event) error {
-	if e.Provider != providerGitea {
+	if e.Provider != h.name {
 		return nil
 	}
 

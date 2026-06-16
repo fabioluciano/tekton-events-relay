@@ -18,57 +18,67 @@ func (f *GiteaFactory) Build(inst config.GiteaInstance, log *zap.Logger) ([]noti
 		return nil, nil
 	}
 
-	token, err := resolveGiteaToken(inst, log)
+	client, err := resolveGiteaClient(inst, log)
 	if err != nil {
 		return nil, err
 	}
 
 	return buildActionsWithMiddleware(inst.Actions, log, func(action config.Action) (notifier.ActionHandler, error) {
-		return f.buildHandler(inst, action, token, log)
+		return f.buildHandler(inst, action, client, log)
 	})
 }
 
-// resolveGiteaToken resolves the authentication token for a Gitea instance.
-func resolveGiteaToken(inst config.GiteaInstance, log *zap.Logger) (string, error) {
-	if inst.Auth == nil {
-		return secrets.ResolveOrInfer("", "gitea", inst.Name, "token", "", log)
+// resolveGiteaClient creates a Gitea API client with appropriate authentication.
+// For OAuth2, the client uses a token-injecting HTTP transport that auto-refreshes.
+// For static tokens, the client uses a standard token-based connection.
+func resolveGiteaClient(inst config.GiteaInstance, log *zap.Logger) (*gitea.Client, error) {
+	if inst.Auth != nil && inst.Auth.OAuth2 != nil {
+		refresher, err := resolveOAuth2Refresher(inst.Auth.OAuth2, "gitea", inst.Name, log)
+		if err != nil {
+			return nil, err
+		}
+		return gitea.NewClientWithRefresher(refresher, inst.BaseURL, inst.InsecureSkipVerify, false, log)
 	}
-	if inst.Auth.OAuth2 != nil {
-		return resolveOAuth2Token(inst.Auth.OAuth2, "gitea", inst.Name, log)
+
+	var secretFile, secretKey string
+	if inst.Auth != nil {
+		secretFile = inst.Auth.SecretFile
+		secretKey = inst.Auth.SecretKey
 	}
-	return secrets.ResolveOrInfer(inst.Auth.SecretFile, "gitea", inst.Name, "token", inst.Auth.SecretKey, log)
+	token, err := secrets.ResolveOrInfer(secretFile, "gitea", inst.Name, "token", secretKey, log)
+	if err != nil {
+		return nil, err
+	}
+	return gitea.NewClient(token, inst.BaseURL, inst.InsecureSkipVerify, false, log)
 }
 
 // buildHandler creates the appropriate handler based on action type.
-func (f *GiteaFactory) buildHandler(inst config.GiteaInstance, action config.Action, token string, log *zap.Logger) (notifier.ActionHandler, error) {
+func (f *GiteaFactory) buildHandler(inst config.GiteaInstance, action config.Action, client *gitea.Client, log *zap.Logger) (notifier.ActionHandler, error) {
 	switch action.Type {
 	case notifier.ActionCommitStatus:
-		return gitea.NewStatusReporter(token, inst.BaseURL, inst.InsecureSkipVerify, log)
+		return gitea.NewStatusReporter(client, inst.Name, log)
 	case notifier.ActionPRComment:
 		return gitea.NewPRCommentHandler(gitea.PRCommentConfig{
-			Token:              token,
-			BaseURL:            inst.BaseURL,
-			Template:           action.Template,
-			Mode:               action.Mode,
-			InsecureSkipVerify: inst.InsecureSkipVerify,
-			Log:                log,
+			Client:   client,
+			Name:     inst.Name,
+			Template: action.Template,
+			Mode:     action.Mode,
+			Log:      log,
 		})
 	case notifier.ActionIssueComment:
 		return gitea.NewIssueCommentHandler(gitea.IssueCommentConfig{
-			Token:              token,
-			BaseURL:            inst.BaseURL,
-			Template:           action.Template,
-			Mode:               action.Mode,
-			InsecureSkipVerify: inst.InsecureSkipVerify,
-			Log:                log,
+			Client:   client,
+			Name:     inst.Name,
+			Template: action.Template,
+			Mode:     action.Mode,
+			Log:      log,
 		})
 	case notifier.ActionLabel:
 		return gitea.NewLabelHandler(gitea.LabelConfig{
-			Token:              token,
-			BaseURL:            inst.BaseURL,
-			Labels:             labelSet(action),
-			InsecureSkipVerify: inst.InsecureSkipVerify,
-			Log:                log,
+			Client: client,
+			Name:   inst.Name,
+			Labels: labelSet(action),
+			Log:    log,
 		})
 	default:
 		return nil, ErrUnsupportedActionType

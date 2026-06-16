@@ -25,19 +25,30 @@ func BuildPath(provider, instance, key string) string {
 	return fmt.Sprintf("/etc/secrets/%s/%s/%s", provider, instance, key)
 }
 
+// InferPath returns the explicit secret path, or the inferred standard path
+// when explicitPath is empty. If customKey is provided, it overrides the
+// default key name. Unlike ResolveOrInfer it does not read the file, so callers
+// that need to re-read the secret at runtime can keep the resolved path.
+func InferPath(explicitPath, provider, instance, defaultKey, customKey string) (string, error) {
+	if explicitPath != "" {
+		return explicitPath, nil
+	}
+	key := defaultKey
+	if customKey != "" {
+		key = customKey
+	}
+	if err := sanitizePath(instance); err != nil {
+		return "", fmt.Errorf("invalid secret instance: %w", err)
+	}
+	return BuildPath(provider, instance, key), nil
+}
+
 // ResolveOrInfer resolves a secret from an explicit path, or infers the path if empty.
 // If customKey is provided, it overrides the default key name.
 func ResolveOrInfer(explicitPath, provider, instance, defaultKey, customKey string, log *zap.Logger) (string, error) {
-	path := explicitPath
-	if path == "" {
-		key := defaultKey
-		if customKey != "" {
-			key = customKey
-		}
-		if err := sanitizePath(instance); err != nil {
-			return "", fmt.Errorf("invalid secret instance: %w", err)
-		}
-		path = BuildPath(provider, instance, key)
+	path, err := InferPath(explicitPath, provider, instance, defaultKey, customKey)
+	if err != nil {
+		return "", err
 	}
 	return Resolve(path, log)
 }

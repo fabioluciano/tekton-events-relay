@@ -320,6 +320,16 @@ Usage: {{ include "tekton-events-relay.scmVolumeMounts" (dict "provider" "github
   readOnly: true
 {{- end }}
 {{- end }}
+{{- if and $i.auth $i.auth.oauth2 $i.auth.oauth2.refresh_token (include "tekton-events-relay.hasRef" $i.auth.oauth2.refresh_token) }}
+{{- $secretName := include "tekton-events-relay.refName" $i.auth.oauth2.refresh_token }}
+{{- $mountPath := printf "/etc/secrets/%s/%s" $p $i.name }}
+{{- if not (hasKey $mountPaths $mountPath) }}
+{{- $_ := set $mountPaths $mountPath true }}
+- mountPath: {{ $mountPath }}
+  name: {{ $secretName | replace "/" "-" | replace "." "-" }}
+  readOnly: true
+{{- end }}
+{{- end }}
 {{- if and $i.auth $i.auth.username (include "tekton-events-relay.hasRef" $i.auth.username) }}
 {{- $secretName := include "tekton-events-relay.refName" $i.auth.username }}
 {{- $mountPath := printf "/etc/secrets/%s/%s" $p $i.name }}
@@ -364,6 +374,15 @@ Usage: {{ include "tekton-events-relay.scmVolumes" (dict "provider" "github" "in
 {{- end }}
 {{- if and $i.auth $i.auth.oauth2 }}
 {{- $secretName := include "tekton-events-relay.refName" $i.auth.oauth2.client_secret }}
+{{- if not (hasKey $volumeNames $secretName) }}
+{{- $_ := set $volumeNames $secretName true }}
+- name: {{ $secretName | replace "/" "-" | replace "." "-" }}
+  secret:
+    secretName: {{ $secretName }}
+{{- end }}
+{{- end }}
+{{- if and $i.auth $i.auth.oauth2 $i.auth.oauth2.refresh_token (include "tekton-events-relay.hasRef" $i.auth.oauth2.refresh_token) }}
+{{- $secretName := include "tekton-events-relay.refName" $i.auth.oauth2.refresh_token }}
 {{- if not (hasKey $volumeNames $secretName) }}
 {{- $_ := set $volumeNames $secretName true }}
 - name: {{ $secretName | replace "/" "-" | replace "." "-" }}
@@ -442,6 +461,11 @@ Usage: {{ include "tekton-events-relay.notifierVolumeMounts" (dict "provider" "s
 - mountPath: /etc/secrets/{{ $p }}/{{ $i.name }}
   name: {{ $p }}-{{ $i.name }}-secret
   readOnly: true
+{{- else if and $i.auth $i.auth.oauth2 $i.auth.oauth2.client_secret (include "tekton-events-relay.hasRef" $i.auth.oauth2.client_secret) }}
+{{- $secretName := include "tekton-events-relay.refName" $i.auth.oauth2.client_secret }}
+- mountPath: /etc/secrets/{{ $p }}/{{ $i.name }}
+  name: {{ $secretName | replace "/" "-" | replace "." "-" }}
+  readOnly: true
 {{- end }}
 {{- end }}
 
@@ -474,5 +498,10 @@ Usage: {{ include "tekton-events-relay.notifierVolumes" (dict "provider" "slack"
 {{- include "tekton-events-relay.valueFromVolume" (dict "name" (printf "%s-%s-secret" $p $i.name) "field" $i.auth.hmac_secret) }}
 {{- else if and $i.auth $i.auth.username (include "tekton-events-relay.hasRef" $i.auth.username) }}
 {{- include "tekton-events-relay.valueFromVolume" (dict "name" (printf "%s-%s-secret" $p $i.name) "field" $i.auth.username) }}
+{{- else if and $i.auth $i.auth.oauth2 $i.auth.oauth2.client_secret (include "tekton-events-relay.hasRef" $i.auth.oauth2.client_secret) }}
+{{- $secretName := include "tekton-events-relay.refName" $i.auth.oauth2.client_secret }}
+- name: {{ $secretName | replace "/" "-" | replace "." "-" }}
+  secret:
+    secretName: {{ $secretName }}
 {{- end }}
 {{- end }}

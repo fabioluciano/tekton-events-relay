@@ -198,7 +198,7 @@ store:            # backend: memory|valkey|olric, ttl, valkey{}, olric{}
 dlq:              # enabled, path, max_size_bytes
 accumulator:      # enabled, ttl, max_size, template, provider
 scm:              # github[], gitlab[], gitea[], azure_devops[], bitbucket[], sourcehut[]
-notifiers:        # slack[], teams[], discord[], pagerduty[], datadog[], webhook[], grafana[], sentry[], email[]
+notifiers:        # slack[], teams[], discord[], pagerduty[], datadog[], webhook[], grafana[], sentry[], jira[], email[]
 logging:          # level (info), verbose (caller, http_calls, payloads)
 tracing:          # endpoint, service_name, insecure
 ```
@@ -278,18 +278,24 @@ Exposed by `internal/http/server.go`:
 ### Secrets resolution
 
 `internal/secrets/` — file-based secret resolution (Kubernetes secret mounts):
-- `secrets.Resolve(filePath)` — reads file, trims whitespace
-- `secrets.ResolveOrInfer(explicitPath, provider, instance, key)` — uses explicit path or infers `/etc/secrets/{provider}/{instance}/{key}`
+- `secrets.Resolve(filePath, log)` — reads file once, trims whitespace
+- `secrets.InferPath(explicitPath, provider, instance, defaultKey, customKey)` — resolves a path (explicit or inferred `/etc/secrets/{provider}/{instance}/{key}`) **without reading** — use when you want to defer the read to request time
+- `secrets.ResolveOrInfer(explicitPath, provider, instance, defaultKey, customKey, log)` — `InferPath` + read once
+- `secrets.FileTokenSource` (`internal/secrets/file_token.go`) — a `TokenRefresher` that **re-reads the mounted secret file on every `Token()` call**, so rotated Kubernetes secrets (projected/volume mounts, not `subPath`) are picked up without a pod restart. Create with `secrets.NewFileTokenSource(path)`. This is the building block for auth that must survive secret rotation.
 - Path traversal protection via `sanitizePath()`
 - All `_file` config fields use this pattern
 
+**Rule of thumb**: `Resolve`/`ResolveOrInfer` read a secret once (validate-up-front, fail-fast). Anything that goes into a handler's auth path must use `FileTokenSource` (or an OAuth2 refresher) so the value can change at runtime — see "Token refresh — unified pattern" below.
+
 ## Adding a new notifier
 
-1. Config struct in `internal/config/config.go` — add to `NotifiersConfig`
-2. Factory in `internal/factory/<name>.go` — implement `HandlerFactory[C]`
+1. Config struct in `internal/config/config.go` — add to `NotifiersConfig`. Only add an `OAuth2 *OAuth2ClientCredentials` field if the **external service's API actually accepts an OAuth2 client_credentials access token** (verify in its official docs first — Jira and a generic endpoint do; Grafana/Sentry/Slack/Discord/Datadog do **not**). Mirror `JiraAuth`/`WebhookAuthConfig` for OAuth2-capable ones, or `GrafanaAuth`/`SentryAuth` for token-only ones.
+2. Factory in `internal/factory/<name>.go` — implement `HandlerFactory[C]`. **Do not resolve the token to a string and hand it to the handler.** For a token-only notifier call `resolveFileRefresher(tokenFile, tokenKey, "<name>", inst.Name, "token", log)`; for an OAuth2-capable one call `resolveBearerRefresher(oauth2cfg, tokenFile, tokenKey, "<name>", inst.Name, log)` (both in `internal/factory/notifier_auth.go`) — the latter returns an OAuth2 client when `oauth2` is set, otherwise a validated `secrets.FileTokenSource`. Pass that refresher to the handler/client so it resolves a fresh token per request.
 3. Register in `internal/factory/registry.go` `buildNotifierHandlers()`
-4. Handler in `internal/notifier/<name>/notifier.go` — implement `ActionHandler` with `Type() = ActionNotify`
-5. Tests alongside source
+4. Handler in `internal/notifier/<name>/notifier.go` — implement `ActionHandler` with `Type() = ActionNotify`. Store the `scm.TokenRefresher` (or a per-request transport) on the handler/client config; call `Token(ctx)` at send time, never at construction.
+5. Validation in `internal/config/instance_validators.go` — require the credential when enabled. If the notifier supports OAuth2, call `validateOAuth2(prefix+".auth", auth.OAuth2)` and reject using `oauth2` together with `token_file` (mutually exclusive — see "Notifier validation"); token-only notifiers (grafana/sentry) simply require `token_file`.
+6. Update the Helm chart and Wiki (see "Keeping Helm + Wiki in sync").
+7. Tests alongside source — assert the **per-request** behavior with a counting/rotating refresher (a fake `TokenRefresher` that returns a different value each call) to prove the handler does not cache a stale token.
 
 ## Adding a new SCM provider
 
@@ -299,7 +305,16 @@ Exposed by `internal/http/server.go`:
 4. Register in `internal/factory/registry.go` `buildSCMHandlers()`
 5. Client in `internal/notifier/scm/<name>/client.go`
 6. Handler files in `internal/notifier/scm/<name>/` — one per action type
-7. Tests
+7. Update the Helm chart and Wiki (see "Keeping Helm + Wiki in sync").
+8. Tests — include a per-request token test (counting/rotating refresher) to prove tokens refresh.
+
+**Auth wiring (read this before writing the factory)**: Pick the injection mechanism that matches the SDK and feed it a `scm.TokenRefresher` — never a static string (see "Token refresh — unified pattern"):
+
+- If the SDK lets you supply an `http.RoundTripper`, wrap it in `scm.TokenTransport` (choose `AuthStyleBearer`/`AuthStyleToken`/`AuthStyleHeader`) — this is what Gitea does (`NewClientWithRefresher`).
+- If the SDK has its own per-request auth hook (e.g. GitLab's `AuthSource`), bridge it to the refresher.
+- For raw clients (`scm.BaseClient`, Bitbucket, SourceHut), call `refresher.Token(ctx)` inside the auth function at request time.
+
+Build the refresher in the factory: `resolveOAuth2Refresher(oauth2cfg, provider, name, log)` (`internal/factory/gitlab.go`, shared by all factories) when `auth.oauth2` is set, else a static/file source. Add the `oauth2` validation in `internal/config/instance_validators.go` (`validateOAuth2`, and reject `oauth2` together with `secret_file`/`token_file`). NEVER call `client.Token()` at build time and pass the static string to handlers — the token will expire and rotated secrets will not be re-read.
 
 ## Adding a new action type to existing provider
 
@@ -307,6 +322,15 @@ Exposed by `internal/http/server.go`:
 2. Handler file in `internal/notifier/scm/<provider>/<action>.go`
 3. Build function in factory's `Build()` method
 4. Config `Action.Type` validation in `internal/config/`
+
+## Keeping Helm + Wiki in sync
+
+Adding or changing an auth option (e.g. a new `oauth2` block, a notifier credential) is **not done until the chart and wiki match the Go config**. Update all of:
+
+- **Helm chart** (`charts/tekton-events-relay/`): `values.yaml` (defaults/examples), `values.schema.json` (JSON schema — new fields must be allowed), and the relevant `templates/*.yaml` (configmap rendering, secret mounts at `/etc/secrets/{provider}/{instance}/{key}`).
+- **Wiki** (`wiki/` submodule): `Notifiers.md`, `Configuration-Reference.md`, and `examples/config.yaml`.
+
+**`wiki/examples/config.yaml` is validated by Go tests** (it is the file `make run` loads), so a stale example will fail CI — keep it in step with new config fields and validators.
 
 ## Key directories
 
@@ -318,7 +342,7 @@ Exposed by `internal/http/server.go`:
 | `internal/event/tekton/` | 4 decoders: TaskRun, PipelineRun, CustomRun, EventListener |
 | `internal/notifier/` | ActionHandler interface, Registry, Base (Template Method), FilteredHandler, ConditionalHandler |
 | `internal/notifier/middleware/` | CEL wrap, filter wrap, context_per_task wrap |
-| `internal/notifier/scm/` | Shared SCM: BaseClient, templates, upsert markers, state maps, labels, limits, refs |
+| `internal/notifier/scm/` | Shared SCM: BaseClient, TokenRefresher, TokenTransport, templates, upsert markers, state maps, labels, limits, refs |
 | `internal/notifier/scm/github/` | 8 handlers + go-github client + App auth |
 | `internal/notifier/scm/gitlab/` | 6 handlers + GitLab SDK (SaaS + self-managed) |
 | `internal/notifier/scm/gitea/` | 4 handlers + Gitea SDK |
@@ -373,6 +397,7 @@ Applied outermost-to-innermost in `internal/http/server.go`:
 - Template rendering via `scm.CompileTemplate()` with sprig functions (dangerous ones like `env`, `expandenv`, `base64` stripped)
 - GitHub App auth via RSA private key + installation token (`internal/notifier/scm/github/app_client.go`)
 - Bitbucket has dual-variant support: `CloudClient` (Basic auth) and `ServerClient` (Bearer token) with separate handler implementations
+- **Token refresh**: OAuth2 and GitHub App tokens auto-refresh via `scm.TokenRefresher` interface. GitHub handlers accept `HTTPDoer` (shared client with auto-refresh). GitLab uses `AuthSource` interface. Gitea uses `TokenTransport` (custom `http.RoundTripper`). NEVER pass static token strings to handler constructors.
 
 ## Notifier patterns
 
@@ -380,10 +405,11 @@ Applied outermost-to-innermost in `internal/http/server.go`:
 - Notifier handlers always match in dispatcher (no provider gate — unlike SCM handlers)
 - Chat notifiers (Slack, Teams, Discord) support custom Go templates via `template` config field
 - Webhook notifier supports gojq transform expressions for payload reshaping
-- Webhook auth types: bearer, basic, apikey, hmac
+- Webhook auth types: bearer, basic, apikey, hmac, oauth2
 - PagerDuty uses RunID as dedup_key for idempotency
 - Sentry only acts on successful runs with a commit SHA
 - Email uses raw SMTP (not `notifier.Base`); supports STARTTLS, implicit TLS, or unencrypted
+- **Auth is never a static string**: webhook/grafana/sentry/jira hold a `scm.TokenRefresher` and resolve the token per request — `FileTokenSource` re-read for all four; OAuth2 auto-refresh additionally for webhook/jira (Grafana/Sentry have no native OAuth2 client_credentials). See "Token refresh — unified pattern".
 
 ## Testing
 
@@ -546,13 +572,17 @@ Each factory file (`internal/factory/github.go`, etc.) implements:
 
 **Datadog**: Auth requires `auth.api_key_file`.
 
-**Webhook**: Requires `url_file` when enabled. Auth types validated: bearer→token_file, basic→username_file+password_file, apikey→token_file+header, hmac→secret_file.
+**Webhook**: Requires `url_file` when enabled. Auth types validated: bearer→token_file, basic→username_file+password_file, apikey→token_file+header, hmac→secret_file, **oauth2→an `oauth2` block** (validated via `validateWebhookOAuth2Auth`; the `oauth2` type must not also set `token_file`/`username_file`/`password_file`/`secret_file`/`header`).
 
-**Grafana**: Requires `url` + `auth.token_file` when enabled.
+**Grafana**: Requires `url` + (`auth.token_file` OR `auth.oauth2`) when enabled. `token_file` and `oauth2` are mutually exclusive; `oauth2` validated via `validateOAuth2`.
 
-**Sentry**: Requires `auth.token_file` + `org` when enabled.
+**Sentry**: Requires `org` + (`auth.token_file` OR `auth.oauth2`) when enabled. `token_file` and `oauth2` are mutually exclusive; `oauth2` validated via `validateOAuth2`.
+
+**Jira**: Auth is Cloud basic (`auth.email` + `token_file`) OR DC/OAuth2 (`auth.token_file` or `auth.oauth2` as Bearer). `oauth2` is mutually exclusive with both `auth.email` and `auth.token_file`; `oauth2` validated via `validateOAuth2`.
 
 **Email**: Requires `host`, `from`, `to` (at least one) when enabled. Port validated 1-65535.
+
+`validateOAuth2` (`internal/config/instance_validators.go`) requires the `oauth2` block to set `token_url` (client_id/client_secret files are inferred if omitted).
 
 ### Common validation
 - CEL `when` expressions compiled at config load time via `CELCompileFunc`
@@ -937,13 +967,79 @@ func (m *mockHandler) Handle(ctx context.Context, e domain.Event) error {
 - Gitea checked before GitHub (Gitea sends X-GitHub-Event for compatibility)
 - `normalizeGitLabEvent()`, `normalizeBitbucketEvent()`, `normalizeGiteaEvent()` canonicalize webhook event types
 
+## Token refresh — unified pattern
+
+Both SCM providers and token-based notifiers (webhook, grafana, sentry, jira) share one auth rule:
+
+**HARD RULE: NEVER resolve a token to a static string at factory/build time and pass it to a handler.** Always pass a `TokenRefresher` (or a per-request transport that wraps one). This is what lets OAuth2 access tokens refresh before expiry and lets rotated Kubernetes secrets be re-read without a pod restart. A token resolved once at build time goes stale and breaks silently after rotation/expiry.
+
+### Building blocks
+
+| Piece | File | Use it when |
+|-------|------|-------------|
+| `scm.TokenRefresher` (`interface { Token(ctx) (string, error) }`) | `internal/notifier/scm/token.go` | The shared contract. Handlers/clients store and call this, never a string. |
+| `scm.StaticToken` / `scm.NewStaticToken` | `internal/notifier/scm/token.go` | Wrap a genuinely non-expiring credential (PAT) as a refresher. |
+| `scm.TokenTransport` (an `http.RoundTripper`) | `internal/notifier/scm/token.go` | Inject a fresh token per request into any SDK that accepts a custom transport. Styles: `AuthStyleBearer` (`Authorization: Bearer`), `AuthStyleToken` (`Authorization: token`, Gitea), `AuthStyleHeader` (custom header, e.g. GitLab `PRIVATE-TOKEN`). |
+| `secrets.FileTokenSource` / `secrets.NewFileTokenSource(path)` | `internal/secrets/file_token.go` | File-backed refresher: re-reads the mounted secret on every `Token()` call (rotation without restart). |
+| `secrets.InferPath(...)` | `internal/secrets/paths.go` | Resolve a secret path without reading it, so the read can be deferred to request time (used to build a `FileTokenSource`). |
+| `factory.resolveFileRefresher(file, key, provider, name, defaultKey, log)` | `internal/factory/notifier_auth.go` | Token-only notifiers (grafana, sentry): returns a validated `FileTokenSource` (re-read per request). No OAuth2. |
+| `factory.resolveBearerRefresher(oauth2cfg, tokenFile, tokenKey, provider, name, log)` | `internal/factory/notifier_auth.go` | OAuth2-capable notifiers (jira; and webhook's `oauth2`/`bearer`/`apikey` paths): returns an OAuth2 refresher when `oauth2` is set, else a validated `FileTokenSource`. |
+| `factory.resolveOAuth2Refresher(oauth2cfg, provider, name, log)` | `internal/factory/gitlab.go` | Shared OAuth2 refresher (switches on `grant_type`: client_credentials or refresh_token) used by every factory — SCM and the OAuth2-capable notifiers. |
+
+### How each side wires it
+
+- **SCM providers**: GitHub handlers accept an `HTTPDoer` (shared client with auto-refresh). GitLab uses the SDK `AuthSource`. Gitea uses `scm.TokenTransport`. Bitbucket Cloud OAuth2 resolves via `resolveOAuth2Refresher`. See "SCM handler patterns".
+- **Notifiers**: factories store a `scm.TokenRefresher` on the handler config (grafana/sentry `Config.Token`, jira `ClientConfig.Token`). **OAuth2 client_credentials is only wired where the external API actually supports it: Jira (native — Cloud service accounts / DC OAuth2 provider) and the generic Webhook.** Grafana and Sentry authenticate with their own token types (service-account token / auth token), so they use `resolveFileRefresher` (file re-read) only — no `oauth2`. Jira uses an `authTransport` (`http.RoundTripper`) that resolves per request — Cloud sends basic auth (email + token), DC/OAuth2 sends a `Bearer` token. Webhook holds refreshers in `webhook.ResolvedAuth` (`internal/notifier/webhook/resolved.go`): `Token`/`Password`/`Secret` are `TokenRefresher`s resolved per request, and an `oauth2` auth type sits alongside bearer/basic/apikey/hmac.
+
+### Testing the contract
+
+Drive the handler with a fake `TokenRefresher` that returns a **different value on each call** (a counter or a rotated value) and assert the value actually changes between two `Handle()` calls. That proves no static token was captured at build time. `internal/factory/notifier_auth_test.go` is the reference for the factory-level checks.
+
 ## OAuth2 support
 
-`internal/notifier/scm/oauth2/client.go` — OAuth2 client_credentials grant:
-- Configured via `auth.oauth2` in GitLab and Gitea instances
-- Fields: `client_id_file`, `client_secret_file`, `token_url`
-- Token cached and auto-refreshed before expiry
-- Used by `scm.BaseClient` as the auth function
+`internal/notifier/scm/oauth2/client.go` — generic, reusable OAuth2 token client for the **headless grants** the relay can run with **no ingress / no redirect endpoint**:
+
+- **`grant_type: client_credentials`** (default) — `NewClient`, backed by `clientcredentials.Config`. The relay mints/refreshes the token itself from `client_id` + `client_secret` + `token_url`.
+- **`grant_type: refresh_token`** — `NewRefreshTokenClient`, backed by `oauth2.Config.TokenSource(ctx, {RefreshToken})`. The relay rotates access tokens from a pre-seeded refresh token. The interactive `authorization_code` step is done **out of band** (the relay exposes no redirect URI); the operator seeds the resulting `refresh_token` via `refresh_token_file`.
+- **`authorization_code` is intentionally unsupported in-relay** (it needs an inbound redirect/ingress, which tekton-events-relay must not expose). `validateOAuth2` rejects it.
+
+This layer is **provider-agnostic and reusable**: it's wired through one helper, `factory.resolveOAuth2Refresher` (switches on `grant_type`), used by every factory — SCM (GitLab, Gitea, Bitbucket) and notifiers (Jira, Webhook). Any provider whose API accepts an OAuth2 access token reuses it by config alone; refresh is a property of the grant (client_credentials re-mints, refresh_token rotates), not a per-provider feature.
+
+- Config (`config.OAuth2Config`, yaml `oauth2`): `grant_type` (optional, default client_credentials), `client_id_file`/`client_id_key`, `client_secret_file`/`client_secret_key`, `token_url`, `refresh_token_file`/`refresh_token_key` (refresh_token grant). Only `token_url` is strictly required; `client_id`/`client_secret`/`refresh_token` paths are inferred from `/etc/secrets/{provider}/{instance}/...` if omitted. No `scopes`/`audience` — scopes are assigned to the client on the IdP side; the relay only consumes the grant.
+- **Which providers expose `oauth2`**: only those whose API actually accepts an OAuth2 access token. Today that's the SCM providers + Jira + Webhook. Grafana/Sentry/Slack/Discord/Datadog/PagerDuty do not accept a client_credentials/refresh_token access token on the API path we use (service-account token, bot token, API key, routing key), so they stay on static `token`/`FileTokenSource`. **Before adding `oauth2` to a notifier, verify in the provider's official docs that its API accepts an OAuth2 access token** — and that the grant is headless (client_credentials, or refresh_token with an out-of-band seed). Slack/Sentry, for example, can only be added later via the `refresh_token` grant (they bootstrap via authorization_code).
+- Token cached and auto-refreshed before expiry. Implements `scm.TokenRefresher`; built via `factory.resolveOAuth2Refresher`. Used by `scm.BaseClient` as the auth function and by notifier clients/transports.
+
+### Token refresh mechanism (`internal/notifier/scm/token.go`)
+
+All SCM providers use a unified token refresh pattern to avoid stale tokens (the same pattern notifiers use — see "Token refresh — unified pattern" for the full cross-cutting rule and building blocks):
+
+**`TokenRefresher` interface** — provides a valid token, refreshing automatically:
+```go
+type TokenRefresher interface {
+    Token(ctx context.Context) (string, error)
+}
+```
+
+**Implementations:**
+- `StaticToken` — wraps a fixed token (PATs, static credentials)
+- `oauth2.Client` — auto-refreshes via `x/oauth2` TokenSource
+- `github.AppClient` — auto-refreshes JWT→installation token
+
+**Provider-specific strategies:**
+
+| Provider | Strategy | Files changed |
+|----------|----------|---------------|
+| **GitHub** | All handlers accept `HTTPDoer` interface (shared client with auto-refresh) | handler configs, `comment_common.go` |
+| **GitLab** | `NewClientWithRefresher()` — uses SDK's `AuthSource` interface for per-request token injection | `gitlab/client.go`, factory |
+| **Gitea** | `NewClientWithRefresher()` — uses `TokenTransport` (custom `http.RoundTripper`) | `gitea/client.go`, factory |
+| **Bitbucket Cloud** | `resolveOAuth2Refresher()` — factory fetches token via refresher | factory only |
+
+**Key rule: NEVER call `client.Token()` at factory build time and pass the static string to handlers.** The token will expire. Always pass the `TokenRefresher` or `HTTPDoer` so tokens refresh at request time.
+
+**`TokenTransport`** (`internal/notifier/scm/token.go`) — `http.RoundTripper` that injects fresh tokens:
+- `AuthStyleBearer` — `Authorization: Bearer {token}` (OAuth2 standard)
+- `AuthStyleToken` — `Authorization: token {token}` (Gitea convention)
+- `AuthStyleHeader` — custom header (e.g., `PRIVATE-TOKEN` for GitLab)
 
 ## Webhook transform (`internal/notifier/webhook/transform.go`)
 
@@ -955,11 +1051,14 @@ The webhook notifier supports `gojq` transform expressions:
 
 ## Webhook auth (`internal/notifier/webhook/auth.go`)
 
-Four auth types with specific header patterns:
+Five auth types with specific header patterns:
 - `bearer`: `Authorization: Bearer {token}`
 - `basic`: `Authorization: Basic {base64(username:password)}`
 - `apikey`: Custom header (e.g., `X-API-Key: {token}`)
 - `hmac`: `X-Hub-Signature-256: sha256={hmac_hex}` (HMAC-SHA256 of payload)
+- `oauth2`: `Authorization: Bearer {access_token}` from a client_credentials refresher
+
+Credentials live in `webhook.ResolvedAuth` (`internal/notifier/webhook/resolved.go`) as `scm.TokenRefresher`s (`Token`/`Password`/`Secret`) and are resolved **per request**, so OAuth2 tokens refresh and mounted secrets re-read. The factory builds them in `resolveAuthSecrets` (`internal/factory/webhook_auth.go`); never a static string.
 
 ## Notifier Registry (`internal/notifier/notifier.go`)
 

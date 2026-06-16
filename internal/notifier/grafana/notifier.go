@@ -31,9 +31,11 @@ type Notifier struct {
 
 // Config configures the Grafana notifier.
 type Config struct {
-	Name     string
-	URL      string // Grafana base URL (e.g. https://grafana.example.com)
-	Token    string // service account token
+	Name string
+	URL  string // Grafana base URL (e.g. https://grafana.example.com)
+	// Token provides the service account / OAuth2 bearer token, resolved fresh
+	// per request so rotated secrets and refreshed OAuth2 tokens are picked up.
+	Token    scm.TokenRefresher
 	Tags     []string
 	Template string
 	Log      *zap.Logger
@@ -68,6 +70,10 @@ func New(cfg Config) (*Notifier, error) {
 		return nil, fmt.Errorf("compile template: %w", err)
 	}
 
+	if cfg.Token == nil {
+		return nil, fmt.Errorf("grafana: token refresher is required")
+	}
+
 	n := &Notifier{name: cfg.Name, tags: cfg.Tags, template: tmpl}
 	url := strings.TrimRight(cfg.URL, "/") + "/api/annotations"
 	token := cfg.Token
@@ -78,7 +84,11 @@ func New(cfg Config) (*Notifier, error) {
 		Log:       cfg.Log,
 		BuildURL:  func(domain.Event) (string, error) { return url, nil },
 		Auth: func(req *http.Request) error {
-			req.Header.Set("Authorization", "Bearer "+token)
+			tok, err := token.Token(req.Context())
+			if err != nil {
+				return fmt.Errorf("grafana: resolve token: %w", err)
+			}
+			req.Header.Set("Authorization", "Bearer "+tok)
 			return nil
 		},
 		BuildPayload: func(e domain.Event) (any, error) {

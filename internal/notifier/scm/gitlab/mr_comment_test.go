@@ -56,8 +56,12 @@ func (m *notesMock) handler() http.HandlerFunc {
 
 func newMRHandler(t *testing.T, baseURL, mode string) notifier.ActionHandler {
 	t.Helper()
+	client, err := NewClient("token", baseURL, false, false, zap.NewNop())
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
 	h, err := NewMRCommentHandler(MRCommentConfig{
-		Token: "token", BaseURL: baseURL, Name: "gitlab-main",
+		Client: client, Name: "gitlab-main",
 		Template: "Run {{.RunName}}: {{.State}}", Mode: mode, Log: zap.NewNop(),
 	})
 	if err != nil {
@@ -134,7 +138,11 @@ func TestMRCommentHandler_Skips(t *testing.T) {
 }
 
 func TestMRCommentHandler_InvalidModeRejected(t *testing.T) {
-	_, err := NewMRCommentHandler(MRCommentConfig{Token: "t", Name: "g", Mode: "replace", Log: zap.NewNop()})
+	client, err := NewClient("t", "", false, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = NewMRCommentHandler(MRCommentConfig{Client: client, Name: "g", Mode: "replace", Log: zap.NewNop()})
 	if err == nil {
 		t.Fatal("expected error")
 	}

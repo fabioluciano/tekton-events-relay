@@ -24,13 +24,11 @@ type MRCommentHandler struct {
 
 // MRCommentConfig configures the MR comment handler.
 type MRCommentConfig struct {
-	Token              string
-	BaseURL            string
-	Name               string
-	Template           string
-	Mode               string // scm.ModeCreate (default) or scm.ModeUpsert
-	InsecureSkipVerify bool
-	Log                *zap.Logger
+	Client   *Client
+	Name     string
+	Template string
+	Mode     string // scm.ModeCreate (default) or scm.ModeUpsert
+	Log      *zap.Logger
 }
 
 // NewMRCommentHandler creates a new GitLab merge request comment handler.
@@ -53,13 +51,8 @@ func NewMRCommentHandler(cfg MRCommentConfig) (notifier.ActionHandler, error) {
 		log = zap.NewNop()
 	}
 
-	c, err := NewClient(cfg.Token, cfg.BaseURL, cfg.InsecureSkipVerify, false, cfg.Log)
-	if err != nil {
-		return nil, err
-	}
-
 	return &MRCommentHandler{
-		client:   c,
+		client:   cfg.Client,
 		name:     cfg.Name,
 		template: tmpl,
 		mode:     mode,

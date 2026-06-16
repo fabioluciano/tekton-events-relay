@@ -28,7 +28,7 @@ func (f *WebhookFactory) Build(inst config.WebhookInstance, log *zap.Logger) ([]
 	// Resolve auth secrets if auth is configured
 	var auth *webhook.ResolvedAuth
 	if inst.Auth != nil {
-		resolvedAuth, err := f.resolveAuthSecrets(inst.Auth, log)
+		resolvedAuth, err := f.resolveAuthSecrets(inst.Name, inst.Auth, log)
 		if err != nil {
 			return nil, err
 		}

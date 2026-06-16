@@ -15,6 +15,7 @@ import (
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
 	"github.com/fabioluciano/tekton-events-relay/internal/httpx"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
+	"github.com/fabioluciano/tekton-events-relay/internal/notifier/scm"
 )
 
 const defaultBaseURL = "https://sentry.io"
@@ -23,7 +24,7 @@ const defaultBaseURL = "https://sentry.io"
 type Notifier struct {
 	name     string
 	baseURL  string
-	token    string
+	token    scm.TokenRefresher
 	org      string
 	projects []string
 	http     *http.Client
@@ -32,9 +33,11 @@ type Notifier struct {
 
 // Config configures the Sentry notifier.
 type Config struct {
-	Name     string
-	BaseURL  string // empty = sentry.io
-	Token    string
+	Name    string
+	BaseURL string // empty = sentry.io
+	// Token provides the auth/OAuth2 bearer token, resolved fresh per request
+	// so rotated secrets and refreshed OAuth2 tokens are picked up.
+	Token    scm.TokenRefresher
 	Org      string
 	Projects []string
 	Log      *zap.Logger
@@ -134,7 +137,11 @@ func (n *Notifier) post(ctx context.Context, url string, payload any) error {
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Authorization", "Bearer "+n.token)
+	tok, err := n.token.Token(ctx)
+	if err != nil {
+		return fmt.Errorf("sentry: resolve token: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+tok)
 	req.Header.Set("User-Agent", notifier.UserAgent)
 
 	resp, err := httpx.DoWithRetryPolicy(n.http, req, httpx.DefaultRetryPolicy())

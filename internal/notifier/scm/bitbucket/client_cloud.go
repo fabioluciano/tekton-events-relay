@@ -32,3 +32,14 @@ func NewCloudClient(username, appPassword, baseURL string, insecureSkipVerify bo
 			}),
 	}
 }
+
+// NewCloudClientWithAuth creates a new Bitbucket Cloud API client with a custom AuthFunc.
+// Used for OAuth2 authentication where the auth function fetches a fresh token per request.
+func NewCloudClientWithAuth(authFn scm.AuthFunc, baseURL string, insecureSkipVerify bool, debug bool, log *zap.Logger) *CloudClient {
+	if baseURL == "" {
+		baseURL = "https://api.bitbucket.org"
+	}
+	return &CloudClient{
+		BaseClient: scm.NewBaseClient(baseURL, insecureSkipVerify, debug, log, "bitbucket-cloud", authFn),
+	}
+}

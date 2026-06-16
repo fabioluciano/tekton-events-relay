@@ -23,7 +23,7 @@ func TestZapLogWriter(t *testing.T) {
 		{
 			name:      "olric INFO",
 			input:     "2026/06/15 00:22:42 [INFO] Olric bindAddr: 10.244.1.200, bindPort: 3320 => olric.go:402\n",
-			wantLevel: zapcore.InfoLevel,
+			wantLevel: zapcore.DebugLevel,
 			wantMsg:   "Olric bindAddr: 10.244.1.200, bindPort: 3320 => olric.go:402",
 		},
 		{
@@ -51,9 +51,9 @@ func TestZapLogWriter(t *testing.T) {
 			wantMsg:   "memberlist: Error accepting TCP connection: EOF",
 		},
 		{
-			name:      "non-matching format falls back to INFO",
+			name:      "non-matching format falls back to WARN",
 			input:     "some unexpected log line\n",
-			wantLevel: zapcore.InfoLevel,
+			wantLevel: zapcore.WarnLevel,
 			wantMsg:   "some unexpected log line",
 		},
 	}

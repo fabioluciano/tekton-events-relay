@@ -15,7 +15,7 @@ import (
 
 // PRCommentHandler posts comments to GitHub pull requests.
 type PRCommentHandler struct {
-	client   *Client
+	client   HTTPDoer
 	template *template.Template
 	mode     string
 	log      *zap.Logger
@@ -23,11 +23,9 @@ type PRCommentHandler struct {
 
 // PRCommentConfig configures the PR comment handler.
 type PRCommentConfig struct {
-	Token              string
-	BaseURL            string
-	Template           string
-	Mode               string // scm.ModeCreate (default) or scm.ModeUpsert
-	InsecureSkipVerify bool
+	Client   HTTPDoer
+	Template string
+	Mode     string // scm.ModeCreate (default) or scm.ModeUpsert
 }
 
 // NewPRCommentHandler creates a new GitHub PR comment handler.
@@ -50,7 +48,7 @@ func NewPRCommentHandler(cfg PRCommentConfig, log *zap.Logger) (notifier.ActionH
 	}
 
 	return &PRCommentHandler{
-		client:   NewClient(cfg.Token, cfg.BaseURL, cfg.InsecureSkipVerify, log, false),
+		client:   cfg.Client,
 		template: tmpl,
 		mode:     mode,
 		log:      log,

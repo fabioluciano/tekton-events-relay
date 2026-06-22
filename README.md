@@ -93,12 +93,12 @@ notifiers:
 | `commit_status` (+ per-task checks) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `pr_comment` — idempotent `upsert` | ✅ | ✅ | ✅ | ✅* | ✅ | — |
 | `commit_comment` (pushes without PR) | ✅ | ✅ | — | — | — | — |
-| `issue_comment` / `discussion_comment` | ✅ / ✅ | — | ✅ / — | — | — | — |
+| `issue_comment` / `discussion_comment` | ✅ / ✅ | ✅ / ✅† | ✅ / — | — | — | — |
 | `check_run` (rich markdown checks) | ✅ | — | — | — | — | — |
 | `deployment_status` (Environments) | ✅ | ✅ | — | — | — | — |
 | `label` — declarative add/remove | ✅ | ✅ | ✅ | — | ✅ | — |
 
-\* upsert on Cloud; Server falls back to create. **Plus notifiers:** Slack, Microsoft Teams, Discord, PagerDuty, Datadog, **Grafana deploy annotations**, **Sentry releases**, and generic webhooks with [gojq payload transforms](https://github.com/fabioluciano/tekton-events-relay/wiki/Notifiers#generic-webhook) (DevLake, anyone?).
+\* upsert on Cloud; Server falls back to create. † GitLab `discussion_comment` posts a resolvable MR discussion thread (MR-only). **Plus notifiers:** Slack, Microsoft Teams, Discord, PagerDuty, Datadog, **Grafana deploy annotations**, **Sentry releases**, and generic webhooks with [gojq payload transforms](https://github.com/fabioluciano/tekton-events-relay/wiki/Notifiers#generic-webhook) (DevLake, anyone?).
 
 ## Built like infrastructure, not a script
 

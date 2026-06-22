@@ -35,7 +35,9 @@ func captureServer(t *testing.T) (*httptest.Server, *map[string]any) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		_ = json.Unmarshal(b, body)
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(200)
+		_, _ = w.Write([]byte("{}"))
 	}))
 	t.Cleanup(srv.Close)
 	return srv, body
@@ -97,7 +99,7 @@ func TestTeams_Payload(t *testing.T) {
 
 func TestDiscord_Payload(t *testing.T) {
 	srv, body := captureServer(t)
-	n, err := discord.New(discord.Config{WebhookURL: srv.URL}, zap.NewNop())
+	n, err := discord.New(discord.Config{WebhookURL: srv.URL + "/api/webhooks/123/abc"}, zap.NewNop())
 	if err != nil {
 		t.Fatal(err)
 	}

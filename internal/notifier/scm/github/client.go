@@ -6,7 +6,6 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -16,58 +15,26 @@ import (
 
 	"github.com/fabioluciano/tekton-events-relay/internal/httpx"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
+	"github.com/fabioluciano/tekton-events-relay/internal/notifier/scm"
 )
 
 // HTTPDoer abstracts GitHub API HTTP operations for both token and app-based authentication.
 type HTTPDoer interface {
-	Do(ctx context.Context, method, url string, payload any) error
-	DoWithResponse(ctx context.Context, method, url string, payload any, result any) error
 	DoGraphQL(ctx context.Context, query string, variables map[string]any) (json.RawMessage, error)
-	BaseURL() string
-	Token() string
+	// GH returns the underlying go-github typed client for SDK-based API calls.
+	GH() *gh.Client
 }
 
 // Client provides authenticated HTTP access to the GitHub REST and GraphQL APIs
 // using the official go-github SDK.
 type Client struct {
 	gh      *gh.Client
-	token   string
 	baseURL string
 	log     *zap.Logger
 }
 
-// NewClient creates a new GitHub API client with the given token, base URL, and TLS verification setting.
-func NewClient(token, baseURL string, insecureSkipVerify bool, log *zap.Logger, debug bool) *Client {
-	if baseURL == "" {
-		baseURL = GitHubBaseURL
-	}
-	if log == nil {
-		log = zap.NewNop()
-	}
-
-	httpClient := buildHTTPClient(insecureSkipVerify, debug, log)
-	ghc := gh.NewClient(httpClient).WithAuthToken(token)
-
-	if baseURL != GitHubBaseURL { //nolint:goconst
-		var err error
-		ghc, err = ghc.WithEnterpriseURLs(baseURL, baseURL+"/api/graphql")
-		if err != nil {
-			log.Warn("failed to configure enterprise URLs, using default",
-				zap.String("baseURL", baseURL),
-				zap.Error(err))
-		}
-	}
-
-	return &Client{
-		gh:      ghc,
-		token:   token,
-		baseURL: baseURL,
-		log:     log,
-	}
-}
-
-// buildHTTPClient creates an http.Client with appropriate TLS and timeout settings.
-func buildHTTPClient(insecureSkipVerify bool, debug bool, log *zap.Logger) *http.Client {
+// buildTransport creates an http.RoundTripper with appropriate TLS and optional debug settings.
+func buildTransport(insecureSkipVerify bool, debug bool, log *zap.Logger) http.RoundTripper {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.MaxIdleConnsPerHost = httpx.SharedMaxIdleConnsPerHost
 
@@ -82,11 +49,53 @@ func buildHTTPClient(insecureSkipVerify bool, debug bool, log *zap.Logger) *http
 	if debug {
 		rt = &debugRoundTripper{inner: transport, log: log}
 	}
+	return rt
+}
 
-	return &http.Client{
-		Transport: rt,
+// NewClientWithRefresher creates a GitHub API client that fetches a fresh token
+// from the given TokenRefresher on every request via a scm.TokenTransport.
+// No static token is stored; auth is injected per-request.
+func NewClientWithRefresher(refresher scm.TokenRefresher, baseURL string, insecureSkipVerify bool, log *zap.Logger, debug bool) *Client {
+	if baseURL == "" {
+		baseURL = GitHubBaseURL
+	}
+	if log == nil {
+		log = zap.NewNop()
+	}
+
+	rt := buildTransport(insecureSkipVerify, debug, log)
+	tokenTransport := &scm.TokenTransport{
+		Base:      rt,
+		Refresher: refresher,
+		Style:     scm.AuthStyleBearer,
+	}
+	httpClient := &http.Client{
+		Transport: tokenTransport,
 		Timeout:   30 * time.Second,
 	}
+
+	ghc := gh.NewClient(httpClient)
+	if baseURL != GitHubBaseURL { //nolint:goconst
+		var err error
+		ghc, err = ghc.WithEnterpriseURLs(baseURL, baseURL+"/api/graphql")
+		if err != nil {
+			log.Warn("failed to configure enterprise URLs, using default",
+				zap.String("baseURL", baseURL),
+				zap.Error(err))
+		}
+	}
+
+	return &Client{
+		gh:      ghc,
+		baseURL: baseURL,
+		log:     log,
+	}
+}
+
+// NewClient creates a new GitHub API client with the given token, base URL, and TLS verification setting.
+// Delegates to NewClientWithRefresher using a StaticToken so the token is injected via TokenTransport.
+func NewClient(token, baseURL string, insecureSkipVerify bool, log *zap.Logger, debug bool) *Client {
+	return NewClientWithRefresher(scm.NewStaticToken(token), baseURL, insecureSkipVerify, log, debug)
 }
 
 // debugRoundTripper logs HTTP requests and responses.
@@ -112,65 +121,6 @@ func (d *debugRoundTripper) RoundTrip(req *http.Request) (*http.Response, error)
 // GH returns the underlying go-github client for direct SDK usage.
 func (c *Client) GH() *gh.Client {
 	return c.gh
-}
-
-// Do performs an HTTP request with GitHub authentication and JSON encoding.
-// Handlers use it to call endpoints not covered by the typed go-github client.
-func (c *Client) Do(ctx context.Context, method, url string, payload any) error {
-	return c.DoWithResponse(ctx, method, url, payload, nil)
-}
-
-// DoWithResponse performs an HTTP request and decodes the JSON response into result.
-// Handlers use it to call endpoints not covered by the typed go-github client.
-func (c *Client) DoWithResponse(ctx context.Context, method, url string, payload any, result any) error {
-	var body bytes.Buffer
-	if payload != nil {
-		if err := json.NewEncoder(&body).Encode(payload); err != nil {
-			return fmt.Errorf("encode payload: %w", err)
-		}
-	}
-
-	c.log.Debug("github HTTP request",
-		zap.String("method", method),
-		zap.String("url", url),
-		zap.Int("payload_bytes", body.Len()))
-
-	req, err := http.NewRequestWithContext(ctx, method, url, &body)
-	if err != nil {
-		return fmt.Errorf("create github request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/vnd.github.v3+json")
-
-	// Use the underlying http.Client which has auth transport (Bearer token)
-	resp, err := c.gh.Client().Do(req)
-	if err != nil {
-		c.log.Error("github HTTP request failed",
-			zap.String("method", method),
-			zap.String("url", url),
-			zap.Error(err))
-		return fmt.Errorf("github http request to %s: %w", url, err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	c.log.Debug("github HTTP response",
-		zap.String("method", method),
-		zap.String("url", url),
-		zap.Int("status", resp.StatusCode))
-
-	if resp.StatusCode >= 300 {
-		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-		return fmt.Errorf("github API returned %d: %s", resp.StatusCode, string(respBody))
-	}
-
-	if result != nil {
-		if err := json.NewDecoder(resp.Body).Decode(result); err != nil {
-			return fmt.Errorf("decode response: %w", err)
-		}
-	}
-
-	return nil
 }
 
 // DoGraphQL performs a GraphQL request to the GitHub API with authentication.
@@ -261,14 +211,4 @@ func formatGraphQLErrors(errors []graphqlError) error {
 		b.WriteString(e.Message)
 	}
 	return fmt.Errorf("%s", b.String())
-}
-
-// BaseURL returns the GitHub API base URL.
-func (c *Client) BaseURL() string {
-	return c.baseURL
-}
-
-// Token returns the authentication token.
-func (c *Client) Token() string {
-	return c.token
 }

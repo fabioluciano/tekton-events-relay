@@ -15,7 +15,7 @@ import (
 
 // IssueCommentHandler posts comments to GitHub issues.
 type IssueCommentHandler struct {
-	client   *Client
+	client   HTTPDoer
 	template *template.Template
 	mode     string
 	log      *zap.Logger
@@ -23,11 +23,9 @@ type IssueCommentHandler struct {
 
 // IssueCommentConfig configures the issue comment handler.
 type IssueCommentConfig struct {
-	Token              string
-	BaseURL            string
-	Template           string
-	Mode               string // scm.ModeCreate (default) or scm.ModeUpsert
-	InsecureSkipVerify bool
+	Client   HTTPDoer
+	Template string
+	Mode     string // scm.ModeCreate (default) or scm.ModeUpsert
 }
 
 // NewIssueCommentHandler creates a new GitHub issue comment handler.
@@ -50,7 +48,7 @@ func NewIssueCommentHandler(cfg IssueCommentConfig, log *zap.Logger) (notifier.A
 	}
 
 	return &IssueCommentHandler{
-		client:   NewClient(cfg.Token, cfg.BaseURL, cfg.InsecureSkipVerify, log, false),
+		client:   cfg.Client,
 		template: tmpl,
 		mode:     mode,
 		log:      log,

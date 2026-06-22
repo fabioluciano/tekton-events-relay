@@ -287,7 +287,7 @@ func TestDiscordFactory_Build_creates_handler_when_enabled(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	webhookFile := filepath.Join(tmpDir, "webhook")
-	if err := os.WriteFile(webhookFile, []byte("https://discord.com/api/webhooks/test"), 0600); err != nil {
+	if err := os.WriteFile(webhookFile, []byte("https://discord.com/api/webhooks/123/abc"), 0600); err != nil {
 		t.Fatal(err)
 	}
 

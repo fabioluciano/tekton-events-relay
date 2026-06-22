@@ -79,8 +79,7 @@ func TestPRCommentHandler_UpsertEditsExistingComment(t *testing.T) {
 	defer server.Close()
 
 	h, err := NewPRCommentHandler(PRCommentConfig{
-		Token:    testHandlerToken,
-		BaseURL:  server.URL,
+		Client:   ghTestClient(testHandlerToken, server.URL),
 		Template: "Run {{.RunName}}: {{.State}}",
 		Mode:     "upsert",
 	}, zap.NewNop())
@@ -120,8 +119,7 @@ func TestPRCommentHandler_UpsertDifferentRunsCreateSeparateComments(t *testing.T
 	defer server.Close()
 
 	h, err := NewPRCommentHandler(PRCommentConfig{
-		Token:    testHandlerToken,
-		BaseURL:  server.URL,
+		Client:   ghTestClient(testHandlerToken, server.URL),
 		Template: "Run {{.RunName}}",
 		Mode:     "upsert",
 	}, zap.NewNop())
@@ -158,8 +156,7 @@ func TestPRCommentHandler_UpsertListFailureFallsBackToCreate(t *testing.T) {
 	defer server.Close()
 
 	h, err := NewPRCommentHandler(PRCommentConfig{
-		Token:    testHandlerToken,
-		BaseURL:  server.URL,
+		Client:   ghTestClient(testHandlerToken, server.URL),
 		Template: "msg",
 		Mode:     "upsert",
 	}, zap.NewNop())
@@ -176,7 +173,7 @@ func TestPRCommentHandler_UpsertListFailureFallsBackToCreate(t *testing.T) {
 }
 
 func TestPRCommentHandler_InvalidModeRejected(t *testing.T) {
-	_, err := NewPRCommentHandler(PRCommentConfig{Token: testHandlerToken, Mode: "replace"}, zap.NewNop())
+	_, err := NewPRCommentHandler(PRCommentConfig{Client: ghTestClient(testHandlerToken, ""), Mode: "replace"}, zap.NewNop())
 	if err == nil {
 		t.Fatal("expected error for invalid mode")
 	}
@@ -188,8 +185,7 @@ func TestPRCommentHandler_DefaultModeCreatesEachTime(t *testing.T) {
 	defer server.Close()
 
 	h, err := NewPRCommentHandler(PRCommentConfig{
-		Token:    testHandlerToken,
-		BaseURL:  server.URL,
+		Client:   ghTestClient(testHandlerToken, server.URL),
 		Template: "msg",
 	}, zap.NewNop())
 	if err != nil {

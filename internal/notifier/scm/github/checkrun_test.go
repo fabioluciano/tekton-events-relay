@@ -20,9 +20,8 @@ const (
 
 func TestCheckRunHandler_Name(t *testing.T) {
 	h, err := NewCheckRunHandler(CheckRunConfig{
-		Token:   testToken,
-		BaseURL: testAPIURL,
-		Name:    "my-check",
+		Client: ghTestClient(testToken, testAPIURL),
+		Name:   "my-check",
 	}, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewCheckRunHandler: %v", err)
@@ -35,8 +34,7 @@ func TestCheckRunHandler_Name(t *testing.T) {
 
 func TestCheckRunHandler_Type(t *testing.T) {
 	h, err := NewCheckRunHandler(CheckRunConfig{
-		Token:   testToken,
-		BaseURL: testAPIURL,
+		Client: ghTestClient(testToken, testAPIURL),
 	}, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewCheckRunHandler: %v", err)
@@ -49,8 +47,7 @@ func TestCheckRunHandler_Type(t *testing.T) {
 
 func TestCheckRunHandler_MapState(t *testing.T) {
 	h, err := NewCheckRunHandler(CheckRunConfig{
-		Token:   testToken,
-		BaseURL: testAPIURL,
+		Client: ghTestClient(testToken, testAPIURL),
 	}, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewCheckRunHandler: %v", err)
@@ -93,7 +90,7 @@ func TestCheckRunHandler_Handle_Success(t *testing.T) {
 		if r.Method != "POST" { //nolint:goconst // test string
 			t.Errorf("expected POST, got %s", r.Method)
 		}
-		if r.URL.Path != "/repos/myorg/myrepo/check-runs" {
+		if r.URL.Path != "/api/v3/repos/myorg/myrepo/check-runs" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 
@@ -107,9 +104,8 @@ func TestCheckRunHandler_Handle_Success(t *testing.T) {
 	defer server.Close()
 
 	h, err := NewCheckRunHandler(CheckRunConfig{
-		Token:   "app-token-123",
-		BaseURL: server.URL,
-		Name:    "tekton/build",
+		Client: ghTestClient("app-token-123", server.URL),
+		Name:   "tekton/build",
 	}, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewCheckRunHandler: %v", err)
@@ -179,9 +175,8 @@ func TestCheckRunHandler_Template(t *testing.T) {
 	defer server.Close()
 
 	h, err := NewCheckRunHandler(CheckRunConfig{
-		Token:    "token", //nolint:goconst
-		BaseURL:  server.URL,
-		Template: "/tmp/tekton-test-templates/checkrun.tmpl",
+		Client:   ghTestClient("token", server.URL),
+		Template: "/tmp/tekton-test-templates-github/checkrun.tmpl",
 	}, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewCheckRunHandler: %v", err)
@@ -202,8 +197,7 @@ func TestCheckRunHandler_Template(t *testing.T) {
 
 func TestCheckRunHandler_MissingFields(t *testing.T) {
 	h, err := NewCheckRunHandler(CheckRunConfig{
-		Token:   "token",
-		BaseURL: "https://api.github.com", //nolint:goconst
+		Client: ghTestClient("token", "https://api.github.com"), //nolint:goconst
 	}, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewCheckRunHandler: %v", err)
@@ -258,8 +252,7 @@ func TestCheckRunHandler_MissingFields(t *testing.T) {
 
 func TestCheckRunHandler_InvalidTemplate(t *testing.T) {
 	_, err := NewCheckRunHandler(CheckRunConfig{
-		Token:    "token",
-		BaseURL:  "https://api.github.com",
+		Client:   ghTestClient("token", "https://api.github.com"),
 		Template: "{{.Invalid",
 	}, zap.NewNop())
 	if err == nil {

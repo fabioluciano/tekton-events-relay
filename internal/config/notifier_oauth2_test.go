@@ -42,6 +42,20 @@ func TestValidateJiraInstance_OAuth2(t *testing.T) {
 	}
 }
 
+func TestValidateJiraInstance_APIVersion(t *testing.T) {
+	base := func(v string) JiraInstance {
+		return JiraInstance{Name: "j", Enabled: true, BaseURL: "https://jira.example.com", APIVersion: v, Auth: &JiraAuth{OAuth2: validOAuth2}}
+	}
+	for _, v := range []string{"", "2", "3"} {
+		if errs := base(v).validateSelf(); hasErrContaining(errs, "api_version") {
+			t.Fatalf("api_version %q should be valid, got %v", v, errs)
+		}
+	}
+	if errs := base("4").validateSelf(); !hasErrContaining(errs, "invalid api_version") {
+		t.Fatalf("api_version 4 should be rejected, got %v", errs)
+	}
+}
+
 func TestValidateOAuth2_GrantType(t *testing.T) {
 	// default (empty) and the two headless grants are accepted with token_url.
 	for _, gt := range []string{"", OAuth2GrantClientCredentials, OAuth2GrantRefreshToken} {

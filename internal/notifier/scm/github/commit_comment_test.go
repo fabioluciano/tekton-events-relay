@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"go.uber.org/zap"
@@ -19,11 +18,12 @@ func TestCommitCommentHandler_PostsOnCommit(t *testing.T) {
 		calls++
 		path = r.URL.Path
 		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"id": 1, "body": "Run run-1"}`))
 	}))
 	defer srv.Close()
 
 	h, err := NewCommitCommentHandler(CommitCommentConfig{
-		Token: testHandlerToken, BaseURL: srv.URL, Template: "Run {{.RunName}}",
+		Client: ghTestClient(testHandlerToken, srv.URL), Template: "Run {{.RunName}}",
 	}, zap.NewNop())
 	if err != nil {
 		t.Fatal(err)
@@ -39,8 +39,9 @@ func TestCommitCommentHandler_PostsOnCommit(t *testing.T) {
 	if err := h.Handle(context.Background(), e); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
-	if calls != 1 || !strings.Contains(path, "/commits/abc123/comments") {
-		t.Errorf("calls=%d path=%q, want commit comments endpoint", calls, path)
+	wantPath := "/api/v3/repos/test-org/test-repo/commits/abc123/comments"
+	if calls != 1 || path != wantPath {
+		t.Errorf("calls=%d path=%q, want %q", calls, path, wantPath)
 	}
 
 	// Skips: wrong provider and missing SHA must not call the API.

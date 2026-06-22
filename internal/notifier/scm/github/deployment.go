@@ -2,10 +2,11 @@ package github
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 
+	gh "github.com/google/go-github/v68/github"
 	"go.uber.org/zap"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
@@ -16,23 +17,24 @@ const defaultEnvironment = "production"
 
 // DeploymentStatusConfig holds GitHub Deployment Status handler configuration.
 type DeploymentStatusConfig struct {
-	Token              string
-	BaseURL            string
-	InsecureSkipVerify bool
+	Client HTTPDoer
 }
 
 // DeploymentStatusHandler reports deployment status to GitHub Deployments API.
 // Requires a GitHub token with deployments:write permission.
 // Uses annotations: tekton.dev/environment, tekton.dev/deployment-ref
 type DeploymentStatusHandler struct {
-	client *Client
+	client HTTPDoer
 	log    *zap.Logger
 }
 
 // NewDeploymentStatusHandler creates a Deployment Status handler.
 func NewDeploymentStatusHandler(cfg DeploymentStatusConfig, log *zap.Logger) notifier.ActionHandler {
+	if log == nil {
+		log = zap.NewNop()
+	}
 	return &DeploymentStatusHandler{
-		client: NewClient(cfg.Token, cfg.BaseURL, cfg.InsecureSkipVerify, log, false),
+		client: cfg.Client,
 		log:    log,
 	}
 }
@@ -80,56 +82,49 @@ func (h *DeploymentStatusHandler) Handle(ctx context.Context, e domain.Event) er
 		environment = defaultEnvironment
 	}
 
-	// Map state to deployment status
-	state := h.mapState(e.State)
-
-	// Step 1: Create deployment (only if not already created)
-	// For stateless operation, we create deployment + status together
-	// GitHub allows multiple statuses per deployment, so this is idempotent-ish
-	deploymentPayload := map[string]any{
-		"ref":                    e.CommitSHA,
-		"environment":            environment,
-		"auto_merge":             false,
-		"required_contexts":      []string{},
-		"transient_environment":  false,
-		"production_environment": environment == defaultEnvironment,
-		"description":            fmt.Sprintf("Pipeline: %s", e.RunName),
+	// Step 1: Create deployment.
+	// GitHub allows multiple statuses per deployment, so a 409 on create means a
+	// deployment for this ref/environment already exists — look it up and attach
+	// the status to the existing deployment instead.
+	req := &gh.DeploymentRequest{
+		Ref:                   gh.Ptr(e.CommitSHA),
+		Environment:           gh.Ptr(environment),
+		AutoMerge:             gh.Ptr(false),
+		RequiredContexts:      &[]string{},
+		TransientEnvironment:  gh.Ptr(false),
+		ProductionEnvironment: gh.Ptr(environment == defaultEnvironment),
+		Description:           gh.Ptr(fmt.Sprintf("Pipeline: %s", e.RunName)),
 	}
 
-	deploymentURL := fmt.Sprintf("%s/repos/%s/%s/deployments",
-		h.client.baseURL, e.Repo.Owner, e.Repo.Name)
-
-	var deploymentResp struct {
-		ID int64 `json:"id"`
-	}
-
-	if err := h.client.DoWithResponse(ctx, "POST", deploymentURL, deploymentPayload, &deploymentResp); err != nil {
-		if isHTTPStatus(err, http.StatusConflict) {
+	deployment, _, err := h.client.GH().Repositories.CreateDeployment(ctx, e.Repo.Owner, e.Repo.Name, req)
+	if err != nil {
+		var ghErr *gh.ErrorResponse
+		if errors.As(err, &ghErr) && ghErr.Response != nil && ghErr.Response.StatusCode == http.StatusConflict {
 			existingID, findErr := h.findExistingDeployment(ctx, e.Repo.Owner, e.Repo.Name, e.CommitSHA, environment)
 			if findErr != nil {
 				return fmt.Errorf("create deployment conflict, lookup failed: %w", findErr)
 			}
-			deploymentResp.ID = existingID
-		} else {
-			return fmt.Errorf("create deployment: %w", err)
+			return h.createDeploymentStatus(ctx, e.Repo.Owner, e.Repo.Name, existingID, e)
 		}
+		return fmt.Errorf("create deployment: %w", err)
 	}
 
-	// Step 2: Create deployment status
-	statusPayload := map[string]any{
-		"state":       state,
-		"description": e.Description,
-	}
+	// Step 2: Create deployment status.
+	return h.createDeploymentStatus(ctx, e.Repo.Owner, e.Repo.Name, deployment.GetID(), e)
+}
 
+// createDeploymentStatus creates a deployment status for the given deployment ID.
+func (h *DeploymentStatusHandler) createDeploymentStatus(ctx context.Context, owner, repo string, deploymentID int64, e domain.Event) error {
+	req := &gh.DeploymentStatusRequest{
+		State:       gh.Ptr(h.mapState(e.State)),
+		Description: gh.Ptr(e.Description),
+	}
 	if e.TargetURL != "" {
-		statusPayload["log_url"] = e.TargetURL
-		statusPayload["environment_url"] = e.TargetURL
+		req.LogURL = gh.Ptr(e.TargetURL)
+		req.EnvironmentURL = gh.Ptr(e.TargetURL)
 	}
-
-	statusURL := fmt.Sprintf("%s/repos/%s/%s/deployments/%d/statuses",
-		h.client.baseURL, e.Repo.Owner, e.Repo.Name, deploymentResp.ID)
-
-	return h.client.Do(ctx, "POST", statusURL, statusPayload)
+	_, _, err := h.client.GH().Repositories.CreateDeploymentStatus(ctx, owner, repo, deploymentID, req)
+	return err
 }
 
 // mapState converts domain.State to GitHub deployment status state.
@@ -153,24 +148,15 @@ func (h *DeploymentStatusHandler) mapState(state domain.State) string {
 	}
 }
 
-// isHTTPStatus checks if an error contains a specific HTTP status code.
-func isHTTPStatus(err error, code int) bool {
-	return strings.Contains(err.Error(), fmt.Sprintf("returned %d", code))
-}
-
 // findExistingDeployment lists deployments and returns the ID of the first match.
 func (h *DeploymentStatusHandler) findExistingDeployment(ctx context.Context, owner, repo, sha, environment string) (int64, error) {
-	url := fmt.Sprintf("%s/repos/%s/%s/deployments?ref=%s&environment=%s",
-		h.client.baseURL, owner, repo, sha, environment)
-
-	var deployments []struct {
-		ID int64 `json:"id"`
-	}
-	if err := h.client.DoWithResponse(ctx, "GET", url, nil, &deployments); err != nil {
+	opts := &gh.DeploymentsListOptions{Ref: sha, Environment: environment}
+	deployments, _, err := h.client.GH().Repositories.ListDeployments(ctx, owner, repo, opts)
+	if err != nil {
 		return 0, fmt.Errorf("list deployments: %w", err)
 	}
 	if len(deployments) == 0 {
 		return 0, fmt.Errorf("no existing deployment found for ref=%s environment=%s", sha, environment)
 	}
-	return deployments[0].ID, nil
+	return deployments[0].GetID(), nil
 }

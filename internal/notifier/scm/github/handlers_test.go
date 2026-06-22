@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	gh "github.com/google/go-github/v68/github"
 	"go.uber.org/zap"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
@@ -20,32 +21,26 @@ const (
 	testHandlerOrg   = "test-org"
 	testHandlerRepo  = "test-repo"
 	testHandlerSHA   = "abc123def456"
+	testRunName      = "run"
+	testHTTPPost     = "POST"
 )
+
+// ghTestClient builds a real *Client as an HTTPDoer for handler tests.
+func ghTestClient(token, baseURL string) HTTPDoer {
+	return NewClient(token, baseURL, false, zap.NewNop(), false)
+}
 
 // mockHTTPDoer implements HTTPDoer for unit tests.
 type mockHTTPDoer struct {
-	doErr       error
-	capturedURL string
-	baseURL     string
-	token       string
-}
-
-func (m *mockHTTPDoer) Do(_ context.Context, _, url string, _ any) error {
-	m.capturedURL = url
-	return m.doErr
-}
-
-func (m *mockHTTPDoer) DoWithResponse(_ context.Context, _, url string, _ any, _ any) error {
-	m.capturedURL = url
-	return m.doErr
+	doErr error
 }
 
 func (m *mockHTTPDoer) DoGraphQL(_ context.Context, _ string, _ map[string]any) (json.RawMessage, error) {
 	return nil, m.doErr
 }
 
-func (m *mockHTTPDoer) BaseURL() string { return m.baseURL }
-func (m *mockHTTPDoer) Token() string   { return m.token }
+// GH returns nil: guard-path unit tests return before any SDK call.
+func (m *mockHTTPDoer) GH() *gh.Client { return nil }
 
 // --- StatusReporter ---
 
@@ -95,8 +90,21 @@ func TestStatusReporter_Handle_MissingRepo(t *testing.T) {
 }
 
 func TestStatusReporter_Handle_Success(t *testing.T) {
-	mock := &mockHTTPDoer{baseURL: testAPIURL}
-	r := NewStatusReporter(mock, zap.NewNop())
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != testHTTPPost {
+			t.Errorf("expected POST, got %s", r.Method)
+		}
+		// go-github WithEnterpriseURLs routes status calls to /api/v3/repos/{owner}/{repo}/statuses/{sha}
+		wantPath := "/api/v3/repos/" + testHandlerOrg + "/" + testHandlerRepo + "/statuses/" + testHandlerSHA
+		if r.URL.Path != wantPath {
+			t.Errorf("path = %q, want %q", r.URL.Path, wantPath)
+		}
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer server.Close()
+
+	r := NewStatusReporter(ghTestClient(testHandlerToken, server.URL), zap.NewNop())
 	err := r.Handle(context.Background(), domain.Event{
 		Provider:    providerGitHub,
 		CommitSHA:   testHandlerSHA,
@@ -111,7 +119,7 @@ func TestStatusReporter_Handle_Success(t *testing.T) {
 }
 
 func TestStatusReporter_Handle_ValidationFailure(t *testing.T) {
-	mock := &mockHTTPDoer{baseURL: testAPIURL}
+	mock := &mockHTTPDoer{}
 	r := NewStatusReporter(mock, zap.NewNop())
 	// GitHub status_description limit is 140 chars — exceed it to trigger validation error
 	longDesc := "x" + string(make([]byte, 140))
@@ -131,7 +139,7 @@ func TestStatusReporter_Handle_ValidationFailure(t *testing.T) {
 // --- IssueCommentHandler ---
 
 func TestIssueCommentHandler_Name(t *testing.T) {
-	h, err := NewIssueCommentHandler(IssueCommentConfig{Token: testHandlerToken}, zap.NewNop())
+	h, err := NewIssueCommentHandler(IssueCommentConfig{Client: ghTestClient(testHandlerToken, "")}, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewIssueCommentHandler() unexpected error: %v", err)
 	}
@@ -141,7 +149,7 @@ func TestIssueCommentHandler_Name(t *testing.T) {
 }
 
 func TestIssueCommentHandler_Type(t *testing.T) {
-	h, err := NewIssueCommentHandler(IssueCommentConfig{Token: testHandlerToken}, zap.NewNop())
+	h, err := NewIssueCommentHandler(IssueCommentConfig{Client: ghTestClient(testHandlerToken, "")}, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewIssueCommentHandler() unexpected error: %v", err)
 	}
@@ -151,7 +159,7 @@ func TestIssueCommentHandler_Type(t *testing.T) {
 }
 
 func TestIssueCommentHandler_Handle_WrongProvider(t *testing.T) {
-	h, err := NewIssueCommentHandler(IssueCommentConfig{Token: testHandlerToken}, zap.NewNop())
+	h, err := NewIssueCommentHandler(IssueCommentConfig{Client: ghTestClient(testHandlerToken, "")}, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewIssueCommentHandler() unexpected error: %v", err)
 	}
@@ -161,7 +169,7 @@ func TestIssueCommentHandler_Handle_WrongProvider(t *testing.T) {
 }
 
 func TestIssueCommentHandler_Handle_NoIssueNumber(t *testing.T) {
-	h, err := NewIssueCommentHandler(IssueCommentConfig{Token: testHandlerToken}, zap.NewNop())
+	h, err := NewIssueCommentHandler(IssueCommentConfig{Client: ghTestClient(testHandlerToken, "")}, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewIssueCommentHandler() unexpected error: %v", err)
 	}
@@ -173,7 +181,7 @@ func TestIssueCommentHandler_Handle_NoIssueNumber(t *testing.T) {
 //nolint:dupl // intentional duplicate structure testing different handler
 func TestIssueCommentHandler_Handle_Success(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" { //nolint:goconst // test string
+		if r.Method != testHTTPPost {
 			t.Errorf("expected POST, got %s", r.Method)
 		}
 		w.WriteHeader(http.StatusCreated)
@@ -182,9 +190,8 @@ func TestIssueCommentHandler_Handle_Success(t *testing.T) {
 
 	issueNum := 10
 	h, err := NewIssueCommentHandler(IssueCommentConfig{
-		Token:    testHandlerToken,
-		BaseURL:  server.URL,
-		Template: "/tmp/tekton-test-templates/issue.tmpl",
+		Client:   ghTestClient(testHandlerToken, server.URL),
+		Template: "/tmp/tekton-test-templates-github/issue.tmpl",
 	}, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewIssueCommentHandler() unexpected error: %v", err)
@@ -210,9 +217,8 @@ func TestIssueCommentHandler_Handle_4xx(t *testing.T) {
 
 	issueNum := 1
 	h, err := NewIssueCommentHandler(IssueCommentConfig{
-		Token:    testHandlerToken,
-		BaseURL:  server.URL,
-		Template: "/tmp/tekton-test-templates/msg.tmpl",
+		Client:   ghTestClient(testHandlerToken, server.URL),
+		Template: "/tmp/tekton-test-templates-github/msg.tmpl",
 	}, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewIssueCommentHandler() unexpected error: %v", err)
@@ -221,7 +227,7 @@ func TestIssueCommentHandler_Handle_4xx(t *testing.T) {
 	err = h.Handle(context.Background(), domain.Event{
 		Provider:    providerGitHub,
 		Repo:        domain.Repo{Owner: testHandlerOrg, Name: testHandlerRepo},
-		RunName:     "run",
+		RunName:     testRunName,
 		IssueNumber: &issueNum,
 	})
 	if err == nil {
@@ -232,7 +238,7 @@ func TestIssueCommentHandler_Handle_4xx(t *testing.T) {
 // --- PRCommentHandler ---
 
 func TestPRCommentHandler_Name(t *testing.T) {
-	h, err := NewPRCommentHandler(PRCommentConfig{Token: testHandlerToken}, zap.NewNop())
+	h, err := NewPRCommentHandler(PRCommentConfig{Client: ghTestClient(testHandlerToken, "")}, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewPRCommentHandler() unexpected error: %v", err)
 	}
@@ -242,7 +248,7 @@ func TestPRCommentHandler_Name(t *testing.T) {
 }
 
 func TestPRCommentHandler_Type(t *testing.T) {
-	h, err := NewPRCommentHandler(PRCommentConfig{Token: testHandlerToken}, zap.NewNop())
+	h, err := NewPRCommentHandler(PRCommentConfig{Client: ghTestClient(testHandlerToken, "")}, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewPRCommentHandler() unexpected error: %v", err)
 	}
@@ -252,7 +258,7 @@ func TestPRCommentHandler_Type(t *testing.T) {
 }
 
 func TestPRCommentHandler_Handle_WrongProvider(t *testing.T) {
-	h, err := NewPRCommentHandler(PRCommentConfig{Token: testHandlerToken}, zap.NewNop())
+	h, err := NewPRCommentHandler(PRCommentConfig{Client: ghTestClient(testHandlerToken, "")}, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewPRCommentHandler() unexpected error: %v", err)
 	}
@@ -262,7 +268,7 @@ func TestPRCommentHandler_Handle_WrongProvider(t *testing.T) {
 }
 
 func TestPRCommentHandler_Handle_NoPRNumber(t *testing.T) {
-	h, err := NewPRCommentHandler(PRCommentConfig{Token: testHandlerToken}, zap.NewNop())
+	h, err := NewPRCommentHandler(PRCommentConfig{Client: ghTestClient(testHandlerToken, "")}, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewPRCommentHandler() unexpected error: %v", err)
 	}
@@ -274,7 +280,7 @@ func TestPRCommentHandler_Handle_NoPRNumber(t *testing.T) {
 //nolint:dupl // intentional duplicate structure testing different handler
 func TestPRCommentHandler_Handle_Success(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" {
+		if r.Method != testHTTPPost {
 			t.Errorf("expected POST, got %s", r.Method)
 		}
 		w.WriteHeader(http.StatusCreated)
@@ -283,9 +289,8 @@ func TestPRCommentHandler_Handle_Success(t *testing.T) {
 
 	prNum := 5
 	h, err := NewPRCommentHandler(PRCommentConfig{
-		Token:    testHandlerToken,
-		BaseURL:  server.URL,
-		Template: "/tmp/tekton-test-templates/pr.tmpl",
+		Client:   ghTestClient(testHandlerToken, server.URL),
+		Template: "/tmp/tekton-test-templates-github/pr.tmpl",
 	}, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewPRCommentHandler() unexpected error: %v", err)
@@ -311,9 +316,8 @@ func TestPRCommentHandler_Handle_5xx(t *testing.T) {
 
 	prNum := 3
 	h, err := NewPRCommentHandler(PRCommentConfig{
-		Token:    testHandlerToken,
-		BaseURL:  server.URL,
-		Template: "/tmp/tekton-test-templates/msg.tmpl",
+		Client:   ghTestClient(testHandlerToken, server.URL),
+		Template: "/tmp/tekton-test-templates-github/msg.tmpl",
 	}, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewPRCommentHandler() unexpected error: %v", err)
@@ -322,7 +326,7 @@ func TestPRCommentHandler_Handle_5xx(t *testing.T) {
 	err = h.Handle(context.Background(), domain.Event{
 		Provider: providerGitHub,
 		Repo:     domain.Repo{Owner: testHandlerOrg, Name: testHandlerRepo},
-		RunName:  "run",
+		RunName:  testRunName,
 		PRNumber: &prNum,
 	})
 	if err == nil {
@@ -333,28 +337,28 @@ func TestPRCommentHandler_Handle_5xx(t *testing.T) {
 // --- LabelHandler ---
 
 func TestLabelHandler_Name(t *testing.T) {
-	h := NewLabelHandler(LabelConfig{Token: testHandlerToken}, zap.NewNop())
+	h := NewLabelHandler(LabelConfig{Client: ghTestClient(testHandlerToken, "")}, zap.NewNop())
 	if h.Name() != providerGitHub {
 		t.Errorf("Name() = %q, want %q", h.Name(), providerGitHub)
 	}
 }
 
 func TestLabelHandler_Type(t *testing.T) {
-	h := NewLabelHandler(LabelConfig{Token: testHandlerToken}, zap.NewNop())
+	h := NewLabelHandler(LabelConfig{Client: ghTestClient(testHandlerToken, "")}, zap.NewNop())
 	if h.Type() != notifier.ActionLabel {
 		t.Errorf("Type() = %v, want %v", h.Type(), notifier.ActionLabel)
 	}
 }
 
 func TestLabelHandler_Handle_WrongProvider(t *testing.T) {
-	h := NewLabelHandler(LabelConfig{Token: testHandlerToken}, zap.NewNop())
+	h := NewLabelHandler(LabelConfig{Client: ghTestClient(testHandlerToken, "")}, zap.NewNop())
 	if err := h.Handle(context.Background(), domain.Event{Provider: "gitlab"}); err != nil { //nolint:goconst // test string
 		t.Errorf("expected nil for wrong provider, got: %v", err)
 	}
 }
 
 func TestLabelHandler_Handle_NoNumber(t *testing.T) {
-	h := NewLabelHandler(LabelConfig{Token: testHandlerToken}, zap.NewNop())
+	h := NewLabelHandler(LabelConfig{Client: ghTestClient(testHandlerToken, "")}, zap.NewNop())
 	err := h.Handle(context.Background(), domain.Event{
 		Provider: providerGitHub,
 		Repo:     domain.Repo{Owner: testHandlerOrg, Name: testHandlerRepo},
@@ -367,7 +371,7 @@ func TestLabelHandler_Handle_NoNumber(t *testing.T) {
 
 func TestLabelHandler_Handle_AddLabelOnPR(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" {
+		if r.Method != testHTTPPost {
 			t.Errorf("expected POST, got %s", r.Method)
 		}
 		w.WriteHeader(http.StatusOK)
@@ -376,9 +380,8 @@ func TestLabelHandler_Handle_AddLabelOnPR(t *testing.T) {
 
 	prNum := 7
 	h := NewLabelHandler(LabelConfig{
-		Token:   testHandlerToken,
-		BaseURL: server.URL,
-		Labels:  scm.LabelSet{Add: []scm.Label{{Name: "ci-passed"}}},
+		Client: ghTestClient(testHandlerToken, server.URL),
+		Labels: scm.LabelSet{Add: []scm.Label{{Name: "ci-passed"}}},
 	}, zap.NewNop())
 
 	err := h.Handle(context.Background(), domain.Event{
@@ -400,9 +403,8 @@ func TestLabelHandler_Handle_AddLabelOnIssue(t *testing.T) {
 
 	issueNum := 3
 	h := NewLabelHandler(LabelConfig{
-		Token:   testHandlerToken,
-		BaseURL: server.URL,
-		Labels:  scm.LabelSet{Add: []scm.Label{{Name: "ci-passed"}}},
+		Client: ghTestClient(testHandlerToken, server.URL),
+		Labels: scm.LabelSet{Add: []scm.Label{{Name: "ci-passed"}}},
 	}, zap.NewNop())
 
 	err := h.Handle(context.Background(), domain.Event{
@@ -434,7 +436,7 @@ func TestLabelHandler_Handle_UpdateLabelColor(t *testing.T) {
 			return
 		}
 		// POST /repos/org/repo/issues/7/labels - apply to issue
-		if r.Method == "POST" && strings.Contains(r.URL.Path, "/issues/7/labels") {
+		if r.Method == testHTTPPost && strings.Contains(r.URL.Path, "/issues/7/labels") {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
@@ -445,9 +447,8 @@ func TestLabelHandler_Handle_UpdateLabelColor(t *testing.T) {
 
 	prNum := 7
 	h := NewLabelHandler(LabelConfig{
-		Token:   testHandlerToken,
-		BaseURL: server.URL,
-		Labels:  scm.LabelSet{Add: []scm.Label{{Name: "passed", Color: "0e8a16"}}},
+		Client: ghTestClient(testHandlerToken, server.URL),
+		Labels: scm.LabelSet{Add: []scm.Label{{Name: "passed", Color: "0e8a16"}}},
 	}, zap.NewNop())
 
 	err := h.Handle(context.Background(), domain.Event{
@@ -470,7 +471,7 @@ func TestLabelHandler_Handle_UpdateLabelColor(t *testing.T) {
 
 func TestLabelHandler_Handle_EmptyLabels_Skip(t *testing.T) {
 	h := NewLabelHandler(LabelConfig{
-		Token: testHandlerToken,
+		Client: ghTestClient(testHandlerToken, ""),
 	}, zap.NewNop())
 
 	prNum := 1
@@ -482,21 +483,5 @@ func TestLabelHandler_Handle_EmptyLabels_Skip(t *testing.T) {
 	})
 	if err != nil {
 		t.Errorf("expected nil for empty label set, got: %v", err)
-	}
-}
-
-// --- Client.GetBaseURL / GetToken ---
-
-func TestClient_GetBaseURL(t *testing.T) {
-	c := NewClient(testHandlerToken, testAPIURL, false, nil, false)
-	if c.BaseURL() != testAPIURL {
-		t.Errorf("GetBaseURL() = %q, want %q", c.BaseURL(), testAPIURL)
-	}
-}
-
-func TestClient_GetToken(t *testing.T) {
-	c := NewClient(testHandlerToken, testAPIURL, false, nil, false)
-	if c.Token() != testHandlerToken {
-		t.Errorf("GetToken() = %q, want %q", c.Token(), testHandlerToken)
 	}
 }

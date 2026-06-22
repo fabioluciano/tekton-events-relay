@@ -249,6 +249,117 @@ func TestClient_ResolvesTokenPerRequest(t *testing.T) {
 	}
 }
 
+// adfNode mirrors the ADF comment body posted to the v3 endpoint.
+type adfNode struct {
+	Version int       `json:"version,omitempty"`
+	Type    string    `json:"type,omitempty"`
+	Text    string    `json:"text,omitempty"`
+	Content []adfNode `json:"content,omitempty"`
+}
+
+func TestCommentHandler_V3_PostsADFBody(t *testing.T) {
+	var mu sync.Mutex
+	var gotPath, gotAuth string
+	var gotBody struct {
+		Body adfNode `json:"body"`
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		gotPath = r.Method + " " + r.URL.Path
+		gotAuth = r.Header.Get("Authorization")
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"id":"10001"}`))
+	}))
+	defer srv.Close()
+
+	client := NewClient(ClientConfig{BaseURL: srv.URL, APIVersion: "3", Email: testEmail, Token: scm.NewStaticToken(testToken)}, zap.NewNop())
+	h, err := NewCommentHandler(client, "state={{ .State }}", zap.NewNop())
+	if err != nil {
+		t.Fatalf("NewCommentHandler: %v", err)
+	}
+	if err := h.Handle(context.Background(), testEvent()); err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if gotPath != "POST /rest/api/3/issue/PROJ-123/comment" {
+		t.Errorf("path = %q, want v3 endpoint", gotPath)
+	}
+	if !strings.HasPrefix(gotAuth, "Basic ") {
+		t.Errorf("expected basic auth (Cloud), got %q", gotAuth)
+	}
+	if gotBody.Body.Type != "doc" || gotBody.Body.Version != 1 {
+		t.Fatalf("root node not ADF doc: %+v", gotBody.Body)
+	}
+	if len(gotBody.Body.Content) != 1 || gotBody.Body.Content[0].Type != "paragraph" {
+		t.Fatalf("expected single paragraph, got %+v", gotBody.Body.Content)
+	}
+	para := gotBody.Body.Content[0]
+	if len(para.Content) != 1 || para.Content[0].Type != "text" || para.Content[0].Text != "state=success" {
+		t.Fatalf("paragraph text node wrong: %+v", para.Content)
+	}
+}
+
+func TestCommentHandler_V3_ResolvesTokenPerRequest(t *testing.T) {
+	var mu sync.Mutex
+	var auths []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		auths = append(auths, r.Header.Get("Authorization"))
+		mu.Unlock()
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"id":"1"}`))
+	}))
+	defer srv.Close()
+
+	client := NewClient(ClientConfig{BaseURL: srv.URL, APIVersion: "3", Token: &rotatingRefresher{}}, zap.NewNop())
+	h, err := NewCommentHandler(client, "x", zap.NewNop())
+	if err != nil {
+		t.Fatalf("NewCommentHandler: %v", err)
+	}
+	for i := 0; i < 2; i++ {
+		if err := h.Handle(context.Background(), testEvent()); err != nil {
+			t.Fatalf("Handle #%d: %v", i, err)
+		}
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(auths) != 2 {
+		t.Fatalf("expected 2 requests, got %d", len(auths))
+	}
+	if auths[0] != "Bearer rotated-1" || auths[1] != "Bearer rotated-2" {
+		t.Fatalf("v3 token not refreshed per request: %v", auths)
+	}
+}
+
+func TestCommentHandler_V2_DefaultUnchanged(t *testing.T) {
+	var mu sync.Mutex
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		gotPath = r.Method + " " + r.URL.Path
+		mu.Unlock()
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer srv.Close()
+
+	client := NewClient(ClientConfig{BaseURL: srv.URL, Email: testEmail, Token: scm.NewStaticToken(testToken)}, zap.NewNop())
+	h, _ := NewCommentHandler(client, "state={{ .State }}", zap.NewNop())
+	if err := h.Handle(context.Background(), testEvent()); err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if gotPath != "POST /rest/api/2/issue/PROJ-123/comment" {
+		t.Errorf("default path = %q, want v2 endpoint", gotPath)
+	}
+}
+
 func TestCommentHandler_FileTemplate(t *testing.T) {
 	tmpfile, err := os.CreateTemp("", "jira-test-*.tmpl")
 	if err != nil {

@@ -33,10 +33,12 @@ type Config struct {
 	URL  string // Grafana base URL (e.g. https://grafana.example.com)
 	// Token provides the service account / OAuth2 bearer token, resolved fresh
 	// per request so rotated secrets and refreshed OAuth2 tokens are picked up.
-	Token    scm.TokenRefresher
-	Tags     []string
-	Template string
-	Log      *zap.Logger
+	Token        scm.TokenRefresher
+	Tags         []string
+	Template     string
+	DashboardUID string
+	PanelID      int
+	Log          *zap.Logger
 }
 
 // validateURL checks that a URL has an http or https scheme.
@@ -94,23 +96,41 @@ func New(cfg Config) (*Notifier, error) {
 				return nil, fmt.Errorf("execute template: %w", err)
 			}
 			tags := append([]string{"tekton-events-relay", string(e.State)}, n.tags...)
-			return map[string]any{
-				"time": annotationTime(e),
+			start, end := annotationTimes(e)
+			payload := map[string]any{
+				"time": start,
 				"text": buf.String(),
 				"tags": tags,
-			}, nil
+			}
+			if end != nil {
+				payload["timeEnd"] = *end
+			}
+			if cfg.DashboardUID != "" {
+				payload["dashboardUID"] = cfg.DashboardUID
+			}
+			if cfg.PanelID != 0 {
+				payload["panelId"] = cfg.PanelID
+			}
+			return payload, nil
 		},
 	}
 	return n, nil
 }
 
-// annotationTime uses the run finish time when available (epoch millis).
-func annotationTime(e domain.Event) int64 {
-	t := e.FinishedAt
-	if t.IsZero() {
-		t = time.Now()
+// annotationTimes returns the annotation start time and, for terminal runs that
+// carry a finish time, the region end time (both epoch millis). The second
+// return is nil for point annotations: a non-terminal event keeps its existing
+// behavior of a single timestamp at the current moment.
+func annotationTimes(e domain.Event) (int64, *int64) {
+	if e.FinishedAt.IsZero() {
+		return time.Now().UnixMilli(), nil
 	}
-	return t.UnixMilli()
+	end := e.FinishedAt.UnixMilli()
+	start := end
+	if !e.StartedAt.IsZero() {
+		start = e.StartedAt.UnixMilli()
+	}
+	return start, &end
 }
 
 // Name returns the notifier name.

@@ -7,6 +7,7 @@ import (
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/discord"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/middleware"
+	"github.com/fabioluciano/tekton-events-relay/internal/notifier/msgstore"
 	"github.com/fabioluciano/tekton-events-relay/internal/secrets"
 )
 
@@ -21,16 +22,18 @@ func (f *DiscordFactory) Build(inst config.DiscordInstance, log *zap.Logger) ([]
 
 	var discordCfg discord.Config
 	if inst.Auth != nil && inst.Auth.BotToken != nil {
-		// Bot token mode
-		token, err := secrets.ResolveOrInfer(inst.Auth.BotToken.TokenFile, "discord", inst.Name, "token", inst.Auth.BotToken.TokenKey, log)
+		// Bot token mode — per-request token (rotation-safe), never a static string.
+		refresher, err := resolveFileRefresher(inst.Auth.BotToken.TokenFile, inst.Auth.BotToken.TokenKey, "discord", inst.Name, log)
 		if err != nil {
 			return nil, err
 		}
 		discordCfg = discord.Config{
-			BotToken:  token,
-			ChannelID: inst.Auth.BotToken.ChannelID,
-			Username:  inst.Username,
-			Template:  inst.Template,
+			BotToken:     refresher,
+			ChannelID:    inst.Auth.BotToken.ChannelID,
+			Username:     inst.Username,
+			Template:     inst.Template,
+			Mode:         inst.Mode,
+			MessageStore: msgstore.NewMemoryStore(0, 0),
 		}
 	} else {
 		// Webhook mode
@@ -45,9 +48,11 @@ func (f *DiscordFactory) Build(inst config.DiscordInstance, log *zap.Logger) ([]
 			return nil, err
 		}
 		discordCfg = discord.Config{
-			WebhookURL: webhookURL,
-			Username:   inst.Username,
-			Template:   inst.Template,
+			WebhookURL:   webhookURL,
+			Username:     inst.Username,
+			Template:     inst.Template,
+			Mode:         inst.Mode,
+			MessageStore: msgstore.NewMemoryStore(0, 0),
 		}
 	}
 

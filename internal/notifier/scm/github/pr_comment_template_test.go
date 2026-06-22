@@ -12,8 +12,7 @@ import (
 // "Build <State> for <RunName>" body — empty is NOT an error.
 func TestNewPRCommentHandler_EmptyTemplateOK(t *testing.T) {
 	h, err := NewPRCommentHandler(PRCommentConfig{
-		Token:   "t",
-		BaseURL: testAPIURL,
+		Client: ghTestClient("t", testAPIURL),
 		// Template intentionally omitted
 	}, zap.NewNop())
 	if err != nil {
@@ -27,8 +26,7 @@ func TestNewPRCommentHandler_EmptyTemplateOK(t *testing.T) {
 // TestNewPRCommentHandler_InlineTemplateOK confirms the inline form compiles.
 func TestNewPRCommentHandler_InlineTemplateOK(t *testing.T) {
 	h, err := NewPRCommentHandler(PRCommentConfig{
-		Token:    "t",
-		BaseURL:  testAPIURL,
+		Client:   ghTestClient("t", testAPIURL),
 		Template: "Pipeline {{ .State }}: {{ .RunName }}",
 	}, zap.NewNop())
 	if err != nil {
@@ -43,8 +41,7 @@ func TestNewPRCommentHandler_InlineTemplateOK(t *testing.T) {
 // template fails fast at construction.
 func TestNewPRCommentHandler_InvalidTemplateRejected(t *testing.T) {
 	if _, err := NewPRCommentHandler(PRCommentConfig{
-		Token:    "t",
-		BaseURL:  testAPIURL,
+		Client:   ghTestClient("t", testAPIURL),
 		Template: "{{ .Oops",
 	}, zap.NewNop()); err == nil {
 		t.Fatal("expected error for malformed template, got nil")

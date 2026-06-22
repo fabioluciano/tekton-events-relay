@@ -8,7 +8,7 @@ import (
 
 func TestMain(m *testing.M) {
 	// Setup: create template files used by tests
-	templateDir := "/tmp/tekton-test-templates"
+	templateDir := "/tmp/tekton-test-templates-github"
 	if err := os.MkdirAll(templateDir, 0750); err != nil {
 		panic(err)
 	}
@@ -28,11 +28,7 @@ func TestMain(m *testing.M) {
 		}
 	}
 
-	// Run tests
 	code := m.Run()
-
-	// Cleanup
 	_ = os.RemoveAll(templateDir)
-
 	os.Exit(code)
 }

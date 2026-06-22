@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"text/template"
 
+	gh "github.com/google/go-github/v68/github"
 	"go.uber.org/zap"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
@@ -15,17 +16,15 @@ import (
 // CommitCommentHandler comments directly on a commit, covering pushes that
 // have no associated pull request (where pr_comment silently skips).
 type CommitCommentHandler struct {
-	client   *Client
+	client   HTTPDoer
 	template *template.Template
 	log      *zap.Logger
 }
 
 // CommitCommentConfig configures the commit comment handler.
 type CommitCommentConfig struct {
-	Token              string
-	BaseURL            string
-	Template           string
-	InsecureSkipVerify bool
+	Client   HTTPDoer
+	Template string
 }
 
 // NewCommitCommentHandler creates a new GitHub commit comment handler.
@@ -42,7 +41,7 @@ func NewCommitCommentHandler(cfg CommitCommentConfig, log *zap.Logger) (notifier
 		log = zap.NewNop()
 	}
 	return &CommitCommentHandler{
-		client:   NewClient(cfg.Token, cfg.BaseURL, cfg.InsecureSkipVerify, log, false),
+		client:   cfg.Client,
 		template: tmpl,
 		log:      log,
 	}, nil
@@ -71,7 +70,7 @@ func (h *CommitCommentHandler) Handle(ctx context.Context, e domain.Event) error
 		return err
 	}
 
-	url := fmt.Sprintf("%s/repos/%s/%s/commits/%s/comments",
-		h.client.baseURL, e.Repo.Owner, e.Repo.Name, e.CommitSHA)
-	return h.client.Do(ctx, "POST", url, map[string]string{bodyFieldKey: body})
+	comment := &gh.RepositoryComment{Body: gh.Ptr(body)}
+	_, _, err = h.client.GH().Repositories.CreateComment(ctx, e.Repo.Owner, e.Repo.Name, e.CommitSHA, comment)
+	return err
 }

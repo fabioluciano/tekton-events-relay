@@ -33,17 +33,16 @@ func TestLabelHandler_LabelSetAddRemove(t *testing.T) {
 			removed = append(removed, name)
 			w.WriteHeader(http.StatusOK)
 		case http.MethodPost:
-			var p map[string][]string
-			_ = json.NewDecoder(r.Body).Decode(&p)
-			added = append(added, p["labels"]...)
+			var names []string
+			_ = json.NewDecoder(r.Body).Decode(&names)
+			added = append(added, names...)
 			w.WriteHeader(http.StatusOK)
 		}
 	}))
 	defer srv.Close()
 
 	h := NewLabelHandler(LabelConfig{
-		Token:   testHandlerToken,
-		BaseURL: srv.URL,
+		Client: ghTestClient(testHandlerToken, srv.URL),
 		Labels: scm.LabelSet{
 			Add:    []scm.Label{{Name: "ci::{{.State}}"}},
 			Remove: []scm.Label{{Name: "ci::running"}, {Name: "ci::missing"}},
@@ -80,7 +79,7 @@ func TestLabelHandler_LegacyPathPreserved(t *testing.T) {
 	defer srv.Close()
 
 	h := NewLabelHandler(LabelConfig{
-		Token: testHandlerToken, BaseURL: srv.URL,
+		Client: ghTestClient(testHandlerToken, srv.URL),
 		Labels: scm.LabelSet{Add: []scm.Label{{Name: "ok"}}},
 	}, zap.NewNop())
 

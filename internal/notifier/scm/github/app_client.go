@@ -3,7 +3,6 @@ package github
 import (
 	"context"
 	"crypto/x509"
-	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"os"
@@ -17,41 +16,56 @@ import (
 
 const defaultPrivateKeyPath = "/etc/github-app/private-key.pem"
 
-// AppClient wraps the base Client and manages GitHub App authentication.
-// It automatically refreshes installation tokens when they expire.
+// AppClient manages GitHub App authentication, automatically refreshing installation
+// tokens when they expire. It implements scm.TokenRefresher so it can be passed to
+// NewClientWithRefresher — the actual HTTP client is built separately.
 type AppClient struct {
-	*Client
 	appID              int64
 	installationID     int64
 	privateKeyFile     string
 	insecureSkipVerify bool
-	debug              bool
+	baseURL            string
+	log                *zap.Logger
 	mu                 sync.RWMutex
 	currentToken       string
 	tokenExpiry        time.Time
 }
 
-// NewAppClient creates a new GitHub App client with automatic token management.
+// NewAppClient creates a new GitHub App token manager and performs an initial token refresh.
 // privateKeyFile is the path to the RSA private key PEM file; empty string uses the default path.
 func NewAppClient(appID, installationID int64, baseURL string, insecureSkipVerify bool, log *zap.Logger, privateKeyFile string) (*AppClient, error) {
-	// Create base client with placeholder token - will be replaced immediately
-	baseClient := NewClient("placeholder", baseURL, insecureSkipVerify, log, false)
+	if baseURL == "" {
+		baseURL = GitHubBaseURL
+	}
+	if log == nil {
+		log = zap.NewNop()
+	}
 
 	appClient := &AppClient{
-		Client:             baseClient,
 		appID:              appID,
 		installationID:     installationID,
 		privateKeyFile:     privateKeyFile,
 		insecureSkipVerify: insecureSkipVerify,
-		debug:              false,
+		baseURL:            baseURL,
+		log:                log,
 	}
 
-	// Get initial token - this will properly set up auth
 	if err := appClient.refreshToken(context.Background()); err != nil {
 		return nil, fmt.Errorf("initial token refresh: %w", err)
 	}
 
 	return appClient, nil
+}
+
+// Token returns a valid installation token, refreshing it automatically if it is
+// within 5 minutes of expiry. Implements scm.TokenRefresher.
+func (a *AppClient) Token(ctx context.Context) (string, error) {
+	if err := a.ensureValidToken(ctx); err != nil {
+		return "", fmt.Errorf("ensure valid token: %w", err)
+	}
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.currentToken, nil
 }
 
 // refreshToken generates a new JWT and exchanges it for an installation token
@@ -78,16 +92,10 @@ func (a *AppClient) refreshToken(ctx context.Context) error {
 		return fmt.Errorf("get installation token: %w", err)
 	}
 
-	// Update token with lock
+	// Update token under write lock — no client rebuild needed
 	a.mu.Lock()
 	a.currentToken = token.GetToken()
 	a.tokenExpiry = token.GetExpiresAt().Time
-	a.token = token.GetToken()
-	// Rebuild the entire client stack to ensure fresh auth
-	// (reusing old http.Client carries stale auth transport)
-	freshBaseClient := NewClient(token.GetToken(), a.baseURL, a.insecureSkipVerify, a.log, a.debug)
-	a.Client = freshBaseClient
-	a.gh = freshBaseClient.gh
 	a.mu.Unlock()
 
 	a.log.Info("refreshed GitHub App installation token",
@@ -154,41 +162,4 @@ func (a *AppClient) ensureValidToken(ctx context.Context) error {
 		return a.refreshToken(ctx)
 	}
 	return nil
-}
-
-// Do performs an HTTP request with automatic token refresh.
-func (a *AppClient) Do(ctx context.Context, method, url string, payload any) error {
-	if err := a.ensureValidToken(ctx); err != nil {
-		return fmt.Errorf("ensure valid token: %w", err)
-	}
-	return a.Client.Do(ctx, method, url, payload)
-}
-
-// DoWithResponse performs an HTTP request with automatic token refresh and decodes the response.
-func (a *AppClient) DoWithResponse(ctx context.Context, method, url string, payload any, result any) error {
-	if err := a.ensureValidToken(ctx); err != nil {
-		return fmt.Errorf("ensure valid token: %w", err)
-	}
-	return a.Client.DoWithResponse(ctx, method, url, payload, result)
-}
-
-// DoGraphQL performs a GraphQL request with automatic token refresh.
-func (a *AppClient) DoGraphQL(ctx context.Context, query string, variables map[string]any) (json.RawMessage, error) {
-	if err := a.ensureValidToken(ctx); err != nil {
-		return nil, fmt.Errorf("ensure valid token: %w", err)
-	}
-	return a.Client.DoGraphQL(ctx, query, variables)
-}
-
-// Token returns the current installation token (thread-safe).
-// Used by factory when handlers haven't migrated to HTTPDoer interface yet.
-func (a *AppClient) Token() string {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	return a.currentToken
-}
-
-// BaseURL returns the GitHub API base URL (delegates to embedded Client).
-func (a *AppClient) BaseURL() string {
-	return a.Client.BaseURL()
 }

@@ -1,23 +1,26 @@
-// Package email implements the Notifier for plain SMTP delivery.
-// Supports implicit TLS (465), STARTTLS (587, default) and unencrypted
-// in-cluster relays (25). Subject and body are Go templates rendered
-// against the event.
+// Package email implements the Notifier for SMTP delivery via the
+// github.com/wneessen/go-mail SDK. It supports implicit TLS (465),
+// STARTTLS (587, default) and unencrypted in-cluster relays (25), CC/BCC,
+// Reply-To, message threading (In-Reply-To/References keyed by RunID) and
+// two authentication modes: SMTP PLAIN (username/password) and XOAUTH2
+// (per-request access token from a TokenRefresher). Subject and body are
+// Go templates rendered against the event.
 package email
 
 import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"net"
-	"net/smtp"
 	"strings"
 	"text/template"
 	"time"
 
+	mail "github.com/wneessen/go-mail"
 	"go.uber.org/zap"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
+	"github.com/fabioluciano/tekton-events-relay/internal/notifier/msgstore"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/scm"
 )
 
@@ -37,19 +40,32 @@ const (
 
 // Config holds the email notifier configuration.
 type Config struct {
-	Name               string
-	Host               string
-	Port               int    // default 587
-	Encryption         string // starttls (default) | tls | none
-	Username           string // empty = no AUTH
-	Password           string
-	From               string
-	To                 []string
-	Subject            string // Go template (must be provided via ConfigMap)
-	Template           string // body Go template (must be provided via ConfigMap)
-	HTML               bool   // send body as text/html instead of text/plain
-	Timeout            time.Duration
-	InsecureSkipVerify bool // skip TLS verification (self-hosted relays)
+	Name       string
+	Host       string
+	Port       int    // default 587
+	Encryption string // starttls (default) | tls | none
+	Username   string // empty = no AUTH (PLAIN); required for XOAUTH2
+	Password   string // PLAIN auth password
+	From       string
+	To         []string
+	Cc         []string
+	Bcc        []string
+	ReplyTo    string
+	Subject    string // Go template (must be provided via ConfigMap)
+	Template   string // body Go template (must be provided via ConfigMap)
+	HTML       bool   // send body as text/html instead of text/plain
+	Timeout    time.Duration
+	// InsecureSkipVerify skips TLS verification (self-hosted relays).
+	InsecureSkipVerify bool
+	// XOAuth2 selects the XOAUTH2 SASL mechanism instead of PLAIN. The access
+	// token is fetched from Token on every send (rotation/refresh-safe).
+	XOAuth2 bool
+	// Token supplies the XOAUTH2 access token per request. Required when
+	// XOAuth2 is true; ignored otherwise.
+	Token scm.TokenRefresher
+	// Store persists the first Message-ID per RunID for threading. When nil a
+	// per-pod in-memory store is created.
+	Store msgstore.Store
 }
 
 // Notifier sends pipeline events as email via SMTP.
@@ -57,6 +73,7 @@ type Notifier struct {
 	cfg         Config
 	subjectTmpl *template.Template
 	bodyTmpl    *template.Template
+	store       msgstore.Store
 	log         *zap.Logger
 }
 
@@ -84,6 +101,14 @@ func New(cfg Config, log *zap.Logger) (*Notifier, error) {
 	}
 	if cfg.Timeout == 0 {
 		cfg.Timeout = defaultTimeout
+	}
+	if cfg.XOAuth2 {
+		if cfg.Username == "" {
+			return nil, fmt.Errorf("email %s: username is required for xoauth2", cfg.Name)
+		}
+		if cfg.Token == nil {
+			return nil, fmt.Errorf("email %s: token source is required for xoauth2", cfg.Name)
+		}
 	}
 
 	// Subject and body templates must come from ConfigMap (chart default or configmapRef).
@@ -114,8 +139,12 @@ func New(cfg Config, log *zap.Logger) (*Notifier, error) {
 	if log == nil {
 		log = zap.NewNop()
 	}
+	store := cfg.Store
+	if store == nil {
+		store = msgstore.NewMemoryStore(0, 0)
+	}
 
-	return &Notifier{cfg: cfg, subjectTmpl: subjectTmpl, bodyTmpl: bodyTmpl, log: log}, nil
+	return &Notifier{cfg: cfg, subjectTmpl: subjectTmpl, bodyTmpl: bodyTmpl, store: store, log: log}, nil
 }
 
 // Name returns the notifier name.
@@ -134,9 +163,19 @@ func (n *Notifier) Handle(ctx context.Context, e domain.Event) error {
 		return fmt.Errorf("email %s: render body: %w", n.cfg.Name, err)
 	}
 
-	msg := n.buildMessage(sanitizeHeader(subject.String()), body.String())
+	msg, threadKey, msgID, err := n.buildMessage(sanitizeHeader(subject.String()), body.String(), e)
+	if err != nil {
+		return fmt.Errorf("email %s: %w", n.cfg.Name, err)
+	}
 	if err := n.send(ctx, msg); err != nil {
 		return fmt.Errorf("email %s: %w", n.cfg.Name, err)
+	}
+	// Record the root Message-ID for this run only on the first successful
+	// send, so subsequent state-change emails thread under it.
+	if threadKey != "" {
+		if _, ok := n.store.Load(threadKey); !ok {
+			n.store.Save(threadKey, msgID)
+		}
 	}
 	n.log.Debug("email sent",
 		zap.String("instance", n.cfg.Name),
@@ -153,89 +192,134 @@ func sanitizeHeader(s string) string {
 	return strings.TrimSpace(s)
 }
 
-func (n *Notifier) buildMessage(subject, body string) []byte {
-	contentType := "text/plain; charset=UTF-8"
-	if n.cfg.HTML {
-		contentType = "text/html; charset=UTF-8"
+// threadKey returns the per-run key used to thread state-change emails. RunID
+// is preferred; RunName is the fallback when the decoder did not populate it.
+func threadKey(e domain.Event) string {
+	if e.RunID != "" {
+		return e.RunID
 	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "From: %s\r\n", n.cfg.From)
-	fmt.Fprintf(&b, "To: %s\r\n", strings.Join(n.cfg.To, ", "))
-	fmt.Fprintf(&b, "Subject: %s\r\n", subject)
-	fmt.Fprintf(&b, "Date: %s\r\n", time.Now().Format(time.RFC1123Z))
-	b.WriteString("MIME-Version: 1.0\r\n")
-	fmt.Fprintf(&b, "Content-Type: %s\r\n", contentType)
-	b.WriteString("\r\n")
-	b.WriteString(strings.ReplaceAll(body, "\n", "\r\n"))
-	return []byte(b.String())
+	return e.RunName
 }
 
-// send dials the SMTP server honoring ctx and the configured encryption,
-// authenticates when credentials are present, and submits the message.
-func (n *Notifier) send(ctx context.Context, msg []byte) error {
-	addr := net.JoinHostPort(n.cfg.Host, fmt.Sprintf("%d", n.cfg.Port))
-
-	dialCtx, cancel := context.WithTimeout(ctx, n.cfg.Timeout)
-	defer cancel()
-
-	dialer := &net.Dialer{}
-	conn, err := dialer.DialContext(dialCtx, "tcp", addr)
-	if err != nil {
-		return fmt.Errorf("dial %s: %w", addr, err)
+// buildMessage assembles a go-mail message with recipients, body, Reply-To and
+// threading headers. It returns the message, the thread key and the generated
+// Message-ID (with angle brackets) so the caller can persist it after a
+// successful send.
+func (n *Notifier) buildMessage(subject, body string, e domain.Event) (*mail.Msg, string, string, error) {
+	msg := mail.NewMsg()
+	if err := msg.From(n.cfg.From); err != nil {
+		return nil, "", "", fmt.Errorf("from %q: %w", n.cfg.From, err)
 	}
-	// Bound the whole SMTP dialog, not just the dial.
-	if deadline, ok := dialCtx.Deadline(); ok {
-		_ = conn.SetDeadline(deadline)
+	if err := msg.To(n.cfg.To...); err != nil {
+		return nil, "", "", fmt.Errorf("to: %w", err)
+	}
+	if len(n.cfg.Cc) > 0 {
+		if err := msg.Cc(n.cfg.Cc...); err != nil {
+			return nil, "", "", fmt.Errorf("cc: %w", err)
+		}
+	}
+	if len(n.cfg.Bcc) > 0 {
+		// go-mail keeps Bcc out of the rendered headers; it is added to the
+		// envelope (RCPT TO) only.
+		if err := msg.Bcc(n.cfg.Bcc...); err != nil {
+			return nil, "", "", fmt.Errorf("bcc: %w", err)
+		}
+	}
+	if n.cfg.ReplyTo != "" {
+		if err := msg.ReplyTo(n.cfg.ReplyTo); err != nil {
+			return nil, "", "", fmt.Errorf("reply-to %q: %w", n.cfg.ReplyTo, err)
+		}
 	}
 
-	tlsCfg := &tls.Config{
+	msg.Subject(subject)
+	msg.SetDate()
+	msg.SetMessageID()
+	msgID := msg.GetMessageID()
+
+	key := threadKey(e)
+	if key != "" {
+		if root, ok := n.store.Load(key); ok && root != "" {
+			msg.SetGenHeader(mail.HeaderInReplyTo, root)
+			msg.SetGenHeader(mail.HeaderReferences, root)
+		}
+	}
+
+	contentType := mail.TypeTextPlain
+	if n.cfg.HTML {
+		contentType = mail.TypeTextHTML
+	}
+	msg.SetBodyString(contentType, body)
+	return msg, key, msgID, nil
+}
+
+// tlsConfig builds the TLS configuration shared by STARTTLS and implicit TLS.
+func (n *Notifier) tlsConfig() *tls.Config {
+	return &tls.Config{
 		ServerName:         n.cfg.Host,
 		MinVersion:         tls.VersionTLS12,
 		InsecureSkipVerify: n.cfg.InsecureSkipVerify, // #nosec G402 -- explicit opt-in from config
 	}
+}
 
-	if n.cfg.Encryption == EncryptionTLS {
-		conn = tls.Client(conn, tlsCfg)
+// clientOptions resolves the go-mail client options for the configured
+// encryption and authentication mode. XOAUTH2 fetches a fresh access token
+// from the TokenRefresher so the client is rebuilt per send.
+func (n *Notifier) clientOptions(ctx context.Context) ([]mail.Option, error) {
+	opts := []mail.Option{
+		mail.WithPort(n.cfg.Port),
+		mail.WithTimeout(n.cfg.Timeout),
+		mail.WithTLSConfig(n.tlsConfig()),
 	}
 
-	client, err := smtp.NewClient(conn, n.cfg.Host)
+	switch n.cfg.Encryption {
+	case EncryptionTLS:
+		opts = append(opts, mail.WithSSL())
+	case EncryptionSTARTTLS:
+		opts = append(opts, mail.WithTLSPortPolicy(mail.TLSMandatory))
+	case EncryptionNone:
+		opts = append(opts, mail.WithTLSPortPolicy(mail.NoTLS))
+	}
+
+	switch {
+	case n.cfg.XOAuth2:
+		token, err := n.cfg.Token.Token(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("xoauth2 token: %w", err)
+		}
+		opts = append(opts,
+			mail.WithSMTPAuth(mail.SMTPAuthXOAUTH2),
+			mail.WithUsername(n.cfg.Username),
+			mail.WithPassword(token),
+		)
+	case n.cfg.Username != "":
+		opts = append(opts,
+			mail.WithSMTPAuth(mail.SMTPAuthPlain),
+			mail.WithUsername(n.cfg.Username),
+			mail.WithPassword(n.cfg.Password),
+		)
+	}
+
+	return opts, nil
+}
+
+// send builds a go-mail client honoring ctx and the configured encryption and
+// authentication mode, then submits the message.
+func (n *Notifier) send(ctx context.Context, msg *mail.Msg) error {
+	dialCtx, cancel := context.WithTimeout(ctx, n.cfg.Timeout)
+	defer cancel()
+
+	opts, err := n.clientOptions(dialCtx)
 	if err != nil {
-		_ = conn.Close()
-		return fmt.Errorf("smtp handshake: %w", err)
-	}
-	defer func() { _ = client.Close() }()
-
-	if n.cfg.Encryption == EncryptionSTARTTLS {
-		if err := client.StartTLS(tlsCfg); err != nil {
-			return fmt.Errorf("starttls: %w", err)
-		}
+		return err
 	}
 
-	if n.cfg.Username != "" {
-		auth := smtp.PlainAuth("", n.cfg.Username, n.cfg.Password, n.cfg.Host)
-		if err := client.Auth(auth); err != nil {
-			return fmt.Errorf("auth: %w", err)
-		}
-	}
-
-	if err := client.Mail(n.cfg.From); err != nil {
-		return fmt.Errorf("mail from: %w", err)
-	}
-	for _, rcpt := range n.cfg.To {
-		if err := client.Rcpt(rcpt); err != nil {
-			return fmt.Errorf("rcpt %s: %w", rcpt, err)
-		}
-	}
-	w, err := client.Data()
+	client, err := mail.NewClient(n.cfg.Host, opts...)
 	if err != nil {
-		return fmt.Errorf("data: %w", err)
+		return fmt.Errorf("smtp client: %w", err)
 	}
-	if _, err := w.Write(msg); err != nil {
-		_ = w.Close()
-		return fmt.Errorf("write message: %w", err)
+
+	if err := client.DialAndSendWithContext(dialCtx, msg); err != nil {
+		return fmt.Errorf("send: %w", err)
 	}
-	if err := w.Close(); err != nil {
-		return fmt.Errorf("close message: %w", err)
-	}
-	return client.Quit()
+	return nil
 }

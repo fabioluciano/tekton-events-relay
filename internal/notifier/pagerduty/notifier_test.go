@@ -18,6 +18,7 @@ const (
 	testNamePagerDuty    = "pagerduty"
 	testActionTrigger    = "trigger"
 	testActionResolve    = "resolve"
+	testActionAck        = "acknowledge"
 	testRunID123         = "run-123"
 	testRunID456         = "run-456"
 	testRunID789         = "run-789"
@@ -198,24 +199,89 @@ func TestNotifyWithIrrelevantState(t *testing.T) {
 
 func TestActionFor(t *testing.T) {
 	testCases := []struct {
-		state          domain.State
-		expectedAction string
+		name                 string
+		state                domain.State
+		acknowledgeOnRunning bool
+		expectedAction       string
 	}{
-		{domain.StateFailure, testActionTrigger},
-		{domain.StateError, testActionTrigger},
-		{domain.StateSuccess, testActionResolve},
-		{domain.StatePending, ""},
-		{domain.StateRunning, ""},
-		{domain.StateCanceled, ""},
+		{"failure", domain.StateFailure, false, testActionTrigger},
+		{"error", domain.StateError, false, testActionTrigger},
+		{"success", domain.StateSuccess, false, testActionResolve},
+		{"pending", domain.StatePending, false, ""},
+		{"running default off", domain.StateRunning, false, ""},
+		{"running ack on", domain.StateRunning, true, testActionAck},
+		{"canceled", domain.StateCanceled, false, ""},
+		{"success unaffected by ack flag", domain.StateSuccess, true, testActionResolve},
 	}
 
 	for _, tc := range testCases {
-		t.Run(string(tc.state), func(t *testing.T) {
-			action := actionFor(tc.state)
+		t.Run(tc.name, func(t *testing.T) {
+			action := actionFor(tc.state, tc.acknowledgeOnRunning)
 			if action != tc.expectedAction {
-				t.Errorf("actionFor(%s) = %q, want %q", tc.state, action, tc.expectedAction)
+				t.Errorf("actionFor(%s, %v) = %q, want %q", tc.state, tc.acknowledgeOnRunning, action, tc.expectedAction)
 			}
 		})
+	}
+}
+
+func TestNotifyRunningWithAcknowledgeEnabled(t *testing.T) {
+	receivedPayload := make(map[string]any)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&receivedPayload); err != nil {
+			t.Fatalf("failed to decode payload: %v", err)
+		}
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(`{"status":"success"}`))
+	}))
+	defer server.Close()
+
+	n := New(Config{IntegrationKey: testKeyValue, AcknowledgeOnRunning: true}, nil)
+	n.base.BuildURL = func(_ domain.Event) (string, error) { return server.URL, nil }
+
+	event := domain.Event{
+		State:       domain.StateRunning,
+		RunName:     testRunID123,
+		RunID:       testRunID123,
+		Namespace:   testNamespaceDefault,
+		Context:     testContextBuild,
+		Description: "Build running",
+	}
+
+	if err := n.Handle(context.Background(), event); err != nil {
+		t.Fatalf("Handle() failed: %v", err)
+	}
+
+	if receivedPayload["event_action"] != testActionAck {
+		t.Errorf("expected event_action 'acknowledge', got %v", receivedPayload["event_action"])
+	}
+	if receivedPayload["dedup_key"] != testRunID123 {
+		t.Errorf("expected dedup_key 'run-123', got %v", receivedPayload["dedup_key"])
+	}
+}
+
+func TestNotifyRunningWithAcknowledgeDisabled(t *testing.T) {
+	called := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer server.Close()
+
+	n := New(Config{IntegrationKey: testKeyValue}, nil)
+	n.base.BuildURL = func(_ domain.Event) (string, error) { return server.URL, nil }
+
+	event := domain.Event{
+		State:     domain.StateRunning,
+		RunName:   testRunID123,
+		RunID:     testRunID123,
+		Namespace: testNamespaceDefault,
+	}
+
+	if err := n.Handle(context.Background(), event); err != nil {
+		t.Fatalf("Handle() should return nil for running with ack disabled, got: %v", err)
+	}
+	if called {
+		t.Error("expected no HTTP call for running state when AcknowledgeOnRunning is false")
 	}
 }
 

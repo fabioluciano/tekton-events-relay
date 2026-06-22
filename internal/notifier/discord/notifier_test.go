@@ -2,48 +2,106 @@ package discord
 
 import (
 	"context"
-	"encoding/json"
-	"io"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
+	"github.com/fabioluciano/tekton-events-relay/internal/notifier/msgstore"
 )
 
 const (
-	testWebhookURL   = "https://test"
 	testPipeline     = "test-pipeline"
 	testBuildSuccess = "Build succeeded"
 	testNamespace    = "default"
 	testContext      = "test-context"
-	testContextShort = "test"
 	testRunID        = "run-1"
+	testChannelID    = "123456789"
 )
 
+// webhookURL returns a Discord-form webhook URL pointing at host. The notifier
+// pins requests to this host, so the SDK's calls land on the stub server.
+func webhookURL(host string) string { return host + "/api/webhooks/123/abc" }
+
+// recordingServer captures the method, path and Authorization of every request
+// and replies with a minimal message body so WebhookExecute(wait=true) can
+// unmarshal a message ID.
+type recordingServer struct {
+	mu      sync.Mutex
+	methods []string
+	paths   []string
+	auths   []string
+}
+
+func newRecordingServer(t *testing.T) (*httptest.Server, *recordingServer) {
+	t.Helper()
+	rec := &recordingServer{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rec.mu.Lock()
+		rec.methods = append(rec.methods, r.Method)
+		rec.paths = append(rec.paths, r.URL.Path)
+		rec.auths = append(rec.auths, r.Header.Get("Authorization"))
+		rec.mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"msg-1"}`))
+	}))
+	t.Cleanup(srv.Close)
+	return srv, rec
+}
+
+// redirectClient returns an http.Client whose transport pins every request at
+// host, used to steer bot-mode SDK calls (which target discord.com) at a stub.
+func redirectClient(host string) *http.Client {
+	u, _ := url.Parse(host)
+	return &http.Client{Transport: &hostRewriteTransport{base: http.DefaultTransport, scheme: u.Scheme, host: u.Host}}
+}
+
+type staticRefresher struct{ tok string }
+
+func (s staticRefresher) Token(_ context.Context) (string, error) { return s.tok, nil }
+
+type rotatingRefresher struct{ n int }
+
+func (r *rotatingRefresher) Token(_ context.Context) (string, error) {
+	r.n++
+	return fmt.Sprintf("bot-token-%d", r.n), nil
+}
+
+func successEvent() domain.Event {
+	return domain.Event{
+		RunID: testRunID, RunName: testRunID, State: domain.StateSuccess,
+		Context: testContext, Description: testBuildSuccess, Namespace: testNamespace,
+	}
+}
+
 func TestNew(t *testing.T) {
-	t.Run("with minimal config", func(t *testing.T) {
-		n, err := New(Config{WebhookURL: testWebhookURL}, nil)
+	srv, _ := newRecordingServer(t)
+
+	t.Run("webhook minimal config parses id/token and defaults username", func(t *testing.T) {
+		n, err := New(Config{WebhookURL: webhookURL(srv.URL)}, nil)
 		if err != nil {
 			t.Fatalf("New() failed: %v", err)
 		}
-		if n == nil {
-			t.Fatal("expected notifier")
-		}
 		if n.cfg.Username != defaultUsername {
-			t.Errorf("Username = %q, want tekton-events-relay", n.cfg.Username)
+			t.Errorf("Username = %q, want %q", n.cfg.Username, defaultUsername)
+		}
+		if n.webhookID != "123" || n.webhookToken != "abc" {
+			t.Errorf("parsed id/token = %q/%q, want 123/abc", n.webhookID, n.webhookToken)
+		}
+		if n.botMode {
+			t.Error("expected webhook mode, got bot mode")
 		}
 	})
 
-	t.Run("with custom username", func(t *testing.T) {
-		n, err := New(Config{
-			WebhookURL: testWebhookURL,
-			Username:   "custom-bot",
-		}, nil)
+	t.Run("custom username", func(t *testing.T) {
+		n, err := New(Config{WebhookURL: webhookURL(srv.URL), Username: "custom-bot"}, nil)
 		if err != nil {
 			t.Fatalf("New() failed: %v", err)
 		}
@@ -51,54 +109,48 @@ func TestNew(t *testing.T) {
 			t.Errorf("Username = %q, want custom-bot", n.cfg.Username)
 		}
 	})
+
+	t.Run("invalid webhook URL errors", func(t *testing.T) {
+		if _, err := New(Config{WebhookURL: "https://example.com/nope"}, nil); err == nil {
+			t.Fatal("expected error for malformed webhook URL")
+		}
+	})
 }
 
 func TestNew_BotTokenMode(t *testing.T) {
-	var receivedAuth string
-	var receivedURL string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		receivedAuth = r.Header.Get("Authorization")
-		receivedURL = r.URL.Path
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer server.Close()
+	srv, rec := newRecordingServer(t)
 
-	cfg := Config{ //nolint:gosec // test-only credential values
-		BotToken:  "bot-test-token",
-		ChannelID: "123456789",
+	cfg := Config{
+		BotToken:   staticRefresher{tok: "bot-test-token"},
+		ChannelID:  testChannelID,
+		httpClient: redirectClient(srv.URL),
 	}
 	n, err := New(cfg, nil)
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
 	}
-
-	// Patch BuildURL to point at test server
-	n.base.BuildURL = func(_ domain.Event) (string, error) {
-		return server.URL + "/api/v10/channels/123456789/messages", nil
+	if !n.botMode {
+		t.Fatal("expected bot mode")
 	}
 
-	evt := domain.Event{
-		RunID:     testRunID,
-		RunName:   testRunID,
-		State:     domain.StateSuccess,
-		Context:   testContext,
-		Namespace: testNamespace,
-	}
-
-	if err := n.Handle(context.Background(), evt); err != nil {
+	if err := n.Handle(context.Background(), successEvent()); err != nil {
 		t.Fatalf("Handle() failed: %v", err)
 	}
 
-	if receivedAuth != "Bot bot-test-token" {
-		t.Errorf("Authorization = %q, want %q", receivedAuth, "Bot bot-test-token")
+	if len(rec.paths) != 1 || !strings.Contains(rec.paths[0], "channels/"+testChannelID+"/messages") {
+		t.Errorf("paths = %v, expected one channel messages call", rec.paths)
 	}
-	if !strings.Contains(receivedURL, "messages") {
-		t.Errorf("URL = %q, expected messages endpoint", receivedURL)
+	if rec.methods[0] != http.MethodPost {
+		t.Errorf("method = %q, want POST", rec.methods[0])
+	}
+	if rec.auths[0] != "Bot bot-test-token" {
+		t.Errorf("Authorization = %q, want %q", rec.auths[0], "Bot bot-test-token")
 	}
 }
 
 func TestName(t *testing.T) {
-	n, err := New(Config{WebhookURL: "https://test"}, nil)
+	srv, _ := newRecordingServer(t)
+	n, err := New(Config{WebhookURL: webhookURL(srv.URL)}, nil)
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
 	}
@@ -108,7 +160,8 @@ func TestName(t *testing.T) {
 }
 
 func TestType(t *testing.T) {
-	n, err := New(Config{WebhookURL: "https://test"}, nil)
+	srv, _ := newRecordingServer(t)
+	n, err := New(Config{WebhookURL: webhookURL(srv.URL)}, nil)
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
 	}
@@ -118,331 +171,199 @@ func TestType(t *testing.T) {
 }
 
 func TestHandle(t *testing.T) {
-	t.Run("success case", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.Method != http.MethodPost {
-				t.Errorf("Method = %q, want POST", r.Method)
-			}
-			if r.Header.Get("Content-Type") != "application/json" {
-				t.Errorf("Content-Type = %q, want application/json", r.Header.Get("Content-Type"))
-			}
-			if r.Header.Get("User-Agent") != "tekton-events-relay" {
-				t.Errorf("User-Agent = %q, want tekton-events-relay", r.Header.Get("User-Agent"))
-			}
-
-			body, _ := io.ReadAll(r.Body)
-			var payload map[string]any
-			if err := json.Unmarshal(body, &payload); err != nil {
-				t.Errorf("failed to unmarshal payload: %v", err)
-			}
-
-			w.WriteHeader(http.StatusOK)
-		}))
-		defer server.Close()
-
-		n, err := New(Config{WebhookURL: server.URL}, nil)
+	t.Run("webhook success", func(t *testing.T) {
+		srv, rec := newRecordingServer(t)
+		n, err := New(Config{WebhookURL: webhookURL(srv.URL)}, nil)
 		if err != nil {
 			t.Fatalf("New() failed: %v", err)
 		}
-
-		event := domain.Event{
-			State:       domain.StateSuccess,
-			Context:     testPipeline,
-			Description: testBuildSuccess,
-			RunID:       "run-123",
-			RunName:     "run-123",
-			Namespace:   testNamespace,
-		}
-
-		err = n.Handle(context.Background(), event)
-		if err != nil {
+		if err := n.Handle(context.Background(), successEvent()); err != nil {
 			t.Errorf("Handle() error = %v, want nil", err)
+		}
+		if len(rec.paths) != 1 || rec.methods[0] != http.MethodPost {
+			t.Errorf("expected one POST webhook execute, got methods=%v paths=%v", rec.methods, rec.paths)
+		}
+		if !strings.HasSuffix(rec.paths[0], "/webhooks/123/abc") {
+			t.Errorf("path = %q, want webhook execute endpoint", rec.paths[0])
 		}
 	})
 
 	t.Run("returns error on HTTP failure", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusInternalServerError)
-			_, _ = w.Write([]byte("internal error"))
+			_, _ = w.Write([]byte(`{"message":"boom"}`))
 		}))
-		defer server.Close()
+		defer srv.Close()
 
-		n, err := New(Config{WebhookURL: server.URL}, nil)
+		n, err := New(Config{WebhookURL: webhookURL(srv.URL)}, nil)
 		if err != nil {
 			t.Fatalf("New() failed: %v", err)
 		}
-
-		event := domain.Event{
-			State:       domain.StateSuccess,
-			Context:     testPipeline,
-			Description: testBuildSuccess,
-		}
-
-		err = n.Handle(context.Background(), event)
-		if err == nil {
+		if err := n.Handle(context.Background(), successEvent()); err == nil {
 			t.Error("Handle() error = nil, want error")
 		}
 	})
 
 	t.Run("handles context cancellation", func(t *testing.T) {
-		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusOK)
-		}))
-		defer server.Close()
-
-		n, err := New(Config{WebhookURL: server.URL}, nil)
+		srv, _ := newRecordingServer(t)
+		n, err := New(Config{WebhookURL: webhookURL(srv.URL)}, nil)
 		if err != nil {
 			t.Fatalf("New() failed: %v", err)
 		}
-
 		ctx, cancel := context.WithCancel(context.Background())
-		cancel() // Cancel immediately
-
-		event := domain.Event{
-			State:       domain.StateSuccess,
-			Context:     testPipeline,
-			Description: testBuildSuccess,
-		}
-
-		err = n.Handle(ctx, event)
-		if err == nil {
+		cancel()
+		if err := n.Handle(ctx, successEvent()); err == nil {
 			t.Error("Handle() with cancelled context should return error")
 		}
 	})
 }
 
-//nolint:gocyclo // test covers all payload field combinations
-func TestPayload(t *testing.T) {
-	t.Run("minimal event", func(t *testing.T) {
-		n, err := New(Config{WebhookURL: testWebhookURL}, nil)
-		if err != nil {
-			t.Fatalf("New() failed: %v", err)
-		}
-		event := domain.Event{
-			State:       domain.StateSuccess,
-			Context:     testContext,
-			Description: "test description",
-			RunID:       "run-123",
-			RunName:     "run-123",
-			Namespace:   testNamespace,
-		}
+func TestWebhook_Create_CapturesID(t *testing.T) {
+	srv, rec := newRecordingServer(t)
+	store := msgstore.NewMemoryStore(0, 0)
+	n, err := New(Config{WebhookURL: webhookURL(srv.URL), Mode: ModeUpsert, MessageStore: store}, nil)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
 
-		payload, err := n.payload(event)
-		if err != nil {
-			t.Fatalf("payload() error = %v, want nil", err)
-		}
+	if err := n.Handle(context.Background(), successEvent()); err != nil {
+		t.Fatalf("Handle() failed: %v", err)
+	}
 
-		p, ok := payload.(map[string]any)
-		if !ok {
-			t.Fatal("payload is not map[string]any")
-		}
+	// Given a create that returns a message ID, When wait=true, Then the ID is stored.
+	if id, ok := store.Load(testRunID); !ok || id != "msg-1" {
+		t.Errorf("stored id = %q, ok=%v; want msg-1", id, ok)
+	}
+	if rec.methods[0] != http.MethodPost {
+		t.Errorf("first call method = %q, want POST", rec.methods[0])
+	}
+}
 
-		if p["username"] != "tekton-events-relay" {
-			t.Errorf("username = %v, want tekton-events-relay", p["username"])
-		}
+func TestWebhook_Upsert_SecondCallEdits(t *testing.T) {
+	srv, rec := newRecordingServer(t)
+	n, err := New(Config{WebhookURL: webhookURL(srv.URL), Mode: ModeUpsert, MessageStore: msgstore.NewMemoryStore(0, 0)}, nil)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
 
-		embeds, ok := p["embeds"].([]any)
-		if !ok || len(embeds) != 1 {
-			t.Fatal("embeds is not []any with 1 element")
-		}
+	evt := successEvent()
+	evt.State = domain.StateRunning
+	// First call posts and stores the message ID.
+	if err := n.Handle(context.Background(), evt); err != nil {
+		t.Fatalf("first Handle() failed: %v", err)
+	}
+	// Second call for the same RunID must edit via WebhookMessageEdit.
+	evt.State = domain.StateSuccess
+	if err := n.Handle(context.Background(), evt); err != nil {
+		t.Fatalf("second Handle() failed: %v", err)
+	}
 
-		embed := embeds[0].(map[string]any)
-		if embed["title"] != "test-context" {
-			t.Errorf("embed title = %v, want test-context", embed["title"])
-		}
-		if embed["description"] != "test description" {
-			t.Errorf("embed description = %v, want test description", embed["description"])
-		}
-		if embed["color"] != 0x36a64f {
-			t.Errorf("embed color = %v, want %v", embed["color"], 0x36a64f)
-		}
-	})
+	if len(rec.methods) != 2 {
+		t.Fatalf("expected 2 calls, got %d (%v)", len(rec.methods), rec.paths)
+	}
+	if rec.methods[0] != http.MethodPost {
+		t.Errorf("first method = %q, want POST (execute)", rec.methods[0])
+	}
+	if rec.methods[1] != http.MethodPatch || !strings.Contains(rec.paths[1], "/messages/msg-1") {
+		t.Errorf("second call = %s %s, want PATCH .../messages/msg-1", rec.methods[1], rec.paths[1])
+	}
+}
 
-	t.Run("event with commit SHA", func(t *testing.T) {
-		n, err := New(Config{WebhookURL: testWebhookURL}, nil)
-		if err != nil {
-			t.Fatalf("New() failed: %v", err)
-		}
-		event := domain.Event{
-			State:       domain.StateFailure,
-			Context:     testContext,
-			Description: "test failed",
-			RunID:       "run-456",
-			RunName:     "run-456",
-			Namespace:   testNamespace,
-			CommitSHA:   "1234567890abcdef",
-		}
+func TestWebhook_Upsert_FailsOpenWithoutStore(t *testing.T) {
+	srv, rec := newRecordingServer(t)
+	// No MessageStore: upsert must degrade to a plain execute each time.
+	n, err := New(Config{WebhookURL: webhookURL(srv.URL), Mode: ModeUpsert}, nil)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
 
-		payload, err := n.payload(event)
-		if err != nil {
-			t.Fatalf("payload() error = %v, want nil", err)
+	evt := successEvent()
+	if err := n.Handle(context.Background(), evt); err != nil {
+		t.Fatalf("first Handle() failed: %v", err)
+	}
+	if err := n.Handle(context.Background(), evt); err != nil {
+		t.Fatalf("second Handle() failed: %v", err)
+	}
+
+	if len(rec.methods) != 2 {
+		t.Fatalf("expected 2 calls, got %d", len(rec.methods))
+	}
+	for i, m := range rec.methods {
+		if m != http.MethodPost {
+			t.Errorf("call %d method = %q, want POST (fail-open to execute)", i, m)
 		}
+	}
+}
 
-		p := payload.(map[string]any)
-		embeds := p["embeds"].([]any)
-		embed := embeds[0].(map[string]any)
-		fields := embed["fields"].([]map[string]any)
+func TestBotToken_TokenRefreshedPerRequest(t *testing.T) {
+	srv, rec := newRecordingServer(t)
+	n, err := New(Config{
+		BotToken:   &rotatingRefresher{},
+		ChannelID:  testChannelID,
+		httpClient: redirectClient(srv.URL),
+	}, nil)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
 
-		found := false
-		for _, field := range fields {
-			if field["name"] == fieldCommit {
-				found = true
-				if field["value"] != "`1234567`" {
-					t.Errorf("commit field value = %v, want `1234567`", field["value"])
-				}
+	evt := successEvent()
+	if err := n.Handle(context.Background(), evt); err != nil {
+		t.Fatalf("first Handle() failed: %v", err)
+	}
+	if err := n.Handle(context.Background(), evt); err != nil {
+		t.Fatalf("second Handle() failed: %v", err)
+	}
+
+	if len(rec.auths) != 2 {
+		t.Fatalf("expected 2 calls, got %d", len(rec.auths))
+	}
+	if rec.auths[0] == rec.auths[1] {
+		t.Errorf("token not refreshed per request: both calls used %q", rec.auths[0])
+	}
+	if rec.auths[0] != "Bot bot-token-1" || rec.auths[1] != "Bot bot-token-2" {
+		t.Errorf("auths = %v, want rotating Bot tokens", rec.auths)
+	}
+}
+
+func TestEmbed(t *testing.T) {
+	srv, _ := newRecordingServer(t)
+	n, err := New(Config{WebhookURL: webhookURL(srv.URL)}, nil)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	t.Run("default embed fields", func(t *testing.T) {
+		e := domain.Event{State: domain.StateSuccess, Context: testContext, Description: "d", RunName: "r", Namespace: "ns", CommitSHA: "1234567890abcdef", TargetURL: "https://x/y"}
+		em := n.embed(e)
+		if em.Title != testContext || em.Description != "d" {
+			t.Errorf("title/desc = %q/%q", em.Title, em.Description)
+		}
+		if em.Color != 0x36a64f {
+			t.Errorf("color = %#x, want 0x36a64f", em.Color)
+		}
+		if em.URL != "https://x/y" {
+			t.Errorf("url = %q", em.URL)
+		}
+		if em.Footer == nil || em.Footer.Text != "ns/r" {
+			t.Errorf("footer = %+v, want ns/r", em.Footer)
+		}
+		var commit string
+		for _, f := range em.Fields {
+			if f.Name == fieldCommit {
+				commit = f.Value
 			}
 		}
-		if !found {
-			t.Error("commit field not found in payload")
+		if commit != "`1234567`" {
+			t.Errorf("commit field = %q, want `1234567`", commit)
 		}
 	})
 
-	t.Run("event with short commit SHA", func(t *testing.T) {
-		n, err := New(Config{WebhookURL: testWebhookURL}, nil)
-		if err != nil {
-			t.Fatalf("New() failed: %v", err)
-		}
-		event := domain.Event{
-			State:       domain.StateSuccess,
-			Context:     testContextShort,
-			Description: "ok",
-			RunID:       testRunID,
-			RunName:     testRunID,
-			Namespace:   testNamespace,
-			CommitSHA:   "abc123",
-		}
-
-		payload, err := n.payload(event)
-		if err != nil {
-			t.Fatalf("payload() error = %v, want nil", err)
-		}
-
-		p := payload.(map[string]any)
-		embeds := p["embeds"].([]any)
-		embed := embeds[0].(map[string]any)
-		fields := embed["fields"].([]map[string]any)
-
-		for _, field := range fields {
-			if field["name"] == fieldCommit {
-				if field["value"] != "`abc123`" {
-					t.Errorf("commit field value = %v, want `abc123`", field["value"])
-				}
+	t.Run("no commit field when SHA empty", func(t *testing.T) {
+		em := n.embed(domain.Event{State: domain.StateRunning, RunName: "r", Namespace: "ns"})
+		for _, f := range em.Fields {
+			if f.Name == fieldCommit {
+				t.Error("commit field should be absent")
 			}
-		}
-	})
-
-	t.Run("event with target URL", func(t *testing.T) {
-		n, err := New(Config{WebhookURL: testWebhookURL}, nil)
-		if err != nil {
-			t.Fatalf("New() failed: %v", err)
-		}
-		event := domain.Event{
-			State:       domain.StateRunning,
-			Context:     "build",
-			Description: "building",
-			RunID:       "run-789",
-			RunName:     "run-789",
-			Namespace:   testNamespace,
-			TargetURL:   "https://dashboard.example.com/runs/789",
-		}
-
-		payload, err := n.payload(event)
-		if err != nil {
-			t.Fatalf("payload() error = %v, want nil", err)
-		}
-
-		p := payload.(map[string]any)
-		embeds := p["embeds"].([]any)
-		embed := embeds[0].(map[string]any)
-
-		if embed["url"] != "https://dashboard.example.com/runs/789" {
-			t.Errorf("embed url = %v, want https://dashboard.example.com/runs/789", embed["url"])
-		}
-	})
-
-	t.Run("event without target URL", func(t *testing.T) {
-		n, err := New(Config{WebhookURL: testWebhookURL}, nil)
-		if err != nil {
-			t.Fatalf("New() failed: %v", err)
-		}
-		event := domain.Event{
-			State:       domain.StateSuccess,
-			Context:     testContextShort,
-			Description: "ok",
-			RunID:       testRunID,
-			RunName:     testRunID,
-			Namespace:   testNamespace,
-		}
-
-		payload, err := n.payload(event)
-		if err != nil {
-			t.Fatalf("payload() error = %v, want nil", err)
-		}
-
-		p := payload.(map[string]any)
-		embeds := p["embeds"].([]any)
-		embed := embeds[0].(map[string]any)
-
-		if _, exists := embed["url"]; exists {
-			t.Error("embed url should not be present")
-		}
-	})
-
-	t.Run("footer contains namespace and run ID", func(t *testing.T) {
-		n, err := New(Config{WebhookURL: testWebhookURL}, nil)
-		if err != nil {
-			t.Fatalf("New() failed: %v", err)
-		}
-		event := domain.Event{
-			State:       domain.StateSuccess,
-			Context:     testContextShort,
-			Description: "ok",
-			RunID:       "my-run",
-			RunName:     "my-run",
-			Namespace:   "production",
-		}
-
-		payload, err := n.payload(event)
-		if err != nil {
-			t.Fatalf("payload() error = %v, want nil", err)
-		}
-
-		p := payload.(map[string]any)
-		embeds := p["embeds"].([]any)
-		embed := embeds[0].(map[string]any)
-		footer := embed["footer"].(map[string]string)
-
-		expected := "production/my-run"
-		if footer["text"] != expected {
-			t.Errorf("footer text = %q, want %q", footer["text"], expected)
-		}
-	})
-
-	t.Run("custom username in payload", func(t *testing.T) {
-		n, err := New(Config{
-			WebhookURL: testWebhookURL,
-			Username:   "my-custom-bot",
-		}, nil)
-		if err != nil {
-			t.Fatalf("New() failed: %v", err)
-		}
-		event := domain.Event{
-			State:       domain.StateSuccess,
-			Context:     testContextShort,
-			Description: "ok",
-			RunID:       testRunID,
-			RunName:     testRunID,
-			Namespace:   testNamespace,
-		}
-
-		payload, err := n.payload(event)
-		if err != nil {
-			t.Fatalf("payload() error = %v, want nil", err)
-		}
-
-		p := payload.(map[string]any)
-		if p["username"] != "my-custom-bot" {
-			t.Errorf("username = %v, want my-custom-bot", p["username"])
 		}
 	})
 }
@@ -453,65 +374,31 @@ func TestColorFor(t *testing.T) {
 		state domain.State
 		want  int
 	}{
-		{
-			name:  "success is green",
-			state: domain.StateSuccess,
-			want:  0x36a64f,
-		},
-		{
-			name:  "failure is red",
-			state: domain.StateFailure,
-			want:  0xe01e5a,
-		},
-		{
-			name:  "error is red",
-			state: domain.StateError,
-			want:  0xe01e5a,
-		},
-		{
-			name:  "running is yellow",
-			state: domain.StateRunning,
-			want:  0xdaa038,
-		},
-		{
-			name:  "pending is gray",
-			state: domain.StatePending,
-			want:  0xaaaaaa,
-		},
-		{
-			name:  "canceled is gray",
-			state: domain.StateCanceled,
-			want:  0xaaaaaa,
-		},
-		{
-			name:  "unknown state is gray",
-			state: domain.State("unknown"),
-			want:  0xaaaaaa,
-		},
+		{"success is green", domain.StateSuccess, 0x36a64f},
+		{"failure is red", domain.StateFailure, 0xe01e5a},
+		{"error is red", domain.StateError, 0xe01e5a},
+		{"running is yellow", domain.StateRunning, 0xdaa038},
+		{"pending is gray", domain.StatePending, 0xaaaaaa},
+		{"canceled is gray", domain.StateCanceled, 0xaaaaaa},
+		{"unknown state is gray", domain.State("unknown"), 0xaaaaaa},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := colorFor(tt.state)
-			if got != tt.want {
-				t.Errorf("colorFor(%v) = 0x%x, want 0x%x", tt.state, got, tt.want)
+			if got := colorFor(tt.state); got != tt.want {
+				t.Errorf("colorFor(%v) = %#x, want %#x", tt.state, got, tt.want)
 			}
 		})
 	}
 }
 
 func TestTemplateFile_Valid(t *testing.T) {
+	srv, _ := newRecordingServer(t)
 	tmpDir := t.TempDir()
 	templatePath := filepath.Join(tmpDir, "template.txt")
 	if err := os.WriteFile(templatePath, []byte("Build {{.State}} for {{.RunName}}"), 0600); err != nil {
 		t.Fatalf("failed to write template: %v", err)
 	}
-
-	cfg := Config{
-		WebhookURL: testWebhookURL,
-		Template:   templatePath,
-	}
-	n, err := New(cfg, nil)
+	n, err := New(Config{WebhookURL: webhookURL(srv.URL), Template: templatePath}, nil)
 	if err != nil {
 		t.Fatalf("New() with valid template file failed: %v", err)
 	}
@@ -521,11 +408,8 @@ func TestTemplateFile_Valid(t *testing.T) {
 }
 
 func TestTemplateFile_Missing(t *testing.T) {
-	cfg := Config{
-		WebhookURL: testWebhookURL,
-		Template:   "/nonexistent/template.txt",
-	}
-	_, err := New(cfg, nil)
+	srv, _ := newRecordingServer(t)
+	_, err := New(Config{WebhookURL: webhookURL(srv.URL), Template: "/nonexistent/template.txt"}, nil)
 	if err == nil {
 		t.Fatal("expected error for missing template file, got nil")
 	}
@@ -535,17 +419,13 @@ func TestTemplateFile_Missing(t *testing.T) {
 }
 
 func TestTemplateFile_InvalidSyntax(t *testing.T) {
+	srv, _ := newRecordingServer(t)
 	tmpDir := t.TempDir()
 	templatePath := filepath.Join(tmpDir, "invalid.txt")
 	if err := os.WriteFile(templatePath, []byte("{{.Invalid"), 0600); err != nil {
 		t.Fatalf("failed to write template: %v", err)
 	}
-
-	cfg := Config{
-		WebhookURL: testWebhookURL,
-		Template:   templatePath,
-	}
-	_, err := New(cfg, nil)
+	_, err := New(Config{WebhookURL: webhookURL(srv.URL), Template: templatePath}, nil)
 	if err == nil {
 		t.Fatal("expected error for invalid template syntax, got nil")
 	}

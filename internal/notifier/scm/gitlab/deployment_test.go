@@ -33,14 +33,14 @@ func TestDeploymentHandler_CreatesDeployment(t *testing.T) {
 		t.Fatal(err)
 	}
 	h, err := NewDeploymentHandler(DeploymentConfig{
-		Client: client, Name: "gitlab-main", Log: zap.NewNop(),
+		Client: client, Name: ccProvider, Log: zap.NewNop(),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	e := domain.Event{
-		Provider:  "gitlab-main",
+		Provider:  ccProvider,
 		Repo:      domain.Repo{ID: "42"},
 		CommitSHA: "abc123",
 		Context:   "staging",
@@ -61,7 +61,7 @@ func TestDeploymentHandler_CreatesDeployment(t *testing.T) {
 	_ = h.Handle(context.Background(), e)
 	// Wrong provider: skip.
 	e.State = domain.StateSuccess
-	e.Provider = "github"
+	e.Provider = ccForeign
 	_ = h.Handle(context.Background(), e)
 	if calls != 1 {
 		t.Errorf("calls = %d, want 1 (skips)", calls)

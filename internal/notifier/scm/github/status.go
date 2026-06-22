@@ -2,8 +2,8 @@ package github
 
 import (
 	"context"
-	"fmt"
 
+	gh "github.com/google/go-github/v68/github"
 	"go.uber.org/zap"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
@@ -31,7 +31,8 @@ func (r *StatusReporter) Name() string { return providerGitHub }
 // Type returns the action type.
 func (r *StatusReporter) Type() notifier.ActionType { return notifier.ActionCommitStatus }
 
-// Handle posts commit status to GitHub. Returns nil (skip) if provider doesn't match or required fields missing.
+// Handle posts commit status to GitHub using the typed go-github SDK.
+// Returns nil (skip) if provider doesn't match or required fields missing.
 func (r *StatusReporter) Handle(ctx context.Context, e domain.Event) error {
 	// Provider-match guard: skip if event not for GitHub
 	if e.Provider != providerGitHub {
@@ -60,9 +61,6 @@ func (r *StatusReporter) Handle(ctx context.Context, e domain.Event) error {
 		return nil
 	}
 
-	url := fmt.Sprintf("%s/repos/%s/%s/statuses/%s",
-		r.client.BaseURL(), e.Repo.Owner, e.Repo.Name, e.CommitSHA)
-
 	if err := scm.Validate(providerGitHub, "status_description", e.Description); err != nil {
 		return err
 	}
@@ -70,14 +68,19 @@ func (r *StatusReporter) Handle(ctx context.Context, e domain.Event) error {
 		return err
 	}
 
-	payload := map[string]any{
-		"state":       githubStateMap.Map(e.State, stateError),
-		"target_url":  e.TargetURL,
-		"description": e.Description,
-		"context":     e.Context,
+	status := &gh.RepoStatus{
+		State:   gh.Ptr(githubStateMap.Map(e.State, stateError)),
+		Context: gh.Ptr(e.Context),
+	}
+	if e.Description != "" {
+		status.Description = gh.Ptr(e.Description)
+	}
+	if e.TargetURL != "" {
+		status.TargetURL = gh.Ptr(e.TargetURL)
 	}
 
-	return r.client.Do(ctx, "POST", url, payload)
+	_, _, err := r.client.GH().Repositories.CreateStatus(ctx, e.Repo.Owner, e.Repo.Name, e.CommitSHA, status)
+	return err
 }
 
 var githubStateMap = scm.StateMap{

@@ -35,6 +35,7 @@ func (f *JiraFactory) Build(inst config.JiraInstance, log *zap.Logger) ([]notifi
 
 	client := jira.NewClient(jira.ClientConfig{
 		BaseURL:            inst.BaseURL,
+		APIVersion:         inst.APIVersion,
 		Email:              email,
 		Token:              token,
 		InsecureSkipVerify: inst.InsecureSkipVerify,

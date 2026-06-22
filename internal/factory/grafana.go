@@ -26,18 +26,20 @@ func (f *GrafanaFactory) Build(inst config.GrafanaInstance, log *zap.Logger) ([]
 	// Grafana's API auth is a service-account token (Bearer); it does not accept
 	// OAuth2 client_credentials. Re-read the mounted secret per request so a
 	// rotated token is picked up without a pod restart.
-	token, err := resolveFileRefresher(tokenFile, tokenKey, "grafana", inst.Name, "token", log)
+	token, err := resolveFileRefresher(tokenFile, tokenKey, "grafana", inst.Name, log)
 	if err != nil {
 		return nil, err
 	}
 
 	handler, err := grafana.New(grafana.Config{
-		Name:     inst.Name,
-		URL:      inst.URL,
-		Token:    token,
-		Tags:     inst.Tags,
-		Template: inst.Template,
-		Log:      log,
+		Name:         inst.Name,
+		URL:          inst.URL,
+		Token:        token,
+		Tags:         inst.Tags,
+		Template:     inst.Template,
+		DashboardUID: inst.DashboardUID,
+		PanelID:      inst.PanelID,
+		Log:          log,
 	})
 	if err != nil {
 		return nil, err

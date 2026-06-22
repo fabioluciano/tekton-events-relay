@@ -2,11 +2,12 @@ package github
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"net/url"
-	"strings"
+	"net/http"
 	"sync"
 
+	gh "github.com/google/go-github/v68/github"
 	"go.uber.org/zap"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
@@ -21,7 +22,7 @@ type labelCache struct {
 
 // LabelHandler applies labels to GitHub issues and pull requests.
 type LabelHandler struct {
-	client *Client
+	client HTTPDoer
 	labels scm.LabelSet
 	log    *zap.Logger
 	cache  *labelCache
@@ -29,10 +30,8 @@ type LabelHandler struct {
 
 // LabelConfig configures the label handler.
 type LabelConfig struct {
-	Token              string
-	BaseURL            string
-	Labels             scm.LabelSet
-	InsecureSkipVerify bool
+	Client HTTPDoer
+	Labels scm.LabelSet
 }
 
 // NewLabelHandler creates a new GitHub label handler.
@@ -43,7 +42,7 @@ func NewLabelHandler(cfg LabelConfig, log *zap.Logger) notifier.ActionHandler {
 	labels := cfg.Labels
 	labels.Validate(log)
 	return &LabelHandler{
-		client: NewClient(cfg.Token, cfg.BaseURL, cfg.InsecureSkipVerify, log, false),
+		client: cfg.Client,
 		labels: labels,
 		log:    log,
 		cache: &labelCache{
@@ -102,22 +101,11 @@ func (h *LabelHandler) ensureLabelExists(ctx context.Context, owner, repo string
 	}
 
 	// Check if label exists via repo-scoped GET
-	labelURL := fmt.Sprintf("%s/repos/%s/%s/labels/%s",
-		h.client.baseURL, owner, repo, url.PathEscape(label.Name))
-
-	var existingLabel struct {
-		Name  string `json:"name"`
-		Color string `json:"color"`
-	}
-	err := h.client.DoWithResponse(ctx, "GET", labelURL, nil, &existingLabel)
+	existingLabel, _, err := h.client.GH().Issues.GetLabel(ctx, owner, repo, label.Name)
 	if err == nil {
 		// Label exists - update color if different
-		if existingLabel.Color != label.Color {
-			payload := map[string]string{
-				"name":  label.Name,
-				"color": label.Color,
-			}
-			if err := h.client.Do(ctx, "PATCH", labelURL, payload); err != nil {
+		if existingLabel.GetColor() != label.Color {
+			if _, _, err := h.client.GH().Issues.EditLabel(ctx, owner, repo, label.Name, &gh.Label{Color: gh.Ptr(label.Color)}); err != nil {
 				return fmt.Errorf("update label color: %w", err)
 			}
 		}
@@ -129,17 +117,16 @@ func (h *LabelHandler) ensureLabelExists(ctx context.Context, owner, repo string
 	}
 
 	// If not 404, propagate error
-	if !strings.Contains(err.Error(), "returned 404") {
+	var ghErr *gh.ErrorResponse
+	if !errors.As(err, &ghErr) || ghErr.Response == nil || ghErr.Response.StatusCode != http.StatusNotFound {
 		return fmt.Errorf("check label existence: %w", err)
 	}
 
 	// Label missing: create with color
-	createURL := fmt.Sprintf("%s/repos/%s/%s/labels", h.client.baseURL, owner, repo)
-	payload := map[string]string{
-		"name":  label.Name,
-		"color": label.Color,
-	}
-	if err := h.client.Do(ctx, "POST", createURL, payload); err != nil {
+	if _, _, err := h.client.GH().Issues.CreateLabel(ctx, owner, repo, &gh.Label{
+		Name:  gh.Ptr(label.Name),
+		Color: gh.Ptr(label.Color),
+	}); err != nil {
 		return fmt.Errorf("create label with color: %w", err)
 	}
 
@@ -159,15 +146,14 @@ func (h *LabelHandler) applyLabelSet(ctx context.Context, e domain.Event, issueN
 		return err
 	}
 
-	base := fmt.Sprintf("%s/repos/%s/%s/issues/%d/labels",
-		h.client.baseURL, e.Repo.Owner, e.Repo.Name, issueNumber)
-
 	for _, label := range remove {
 		if err := scm.Validate(providerGitHub, "label_name", label.Name); err != nil {
 			return err
 		}
-		if err := h.client.Do(ctx, "DELETE", base+"/"+url.PathEscape(label.Name), nil); err != nil {
-			if strings.Contains(err.Error(), "returned 404") {
+		_, err := h.client.GH().Issues.RemoveLabelForIssue(ctx, e.Repo.Owner, e.Repo.Name, issueNumber, label.Name)
+		if err != nil {
+			var ghErr *gh.ErrorResponse
+			if errors.As(err, &ghErr) && ghErr.Response != nil && ghErr.Response.StatusCode == http.StatusNotFound {
 				continue // label not present: removal already satisfied
 			}
 			return err
@@ -193,5 +179,6 @@ func (h *LabelHandler) applyLabelSet(ctx context.Context, e domain.Event, issueN
 	for i, label := range add {
 		labelNames[i] = label.Name
 	}
-	return h.client.Do(ctx, "POST", base, map[string][]string{"labels": labelNames})
+	_, _, err = h.client.GH().Issues.AddLabelsToIssue(ctx, e.Repo.Owner, e.Repo.Name, issueNumber, labelNames)
+	return err
 }

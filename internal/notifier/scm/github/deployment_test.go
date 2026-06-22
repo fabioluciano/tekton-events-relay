@@ -20,8 +20,7 @@ const (
 
 func TestDeploymentStatusHandler_Name(t *testing.T) {
 	h := NewDeploymentStatusHandler(DeploymentStatusConfig{
-		Token:   testDeployToken,
-		BaseURL: testDeployAPIURL,
+		Client: ghTestClient(testDeployToken, testDeployAPIURL),
 	}, zap.NewNop())
 
 	if h.Name() != providerGitHub {
@@ -31,8 +30,7 @@ func TestDeploymentStatusHandler_Name(t *testing.T) {
 
 func TestDeploymentStatusHandler_Type(t *testing.T) {
 	h := NewDeploymentStatusHandler(DeploymentStatusConfig{
-		Token:   testDeployToken,
-		BaseURL: testDeployAPIURL,
+		Client: ghTestClient(testDeployToken, testDeployAPIURL),
 	}, zap.NewNop())
 
 	if h.Type() != notifier.ActionDeploymentStatus {
@@ -42,8 +40,7 @@ func TestDeploymentStatusHandler_Type(t *testing.T) {
 
 func TestDeploymentStatusHandler_MapState(t *testing.T) {
 	h := NewDeploymentStatusHandler(DeploymentStatusConfig{
-		Token:   testDeployToken,
-		BaseURL: testDeployAPIURL,
+		Client: ghTestClient(testDeployToken, testDeployAPIURL),
 	}, zap.NewNop())
 
 	handler := h.(*DeploymentStatusHandler)
@@ -87,7 +84,7 @@ func TestDeploymentStatusHandler_Handle_Success(t *testing.T) {
 
 		// First call: create deployment
 		if callCount == 1 {
-			if r.URL.Path != "/repos/myorg/myrepo/deployments" {
+			if r.URL.Path != "/api/v3/repos/myorg/myrepo/deployments" {
 				t.Errorf("unexpected deployment path: %s", r.URL.Path)
 			}
 
@@ -102,7 +99,7 @@ func TestDeploymentStatusHandler_Handle_Success(t *testing.T) {
 
 		// Second call: create deployment status
 		if callCount == 2 {
-			if r.URL.Path != "/repos/myorg/myrepo/deployments/12345/statuses" {
+			if r.URL.Path != "/api/v3/repos/myorg/myrepo/deployments/12345/statuses" {
 				t.Errorf("unexpected status path: %s", r.URL.Path)
 			}
 
@@ -120,8 +117,7 @@ func TestDeploymentStatusHandler_Handle_Success(t *testing.T) {
 	defer server.Close()
 
 	h := NewDeploymentStatusHandler(DeploymentStatusConfig{
-		Token:   "app-token-123",
-		BaseURL: server.URL,
+		Client: ghTestClient("app-token-123", server.URL),
 	}, zap.NewNop())
 
 	event := domain.Event{
@@ -179,8 +175,7 @@ func TestDeploymentStatusHandler_Handle_Success(t *testing.T) {
 
 func TestDeploymentStatusHandler_MissingAnnotations(t *testing.T) {
 	h := NewDeploymentStatusHandler(DeploymentStatusConfig{
-		Token:   "token",                  //nolint:goconst
-		BaseURL: "https://api.github.com", //nolint:goconst
+		Client: ghTestClient("token", "https://api.github.com"), //nolint:goconst
 	}, zap.NewNop())
 
 	tests := []struct {

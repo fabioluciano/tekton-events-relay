@@ -4,10 +4,12 @@
 // Behavior:
 //   - StateFailure / StateError  → trigger (opens incident)
 //   - StateSuccess               → resolve (closes open incident, if any)
+//   - StateRunning               → acknowledge (opt-in via AcknowledgeOnRunning)
 //   - other states               → ignored by default
 //
 // Incident deduplication uses RunID as DedupKey — ensures that
 // multiple events from the same run don't open multiple incidents.
+// acknowledge and resolve both reference the original incident via dedup_key.
 package pagerduty
 
 import (
@@ -22,15 +24,17 @@ import (
 )
 
 const (
-	eventsAPI     = "https://events.pagerduty.com/v2/enqueue"
-	actionTrigger = "trigger"
-	actionResolve = "resolve"
+	eventsAPI         = "https://events.pagerduty.com/v2/enqueue"
+	actionTrigger     = "trigger"
+	actionResolve     = "resolve"
+	actionAcknowledge = "acknowledge"
 )
 
 // Config contains PagerDuty integration settings.
 type Config struct {
-	IntegrationKey string // PagerDuty service routing key
-	Severity       string // critical, error, warning, info — default: critical
+	IntegrationKey       string // PagerDuty service routing key
+	Severity             string // critical, error, warning, info — default: critical
+	AcknowledgeOnRunning bool   // when true, in-progress (running) events send an acknowledge
 }
 
 // Notifier sends events to PagerDuty.
@@ -64,25 +68,29 @@ func (n *Notifier) Type() notifier.ActionType { return notifier.ActionNotify }
 
 // Handle sends an event to PagerDuty.
 func (n *Notifier) Handle(ctx context.Context, e domain.Event) error {
-	action := actionFor(e.State)
+	action := actionFor(e.State, n.cfg.AcknowledgeOnRunning)
 	if action == "" {
 		return nil // irrelevant state, ignore
 	}
 	return n.base.Send(ctx, e)
 }
 
-func actionFor(s domain.State) string {
+func actionFor(s domain.State, acknowledgeOnRunning bool) string {
 	switch s {
 	case domain.StateFailure, domain.StateError:
 		return actionTrigger
 	case domain.StateSuccess:
 		return actionResolve
+	case domain.StateRunning:
+		if acknowledgeOnRunning {
+			return actionAcknowledge
+		}
 	}
 	return ""
 }
 
 func (n *Notifier) payload(e domain.Event) (any, error) {
-	action := actionFor(e.State)
+	action := actionFor(e.State, n.cfg.AcknowledgeOnRunning)
 	if action == "" {
 		return nil, fmt.Errorf("unsupported state for pagerduty: %s", e.State)
 	}

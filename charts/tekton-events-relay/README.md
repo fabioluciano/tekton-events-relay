@@ -1,6 +1,6 @@
 # tekton-events-relay
 
-![Version: 0.8.1](https://img.shields.io/badge/Version-0.8.1-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.8.1](https://img.shields.io/badge/AppVersion-0.8.1-informational?style=flat-square)
+![Version: 0.9.0](https://img.shields.io/badge/Version-0.9.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.9.0](https://img.shields.io/badge/AppVersion-0.9.0-informational?style=flat-square)
 
 **Your pipelines run. Your platforms get updated. You write zero notification code.**
 
@@ -25,7 +25,7 @@ Tekton Events Relay turns the CloudEvents your Tekton pipelines already emit int
 ```bash
 helm install tekton-events-relay \
   oci://ghcr.io/fabioluciano/charts/tekton-events-relay \
-  --version 0.8.1 \
+  --version 0.9.0 \
   --namespace tekton-events-relay --create-namespace \
   -f values.yaml
 ```
@@ -89,12 +89,12 @@ Images and charts are signed with [Cosign](https://github.com/sigstore/cosign) (
 cosign verify \
   --certificate-identity-regexp='https://github.com/fabioluciano/tekton-events-relay' \
   --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
-  ghcr.io/fabioluciano/tekton-events-relay:0.8.1
+  ghcr.io/fabioluciano/tekton-events-relay:0.9.0
 
 cosign verify \
   --certificate-identity-regexp='https://github.com/fabioluciano/tekton-events-relay' \
   --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
-  oci://ghcr.io/fabioluciano/charts/tekton-events-relay:0.8.1
+  oci://ghcr.io/fabioluciano/charts/tekton-events-relay:0.9.0
 ```
 
 ## Scaling note
@@ -160,6 +160,7 @@ The default in-memory state backend is per-pod: run **one replica**, or set `con
 | config.jira[0].actions | list | `[{"enabled":true,"name":"result-comment","type":"comment","when":"event.Resource == \"pipelinerun\" && stateIn(\"success\", \"failure\", \"error\")"},{"enabled":false,"name":"mark-done","transition":"Done","type":"transition","when":"event.Resource == \"pipelinerun\" && event.State == \"success\""}]` | Skip TLS verification (self-hosted Data Center only) insecure_skip_verify: false |
 | config.jira[0].actions[0] | object | `{"enabled":true,"name":"result-comment","type":"comment","when":"event.Resource == \"pipelinerun\" && stateIn(\"success\", \"failure\", \"error\")"}` | Comment on the linked issue when the pipeline finishes |
 | config.jira[0].actions[1] | object | `{"enabled":false,"name":"mark-done","transition":"Done","type":"transition","when":"event.Resource == \"pipelinerun\" && event.State == \"success\""}` | Move the card when the pipeline succeeds (disabled by default) |
+| config.jira[0].auth | object | `{}` | Jira REST API version: "2" (default, plain-text bodies) or "3" (Atlassian Document Format). Omit for "2". api_version: "3" Credentials: token via secretRef (key "token"). With auth.email set, Cloud basic auth (email + API token); without it, Data Center bearer PAT. OAuth2 client_credentials (Data Center/gateway) is also supported and is not combinable with email or token. |
 | config.jira[0].base_url | string | `"https://yourorg.atlassian.net"` | Jira base URL (Cloud: https://yourorg.atlassian.net) |
 | config.jira[0].enabled | bool | `false` | Enable or disable this Jira instance |
 | config.logging | object | `{"level":"info","verbose":{"caller":false,"http_calls":false,"payloads":false}}` | Logging configuration |
@@ -216,11 +217,12 @@ The default in-memory state backend is per-pod: run **one replica**, or set `con
 | config.retry.initial_backoff | string | `"250ms"` | First backoff delay (Go duration format) |
 | config.retry.max_attempts | int | `4` | Total attempts including the first request |
 | config.retry.max_backoff | string | `"30s"` | Backoff ceiling (Go duration format) |
-| config.scm.azure_devops | list | `[{"actions":[{"enabled":false,"name":"commit-status","type":"commit_status","when":""},{"enabled":false,"name":"pr-comment","template":{"configmapRef":{"key":"azuredevops-comment.tmpl"}},"type":"pr_comment","when":"stateIn(\"success\", \"failure\")"},{"enabled":false,"labels":{"add":[{"color":"0e8a16","name":"build-passed"}],"remove":[{"name":"build-failed"}]},"name":"label","type":"label","when":""}],"base_url":"https://dev.azure.com","enabled":false,"genre":"tekton-ci","insecure_skip_verify":false,"name":"default"}]` | Azure DevOps SCM provider configuration |
-| config.scm.azure_devops[0].actions | list | `[{"enabled":false,"name":"commit-status","type":"commit_status","when":""},{"enabled":false,"name":"pr-comment","template":{"configmapRef":{"key":"azuredevops-comment.tmpl"}},"type":"pr_comment","when":"stateIn(\"success\", \"failure\")"},{"enabled":false,"labels":{"add":[{"color":"0e8a16","name":"build-passed"}],"remove":[{"name":"build-failed"}]},"name":"label","type":"label","when":""}]` | Actions to perform when events are received |
+| config.scm.azure_devops | list | `[{"actions":[{"enabled":false,"name":"commit-status","type":"commit_status","when":""},{"enabled":false,"mode":"upsert","name":"pr-comment","template":{"configmapRef":{"key":"azuredevops-comment.tmpl"}},"type":"pr_comment","when":"stateIn(\"success\", \"failure\")"},{"enabled":false,"labels":{"add":[{"color":"0e8a16","name":"build-passed"}],"remove":[{"name":"build-failed"}]},"name":"label","type":"label","when":""}],"base_url":"https://dev.azure.com","enabled":false,"genre":"tekton-ci","insecure_skip_verify":false,"name":"default"}]` | Azure DevOps SCM provider configuration |
+| config.scm.azure_devops[0].actions | list | `[{"enabled":false,"name":"commit-status","type":"commit_status","when":""},{"enabled":false,"mode":"upsert","name":"pr-comment","template":{"configmapRef":{"key":"azuredevops-comment.tmpl"}},"type":"pr_comment","when":"stateIn(\"success\", \"failure\")"},{"enabled":false,"labels":{"add":[{"color":"0e8a16","name":"build-passed"}],"remove":[{"name":"build-failed"}]},"name":"label","type":"label","when":""}]` | Actions to perform when events are received |
 | config.scm.azure_devops[0].actions[0].enabled | bool | `false` | Enable or disable this SCM provider instance |
 | config.scm.azure_devops[0].actions[0].type | string | `"commit_status"` | Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status) |
 | config.scm.azure_devops[0].actions[1].enabled | bool | `false` | Enable or disable this SCM provider instance |
+| config.scm.azure_devops[0].actions[1].mode | string | `"upsert"` | Comment mode: "create" (default) or "upsert" (edit one comment per run) |
 | config.scm.azure_devops[0].actions[1].type | string | `"pr_comment"` | Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status) |
 | config.scm.azure_devops[0].actions[2].enabled | bool | `false` | Enable or disable this SCM provider instance |
 | config.scm.azure_devops[0].actions[2].labels | object | `{"add":[{"color":"0e8a16","name":"build-passed"}],"remove":[{"name":"build-failed"}]}` | Declarative label effect: add/remove lists with optional colors (hex without #) |
@@ -275,8 +277,8 @@ The default in-memory state backend is per-pod: run **one replica**, or set `con
 | config.scm.github[0].auth.secretRef | object | `{"key":"token","name":"github-default-token"}` | Kubernetes Secret containing credentials |
 | config.scm.github[0].base_url | string | `"https://api.github.com"` | API base URL for the SCM provider |
 | config.scm.github[0].enabled | bool | `false` | Enable or disable this SCM provider instance |
-| config.scm.gitlab | list | `[{"actions":[{"enabled":false,"name":"commit-status","type":"commit_status","when":""},{"enabled":false,"name":"pr-comment","template":{"configmapRef":{"key":"gitlab-note.tmpl"}},"type":"pr_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"name":"issue-comment","template":{"configmapRef":{"key":"gitlab-note.tmpl"}},"type":"issue_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"labels":{"add":[{"color":"0e8a16","name":"pipeline::success"}],"remove":[{"name":"pipeline::failed"}]},"name":"label","type":"label","when":""}],"base_url":"https://gitlab.com/api/v4","enabled":false,"name":"cloud","variant":"saas"},{"actions":[{"enabled":false,"name":"commit-status","type":"commit_status","when":""},{"enabled":false,"name":"pr-comment","template":{"configmapRef":{"key":"gitlab-note.tmpl"}},"type":"pr_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"name":"issue-comment","template":{"configmapRef":{"key":"gitlab-note.tmpl"}},"type":"issue_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"labels":{"add":[{"color":"0e8a16","name":"pipeline::success"}],"remove":[{"name":"pipeline::failed"}]},"name":"label","type":"label","when":""}],"base_url":"https://gitlab.company.example.com/api/v4","enabled":false,"name":"server","variant":"self-managed"}]` | GitLab SCM provider configuration |
-| config.scm.gitlab[0].actions | list | `[{"enabled":false,"name":"commit-status","type":"commit_status","when":""},{"enabled":false,"name":"pr-comment","template":{"configmapRef":{"key":"gitlab-note.tmpl"}},"type":"pr_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"name":"issue-comment","template":{"configmapRef":{"key":"gitlab-note.tmpl"}},"type":"issue_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"labels":{"add":[{"color":"0e8a16","name":"pipeline::success"}],"remove":[{"name":"pipeline::failed"}]},"name":"label","type":"label","when":""}]` | Actions to perform when events are received |
+| config.scm.gitlab | list | `[{"actions":[{"enabled":false,"name":"commit-status","type":"commit_status","when":""},{"enabled":false,"name":"pr-comment","template":{"configmapRef":{"key":"gitlab-note.tmpl"}},"type":"pr_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"name":"issue-comment","template":{"configmapRef":{"key":"gitlab-note.tmpl"}},"type":"issue_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"name":"discussion-comment","template":{"configmapRef":{"key":"gitlab-note.tmpl"}},"type":"discussion_comment","when":"isPR() && stateIn(\"failure\", \"error\")"},{"enabled":false,"mode":"upsert","name":"commit-comment","template":{"configmapRef":{"key":"gitlab-note.tmpl"}},"type":"commit_comment","when":"stateIn(\"success\", \"failure\")"},{"enabled":false,"labels":{"add":[{"color":"0e8a16","name":"pipeline::success"}],"remove":[{"name":"pipeline::failed"}]},"name":"label","type":"label","when":""}],"base_url":"https://gitlab.com/api/v4","enabled":false,"name":"cloud","variant":"saas"},{"actions":[{"enabled":false,"name":"commit-status","type":"commit_status","when":""},{"enabled":false,"name":"pr-comment","template":{"configmapRef":{"key":"gitlab-note.tmpl"}},"type":"pr_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"name":"issue-comment","template":{"configmapRef":{"key":"gitlab-note.tmpl"}},"type":"issue_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"labels":{"add":[{"color":"0e8a16","name":"pipeline::success"}],"remove":[{"name":"pipeline::failed"}]},"name":"label","type":"label","when":""}],"base_url":"https://gitlab.company.example.com/api/v4","enabled":false,"name":"server","variant":"self-managed"}]` | GitLab SCM provider configuration |
+| config.scm.gitlab[0].actions | list | `[{"enabled":false,"name":"commit-status","type":"commit_status","when":""},{"enabled":false,"name":"pr-comment","template":{"configmapRef":{"key":"gitlab-note.tmpl"}},"type":"pr_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"name":"issue-comment","template":{"configmapRef":{"key":"gitlab-note.tmpl"}},"type":"issue_comment","when":"stateIn(\"failure\", \"error\")"},{"enabled":false,"name":"discussion-comment","template":{"configmapRef":{"key":"gitlab-note.tmpl"}},"type":"discussion_comment","when":"isPR() && stateIn(\"failure\", \"error\")"},{"enabled":false,"mode":"upsert","name":"commit-comment","template":{"configmapRef":{"key":"gitlab-note.tmpl"}},"type":"commit_comment","when":"stateIn(\"success\", \"failure\")"},{"enabled":false,"labels":{"add":[{"color":"0e8a16","name":"pipeline::success"}],"remove":[{"name":"pipeline::failed"}]},"name":"label","type":"label","when":""}]` | Actions to perform when events are received |
 | config.scm.gitlab[0].actions[0].enabled | bool | `false` | Enable or disable this SCM provider instance |
 | config.scm.gitlab[0].actions[0].type | string | `"commit_status"` | Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status) |
 | config.scm.gitlab[0].actions[1].enabled | bool | `false` | Enable or disable this SCM provider instance |
@@ -284,8 +286,13 @@ The default in-memory state backend is per-pod: run **one replica**, or set `con
 | config.scm.gitlab[0].actions[2].enabled | bool | `false` | Enable or disable this SCM provider instance |
 | config.scm.gitlab[0].actions[2].type | string | `"issue_comment"` | Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status) |
 | config.scm.gitlab[0].actions[3].enabled | bool | `false` | Enable or disable this SCM provider instance |
-| config.scm.gitlab[0].actions[3].labels | object | `{"add":[{"color":"0e8a16","name":"pipeline::success"}],"remove":[{"name":"pipeline::failed"}]}` | Declarative label effect: add/remove lists with optional colors (hex without #) |
-| config.scm.gitlab[0].actions[3].type | string | `"label"` | Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status) |
+| config.scm.gitlab[0].actions[3].type | string | `"discussion_comment"` | Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status) |
+| config.scm.gitlab[0].actions[4].enabled | bool | `false` | Enable or disable this SCM provider instance |
+| config.scm.gitlab[0].actions[4].mode | string | `"upsert"` | Comment mode: "create" (default) or "upsert" (edit per run) |
+| config.scm.gitlab[0].actions[4].type | string | `"commit_comment"` | Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status) |
+| config.scm.gitlab[0].actions[5].enabled | bool | `false` | Enable or disable this SCM provider instance |
+| config.scm.gitlab[0].actions[5].labels | object | `{"add":[{"color":"0e8a16","name":"pipeline::success"}],"remove":[{"name":"pipeline::failed"}]}` | Declarative label effect: add/remove lists with optional colors (hex without #) |
+| config.scm.gitlab[0].actions[5].type | string | `"label"` | Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status) |
 | config.scm.gitlab[0].base_url | string | `"https://gitlab.com/api/v4"` | API base URL for the SCM provider |
 | config.scm.gitlab[0].enabled | bool | `false` | Enable or disable this SCM provider instance |
 | config.scm.gitlab[0].variant | string | `"saas"` | Deployment model: 'saas' for gitlab.com, 'self-managed' for self-hosted. This field is required when instance is enabled. Currently metadata-only but enables future SaaS-specific behaviors (rate limiting, feature detection). |

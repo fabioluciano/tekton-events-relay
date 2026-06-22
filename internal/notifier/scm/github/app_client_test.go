@@ -130,19 +130,17 @@ func TestAppClient_TokenRefresh(t *testing.T) {
 		t.Fatalf("NewAppClient failed: %v", err)
 	}
 
-	firstToken := client.currentToken
+	firstToken, err := client.Token(context.Background())
+	if err != nil {
+		t.Fatalf("Token() first call: %v", err)
+	}
 
-	// Wait for token to expire (plus refresh window)
 	time.Sleep(2 * time.Second)
 
-	// Make a request - should trigger refresh
-	ctx := context.Background()
-	_ = client.Do(ctx, "GET", server.URL+"/test", nil)
-	// We expect this to fail because the mock doesn't handle /test, but token should refresh
-
-	client.mu.RLock()
-	secondToken := client.currentToken
-	client.mu.RUnlock()
+	secondToken, err := client.Token(context.Background())
+	if err != nil {
+		t.Fatalf("Token() second call: %v", err)
+	}
 
 	if firstToken == secondToken {
 		t.Error("Expected token to be refreshed after expiry")
@@ -173,11 +171,8 @@ func TestAppClient_Do(t *testing.T) {
 	_, _ = tmpFile.Write(privateKeyPEM)
 	_ = tmpFile.Close()
 
-	// Create mock server
-	var authHeader string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.URL.Path, "access_tokens") {
-			// Token exchange endpoint
 			//nolint:gosec // G101: test credential
 			resp := map[string]any{
 				"token":      "ghs_app_token_123",
@@ -186,36 +181,28 @@ func TestAppClient_Do(t *testing.T) {
 			w.WriteHeader(http.StatusCreated)
 			_ = json.NewEncoder(w).Encode(resp)
 		} else {
-			// API endpoint
-			authHeader = r.Header.Get("Authorization")
 			w.WriteHeader(http.StatusOK)
 		}
 	}))
 	defer server.Close()
 
-	// Mock generateAppJWT to use temp file
 	originalGenJWT := generateAppJWT
 	generateAppJWT = func(appID int64, _ string) (string, error) {
 		return generateAppJWTFromPath(appID, tmpFile.Name())
 	}
 	defer func() { generateAppJWT = originalGenJWT }()
 
-	// Create AppClient
 	client, err := NewAppClient(123456, 789012, server.URL, false, zap.NewNop(), "")
 	if err != nil {
 		t.Fatalf("NewAppClient failed: %v", err)
 	}
 
-	// Make API call
-	ctx := context.Background()
-	err = client.Do(ctx, "POST", server.URL+"/repos/owner/repo/statuses/abc123", map[string]string{"state": "success"})
+	token, err := client.Token(context.Background())
 	if err != nil {
-		t.Fatalf("Do request failed: %v", err)
+		t.Fatalf("Token() failed: %v", err)
 	}
-
-	// Verify installation token was used (go-github uses "token" prefix for WithAuthToken)
-	if !strings.HasPrefix(authHeader, "token ghs_app_token_") && !strings.HasPrefix(authHeader, "Bearer ghs_app_token_") {
-		t.Errorf("Expected installation token in auth header, got: %s", authHeader)
+	if !strings.HasPrefix(token, "ghs_app_token_") {
+		t.Errorf("Expected installation token starting with ghs_app_token_, got: %s", token)
 	}
 }
 

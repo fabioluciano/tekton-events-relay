@@ -15,20 +15,18 @@ import (
 
 // DiscussionCommentHandler posts comments to GitHub Discussions.
 type DiscussionCommentHandler struct {
-	client   *Client
+	client   HTTPDoer
 	template *template.Template
 }
 
 // DiscussionCommentConfig configures the discussion comment handler.
 type DiscussionCommentConfig struct {
-	Token              string
-	BaseURL            string
-	Template           string
-	InsecureSkipVerify bool
+	Client   HTTPDoer
+	Template string
 }
 
 // NewDiscussionCommentHandler creates a new GitHub discussion comment handler.
-func NewDiscussionCommentHandler(cfg DiscussionCommentConfig, log *zap.Logger) (notifier.ActionHandler, error) {
+func NewDiscussionCommentHandler(cfg DiscussionCommentConfig, _ *zap.Logger) (notifier.ActionHandler, error) {
 	var tmpl *template.Template
 	if cfg.Template != "" {
 		var err error
@@ -39,7 +37,7 @@ func NewDiscussionCommentHandler(cfg DiscussionCommentConfig, log *zap.Logger) (
 	}
 
 	return &DiscussionCommentHandler{
-		client:   NewClient(cfg.Token, cfg.BaseURL, cfg.InsecureSkipVerify, log, false),
+		client:   cfg.Client,
 		template: tmpl,
 	}, nil
 }

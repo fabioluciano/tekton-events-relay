@@ -171,7 +171,7 @@ func TestBuildAll_IntegrationWiring(t *testing.T) {
 		if err := os.WriteFile(teamsWebhook, []byte("https://teams.webhook.office.com/test"), 0600); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(discordWebhook, []byte("https://discord.com/api/webhooks/test"), 0600); err != nil {
+		if err := os.WriteFile(discordWebhook, []byte("https://discord.com/api/webhooks/123/abc"), 0600); err != nil {
 			t.Fatal(err)
 		}
 		if err := os.WriteFile(pdKey, []byte("test-pd-key"), 0600); err != nil {

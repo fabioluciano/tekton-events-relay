@@ -3,6 +3,7 @@ package slack
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
+	"github.com/fabioluciano/tekton-events-relay/internal/notifier/msgstore"
 )
 
 const (
@@ -23,6 +25,7 @@ const (
 	testNamespace     = "default"
 	testFieldCommit   = "Commit"
 	testFieldDuration = "Duration"
+	testChannelID     = "C12345"
 )
 
 func TestNew(t *testing.T) {
@@ -66,29 +69,50 @@ func TestNew_CustomConfig(t *testing.T) {
 	}
 }
 
-func TestNew_BotTokenMode(t *testing.T) {
-	var receivedAuth string
-	var receivedURL string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		receivedAuth = r.Header.Get("Authorization")
-		receivedURL = r.URL.Path
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer server.Close()
+// staticRefresher returns a fixed token; rotatingRefresher returns a new token
+// each call so tests can prove the token is resolved per request, not cached.
+type staticRefresher struct{ tok string }
 
-	cfg := Config{ //nolint:gosec // test-only credential values
-		BotToken:  "xoxb-test-token",
-		ChannelID: "C12345",
+func (s staticRefresher) Token(_ context.Context) (string, error) { return s.tok, nil }
+
+type rotatingRefresher struct{ n int }
+
+func (r *rotatingRefresher) Token(_ context.Context) (string, error) {
+	r.n++
+	return fmt.Sprintf("xoxb-token-%d", r.n), nil
+}
+
+// slackTestServer records each request path and Authorization header, replying
+// with a minimal chat.postMessage / chat.update success body.
+type slackTestServer struct {
+	paths []string
+	auths []string
+}
+
+func newSlackTestServer(t *testing.T) (*httptest.Server, *slackTestServer) {
+	t.Helper()
+	rec := &slackTestServer{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rec.paths = append(rec.paths, r.URL.Path)
+		rec.auths = append(rec.auths, r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true,"channel":"C12345","ts":"111.111"}`))
+	}))
+	return srv, rec
+}
+
+func TestNew_BotTokenMode(t *testing.T) {
+	srv, rec := newSlackTestServer(t)
+	defer srv.Close()
+
+	cfg := Config{
+		Token:     staticRefresher{tok: "xoxb-test-token"},
+		ChannelID: testChannelID,
+		apiURL:    srv.URL + "/",
 	}
-	// Override BuildURL to use test server
 	n, err := New(cfg, nil)
 	if err != nil {
 		t.Fatalf("New() failed: %v", err)
-	}
-
-	// Patch BuildURL to point at test server
-	n.base.BuildURL = func(_ domain.Event) (string, error) {
-		return server.URL + "/api/chat.postMessage", nil
 	}
 
 	evt := domain.Event{
@@ -103,16 +127,148 @@ func TestNew_BotTokenMode(t *testing.T) {
 		t.Fatalf("Handle() failed: %v", err)
 	}
 
-	if receivedAuth != "Bearer xoxb-test-token" {
-		t.Errorf("Authorization = %q, want %q", receivedAuth, "Bearer xoxb-test-token")
+	if len(rec.paths) != 1 || !strings.Contains(rec.paths[0], "chat.postMessage") {
+		t.Errorf("paths = %v, expected one chat.postMessage call", rec.paths)
 	}
-	if !strings.Contains(receivedURL, "chat.postMessage") {
-		t.Errorf("URL = %q, expected chat.postMessage endpoint", receivedURL)
+	if rec.auths[0] != "Bearer xoxb-test-token" {
+		t.Errorf("Authorization = %q, want %q", rec.auths[0], "Bearer xoxb-test-token")
+	}
+	if n.cfg.Channel != testChannelID {
+		t.Errorf("Channel = %q, want C12345", n.cfg.Channel)
+	}
+}
+
+func TestBotToken_Upsert_SecondCallUpdates(t *testing.T) {
+	srv, rec := newSlackTestServer(t)
+	defer srv.Close()
+
+	cfg := Config{
+		Token:        staticRefresher{tok: "xoxb-test-token"},
+		ChannelID:    testChannelID,
+		Mode:         ModeUpsert,
+		MessageStore: msgstore.NewMemoryStore(0, 0),
+		apiURL:       srv.URL + "/",
+	}
+	n, err := New(cfg, nil)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
 	}
 
-	// Channel should be set from ChannelID
-	if n.cfg.Channel != "C12345" {
-		t.Errorf("Channel = %q, want C12345", n.cfg.Channel)
+	evt := domain.Event{RunID: testRunID, RunName: testRunID, State: domain.StateRunning, Context: testBuild, Namespace: testNamespace}
+
+	// First call posts and stores the ts.
+	if err := n.Handle(context.Background(), evt); err != nil {
+		t.Fatalf("first Handle() failed: %v", err)
+	}
+	// Second call for the same RunID must edit via chat.update.
+	evt.State = domain.StateSuccess
+	if err := n.Handle(context.Background(), evt); err != nil {
+		t.Fatalf("second Handle() failed: %v", err)
+	}
+
+	if len(rec.paths) != 2 {
+		t.Fatalf("expected 2 calls, got %d (%v)", len(rec.paths), rec.paths)
+	}
+	if !strings.Contains(rec.paths[0], "chat.postMessage") {
+		t.Errorf("first path = %q, want chat.postMessage", rec.paths[0])
+	}
+	if !strings.Contains(rec.paths[1], "chat.update") {
+		t.Errorf("second path = %q, want chat.update", rec.paths[1])
+	}
+}
+
+func TestBotToken_Upsert_FailsOpenWithoutStore(t *testing.T) {
+	srv, rec := newSlackTestServer(t)
+	defer srv.Close()
+
+	cfg := Config{
+		Token:     staticRefresher{tok: "xoxb-test-token"},
+		ChannelID: testChannelID,
+		Mode:      ModeUpsert,
+		// No MessageStore: upsert must degrade to a plain post each time.
+		apiURL: srv.URL + "/",
+	}
+	n, err := New(cfg, nil)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	evt := domain.Event{RunID: testRunID, RunName: testRunID, State: domain.StateRunning, Context: testBuild, Namespace: testNamespace}
+	if err := n.Handle(context.Background(), evt); err != nil {
+		t.Fatalf("first Handle() failed: %v", err)
+	}
+	if err := n.Handle(context.Background(), evt); err != nil {
+		t.Fatalf("second Handle() failed: %v", err)
+	}
+
+	if len(rec.paths) != 2 {
+		t.Fatalf("expected 2 calls, got %d", len(rec.paths))
+	}
+	for i, p := range rec.paths {
+		if !strings.Contains(p, "chat.postMessage") {
+			t.Errorf("call %d path = %q, want chat.postMessage (fail-open to post)", i, p)
+		}
+	}
+}
+
+func TestBotToken_TokenRefreshedPerRequest(t *testing.T) {
+	srv, rec := newSlackTestServer(t)
+	defer srv.Close()
+
+	cfg := Config{
+		Token:     &rotatingRefresher{},
+		ChannelID: testChannelID,
+		apiURL:    srv.URL + "/",
+	}
+	n, err := New(cfg, nil)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	evt := domain.Event{RunID: testRunID, RunName: testRunID, State: domain.StateSuccess, Context: testBuild, Namespace: testNamespace}
+	if err := n.Handle(context.Background(), evt); err != nil {
+		t.Fatalf("first Handle() failed: %v", err)
+	}
+	if err := n.Handle(context.Background(), evt); err != nil {
+		t.Fatalf("second Handle() failed: %v", err)
+	}
+
+	if len(rec.auths) != 2 {
+		t.Fatalf("expected 2 calls, got %d", len(rec.auths))
+	}
+	if rec.auths[0] == rec.auths[1] {
+		t.Errorf("token not refreshed per request: both calls used %q", rec.auths[0])
+	}
+	if rec.auths[0] != "Bearer xoxb-token-1" || rec.auths[1] != "Bearer xoxb-token-2" {
+		t.Errorf("auths = %v, want rotating Bearer tokens", rec.auths)
+	}
+}
+
+func TestBotToken_ThreadTS_SetsThreadOption(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		if got := r.FormValue("thread_ts"); got != "999.999" {
+			t.Errorf("thread_ts = %q, want 999.999", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true,"channel":"C12345","ts":"111.111"}`))
+	}))
+	defer srv.Close()
+
+	cfg := Config{
+		Token:     staticRefresher{tok: "xoxb-test-token"},
+		ChannelID: testChannelID,
+		ThreadTS:  "999.999",
+		apiURL:    srv.URL + "/",
+	}
+	n, err := New(cfg, nil)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	evt := domain.Event{RunID: testRunID, RunName: testRunID, State: domain.StateSuccess, Context: testBuild, Namespace: testNamespace}
+	if err := n.Handle(context.Background(), evt); err != nil {
+		t.Fatalf("Handle() failed: %v", err)
 	}
 }
 

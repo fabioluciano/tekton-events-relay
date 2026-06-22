@@ -61,7 +61,7 @@ func newMRHandler(t *testing.T, baseURL, mode string) notifier.ActionHandler {
 		t.Fatalf("NewClient: %v", err)
 	}
 	h, err := NewMRCommentHandler(MRCommentConfig{
-		Client: client, Name: "gitlab-main",
+		Client: client, Name: ccProvider,
 		Template: "Run {{.RunName}}: {{.State}}", Mode: mode, Log: zap.NewNop(),
 	})
 	if err != nil {
@@ -73,7 +73,7 @@ func newMRHandler(t *testing.T, baseURL, mode string) notifier.ActionHandler {
 func mrEvent(state domain.State) domain.Event {
 	pr := 7
 	return domain.Event{
-		Provider: "gitlab-main",
+		Provider: ccProvider,
 		Repo:     domain.Repo{ID: "42"},
 		RunName:  "run-1", RunID: "uid-123",
 		PRNumber: &pr, State: state,
@@ -121,7 +121,7 @@ func TestMRCommentHandler_Skips(t *testing.T) {
 
 	h := newMRHandler(t, srv.URL, "")
 	e := mrEvent(domain.StateSuccess)
-	e.Provider = "github"
+	e.Provider = ccForeign
 	_ = h.Handle(context.Background(), e)
 
 	e = mrEvent(domain.StateSuccess)

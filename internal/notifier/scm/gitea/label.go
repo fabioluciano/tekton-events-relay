@@ -15,6 +15,7 @@ import (
 // LabelHandler applies labels to Gitea issues and pull requests.
 type LabelHandler struct {
 	client *Client
+	name   string
 	labels scm.LabelSet
 	log    *zap.Logger
 }
@@ -35,20 +36,21 @@ func NewLabelHandler(cfg LabelConfig) (notifier.ActionHandler, error) {
 	}
 	return &LabelHandler{
 		client: cfg.Client,
+		name:   cfg.Name,
 		labels: cfg.Labels,
 		log:    log,
 	}, nil
 }
 
 // Name returns the handler name.
-func (h *LabelHandler) Name() string { return providerGitea }
+func (h *LabelHandler) Name() string { return h.name }
 
 // Type returns the action type.
 func (h *LabelHandler) Type() notifier.ActionType { return notifier.ActionLabel }
 
 // Handle applies a label to a Gitea issue or PR based on state.
 func (h *LabelHandler) Handle(_ context.Context, e domain.Event) error {
-	if e.Provider != providerGitea {
+	if e.Provider != h.name {
 		return nil
 	}
 

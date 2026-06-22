@@ -718,6 +718,14 @@ func validateEmailInstance(prefix string, inst EmailInstance) []ValidationError 
 				errs = append(errs, ValidationError{Path: prefix + ".subject", Message: fmt.Sprintf("invalid template: %v", err)})
 			}
 		}
+		if inst.Auth != nil && inst.Auth.XOAuth2 {
+			if inst.Auth.Username == "" {
+				errs = append(errs, ValidationError{Path: prefix + ".auth.username", Message: "username required for xoauth2"})
+			}
+			if inst.Auth.PasswordFile != "" {
+				errs = append(errs, ValidationError{Path: prefix + ".auth", Message: "cannot use both auth.xoauth2 and auth.password_file; choose one"})
+			}
+		}
 	}
 	errs = append(errs, validateCELWhen(prefix, inst)...)
 	errs = append(errs, validateTemplate(prefix, inst)...)
@@ -729,6 +737,9 @@ func validateJiraInstance(prefix string, inst JiraInstance) []ValidationError {
 	if inst.Enabled {
 		if inst.BaseURL == "" {
 			errs = append(errs, ValidationError{Path: prefix + ".base_url", Message: "base_url required when enabled"})
+		}
+		if inst.APIVersion != "" && inst.APIVersion != "2" && inst.APIVersion != "3" {
+			errs = append(errs, ValidationError{Path: prefix + ".api_version", Message: fmt.Sprintf("invalid api_version '%s' (must be 2 or 3)", inst.APIVersion)})
 		}
 		if inst.Auth == nil {
 			errs = append(errs, ValidationError{Path: prefix + ValidationPathAuth, Message: ValidationMsgAuthRequired})

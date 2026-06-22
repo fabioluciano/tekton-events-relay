@@ -70,9 +70,8 @@ func TestDiscussionCommentHandler_HappyPath(t *testing.T) {
 	defer server.Close()
 
 	cfg := DiscussionCommentConfig{
-		Token:    "test-token", //nolint:goconst
-		BaseURL:  server.URL,
-		Template: "/tmp/tekton-test-templates/discussion.tmpl",
+		Client:   ghTestClient("test-token", server.URL),
+		Template: "/tmp/tekton-test-templates-github/discussion.tmpl",
 	}
 
 	handler, err := NewDiscussionCommentHandler(cfg, nil)
@@ -99,8 +98,7 @@ func TestDiscussionCommentHandler_HappyPath(t *testing.T) {
 
 func TestDiscussionCommentHandler_MissingDiscussionNumber(t *testing.T) {
 	cfg := DiscussionCommentConfig{
-		Token:   "test-token",
-		BaseURL: "https://api.github.com", //nolint:goconst
+		Client: ghTestClient("test-token", "https://api.github.com"), //nolint:goconst
 	}
 
 	handler, err := NewDiscussionCommentHandler(cfg, nil)
@@ -132,8 +130,7 @@ func TestDiscussionCommentHandler_StateFilter(t *testing.T) {
 	defer server.Close()
 
 	cfg := DiscussionCommentConfig{
-		Token:   "test-token",
-		BaseURL: server.URL,
+		Client: ghTestClient("test-token", server.URL),
 	}
 
 	innerHandler, err := NewDiscussionCommentHandler(cfg, nil)
@@ -166,8 +163,7 @@ func TestDiscussionCommentHandler_StateFilter(t *testing.T) {
 func TestDiscussionCommentHandler_ProviderMismatch(t *testing.T) {
 	discussionNum := 42
 	cfg := DiscussionCommentConfig{
-		Token:   "test-token",
-		BaseURL: "https://api.github.com",
+		Client: ghTestClient("test-token", "https://api.github.com"),
 	}
 
 	handler, err := NewDiscussionCommentHandler(cfg, nil)
@@ -208,8 +204,7 @@ func TestDiscussionCommentHandler_NodeIDResolutionFailure(t *testing.T) {
 	defer server.Close()
 
 	cfg := DiscussionCommentConfig{
-		Token:   "test-token",
-		BaseURL: server.URL,
+		Client: ghTestClient("test-token", server.URL),
 	}
 
 	handler, err := NewDiscussionCommentHandler(cfg, nil)
@@ -281,8 +276,7 @@ func TestDiscussionCommentHandler_MutationError(t *testing.T) {
 	defer server.Close()
 
 	cfg := DiscussionCommentConfig{
-		Token:   "test-token",
-		BaseURL: server.URL,
+		Client: ghTestClient("test-token", server.URL),
 	}
 
 	handler, err := NewDiscussionCommentHandler(cfg, nil)

@@ -18,13 +18,13 @@ func resolveBearerRefresher(oauth2cfg *config.OAuth2Config, tokenFile, tokenKey,
 	if oauth2cfg != nil {
 		return resolveOAuth2Refresher(oauth2cfg, provider, name, log)
 	}
-	return resolveFileRefresher(tokenFile, tokenKey, provider, name, "token", log)
+	return resolveFileRefresher(tokenFile, tokenKey, provider, name, log)
 }
 
 // resolveFileRefresher resolves a secret path (explicit or inferred), validates
 // it is readable, and returns a source that re-reads it per request.
-func resolveFileRefresher(explicitFile, key, provider, name, defaultKey string, log *zap.Logger) (scm.TokenRefresher, error) {
-	path, err := secrets.InferPath(explicitFile, provider, name, defaultKey, key)
+func resolveFileRefresher(explicitFile, key, provider, name string, log *zap.Logger) (scm.TokenRefresher, error) {
+	path, err := secrets.InferPath(explicitFile, provider, name, "token", key)
 	if err != nil {
 		return nil, err
 	}

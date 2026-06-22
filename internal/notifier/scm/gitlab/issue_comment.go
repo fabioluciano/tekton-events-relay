@@ -1,4 +1,4 @@
-//nolint:dupl // mr_comment and issue_comment share structure by design
+//nolint:dupl // issue_comment and mr_comment share structure by design
 package gitlab
 
 import (
@@ -14,8 +14,8 @@ import (
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/scm"
 )
 
-// MRCommentHandler posts notes (comments) to GitLab merge requests.
-type MRCommentHandler struct {
+// IssueCommentHandler posts notes (comments) to GitLab issues.
+type IssueCommentHandler struct {
 	client   *Client
 	name     string
 	template *template.Template
@@ -23,8 +23,8 @@ type MRCommentHandler struct {
 	log      *zap.Logger
 }
 
-// MRCommentConfig configures the MR comment handler.
-type MRCommentConfig struct {
+// IssueCommentConfig configures the issue comment handler.
+type IssueCommentConfig struct {
 	Client   *Client
 	Name     string
 	Template string
@@ -32,12 +32,12 @@ type MRCommentConfig struct {
 	Log      *zap.Logger
 }
 
-// NewMRCommentHandler creates a new GitLab merge request comment handler.
-func NewMRCommentHandler(cfg MRCommentConfig) (notifier.ActionHandler, error) {
+// NewIssueCommentHandler creates a new GitLab issue comment handler.
+func NewIssueCommentHandler(cfg IssueCommentConfig) (notifier.ActionHandler, error) {
 	var tmpl *template.Template
 	if cfg.Template != "" {
 		var err error
-		tmpl, err = scm.CompileTemplate("pr_comment", cfg.Template, nil)
+		tmpl, err = scm.CompileTemplate("issue_comment", cfg.Template, nil)
 		if err != nil {
 			return nil, fmt.Errorf("compile template: %w", err)
 		}
@@ -52,7 +52,7 @@ func NewMRCommentHandler(cfg MRCommentConfig) (notifier.ActionHandler, error) {
 		log = zap.NewNop()
 	}
 
-	return &MRCommentHandler{
+	return &IssueCommentHandler{
 		client:   cfg.Client,
 		name:     cfg.Name,
 		template: tmpl,
@@ -62,25 +62,25 @@ func NewMRCommentHandler(cfg MRCommentConfig) (notifier.ActionHandler, error) {
 }
 
 // Name returns the handler name.
-func (h *MRCommentHandler) Name() string { return h.name }
+func (h *IssueCommentHandler) Name() string { return h.name }
 
 // Type returns the action type.
-func (h *MRCommentHandler) Type() notifier.ActionType { return notifier.ActionPRComment }
+func (h *IssueCommentHandler) Type() notifier.ActionType { return notifier.ActionIssueComment }
 
-// Handle posts a note to a GitLab merge request. The PR number annotation
-// carries the MR IID.
-func (h *MRCommentHandler) Handle(ctx context.Context, e domain.Event) error {
+// Handle posts a note to a GitLab issue. The issue number annotation carries
+// the issue IID.
+func (h *IssueCommentHandler) Handle(ctx context.Context, e domain.Event) error {
 	if e.Provider != h.name {
 		return nil
 	}
 
-	if e.PRNumber == nil {
+	if e.IssueNumber == nil {
 		return nil
 	}
 
 	projectID, pErr := projectIdentifier(e)
 	if pErr != nil {
-		h.log.Warn("gitlab mr comment skipped: project cannot be identified",
+		h.log.Warn("gitlab issue comment skipped: project cannot be identified",
 			zap.String("run", e.RunName),
 			zap.Error(pErr))
 		return nil //nolint:nilerr // intentional: drop event if project cannot be identified
@@ -92,43 +92,43 @@ func (h *MRCommentHandler) Handle(ctx context.Context, e domain.Event) error {
 	}
 
 	if h.mode == scm.ModeUpsert {
-		marker := scm.Marker(e.RunID, "pr_comment")
+		marker := scm.Marker(e.RunID, "issue_comment")
 		body = scm.WithMarker(marker, body)
 		if err := scm.Validate(h.name, "comment_body", body); err != nil {
 			return err
 		}
-		return h.upsertNote(ctx, projectID, int64(*e.PRNumber), marker, body)
+		return h.upsertNote(ctx, projectID, int64(*e.IssueNumber), marker, body)
 	}
 
 	if err := scm.Validate(h.name, "comment_body", body); err != nil {
 		return err
 	}
 
-	_, _, err = h.client.gl.Notes.CreateMergeRequestNote(projectID, int64(*e.PRNumber),
-		&gl.CreateMergeRequestNoteOptions{Body: &body}, gl.WithContext(ctx))
+	_, _, err = h.client.gl.Notes.CreateIssueNote(projectID, int64(*e.IssueNumber),
+		&gl.CreateIssueNoteOptions{Body: &body}, gl.WithContext(ctx))
 	return err
 }
 
 // upsertNote edits the existing relay-managed note carrying the marker, or
 // creates one if absent. Listing failures fall back to create so an API
 // hiccup never blocks the notification.
-func (h *MRCommentHandler) upsertNote(ctx context.Context, projectID string, mrIID int64, marker, body string) error {
-	notes, _, err := h.client.gl.Notes.ListMergeRequestNotes(projectID, mrIID,
-		&gl.ListMergeRequestNotesOptions{ListOptions: gl.ListOptions{PerPage: 100}},
+func (h *IssueCommentHandler) upsertNote(ctx context.Context, projectID string, issueIID int64, marker, body string) error {
+	notes, _, err := h.client.gl.Notes.ListIssueNotes(projectID, issueIID,
+		&gl.ListIssueNotesOptions{ListOptions: gl.ListOptions{PerPage: 100}},
 		gl.WithContext(ctx))
 	if err != nil {
 		h.log.Warn("upsert: listing notes failed, falling back to create", zap.Error(err))
 	} else {
 		for _, n := range notes {
 			if n != nil && scm.HasMarker(n.Body, marker) {
-				_, _, err := h.client.gl.Notes.UpdateMergeRequestNote(projectID, mrIID, n.ID,
-					&gl.UpdateMergeRequestNoteOptions{Body: &body}, gl.WithContext(ctx))
+				_, _, err := h.client.gl.Notes.UpdateIssueNote(projectID, issueIID, n.ID,
+					&gl.UpdateIssueNoteOptions{Body: &body}, gl.WithContext(ctx))
 				return err
 			}
 		}
 	}
 
-	_, _, err = h.client.gl.Notes.CreateMergeRequestNote(projectID, mrIID,
-		&gl.CreateMergeRequestNoteOptions{Body: &body}, gl.WithContext(ctx))
+	_, _, err = h.client.gl.Notes.CreateIssueNote(projectID, issueIID,
+		&gl.CreateIssueNoteOptions{Body: &body}, gl.WithContext(ctx))
 	return err
 }

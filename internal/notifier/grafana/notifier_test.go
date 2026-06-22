@@ -15,6 +15,8 @@ import (
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/scm"
 )
 
+const testInstanceName = "grafana-prod"
+
 func TestNotifier_PostsAnnotation(t *testing.T) {
 	var got map[string]any
 	var auth string
@@ -30,7 +32,7 @@ func TestNotifier_PostsAnnotation(t *testing.T) {
 	defer srv.Close()
 
 	n, err := New(Config{
-		Name:     "grafana-prod",
+		Name:     testInstanceName,
 		URL:      srv.URL,
 		Token:    scm.NewStaticToken("sa-token"),
 		Tags:     []string{"deploy"},
@@ -62,6 +64,127 @@ func TestNotifier_PostsAnnotation(t *testing.T) {
 	}
 	if int64(got["time"].(float64)) != time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC).UnixMilli() {
 		t.Errorf("time = %v", got["time"])
+	}
+}
+
+func postAndCapture(t *testing.T, cfg Config, e domain.Event) map[string]any {
+	t.Helper()
+	var got map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	cfg.URL = srv.URL
+	if cfg.Token == nil {
+		cfg.Token = scm.NewStaticToken("token")
+	}
+	if cfg.Log == nil {
+		cfg.Log = zap.NewNop()
+	}
+	n, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if err := n.Handle(context.Background(), e); err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	return got
+}
+
+func TestNotifier_RegionAnnotation_TerminalWithStartAndFinish(t *testing.T) {
+	start := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	finish := time.Date(2026, 1, 1, 12, 5, 0, 0, time.UTC)
+	got := postAndCapture(t, Config{
+		Name:     testInstanceName,
+		Template: "{{.PipelineName}} {{.State}}",
+	}, domain.Event{
+		PipelineName: "deploy-api",
+		State:        domain.StateSuccess,
+		StartedAt:    start,
+		FinishedAt:   finish,
+	})
+
+	if int64(got["time"].(float64)) != start.UnixMilli() {
+		t.Errorf("time = %v, want start %d", got["time"], start.UnixMilli())
+	}
+	end, ok := got["timeEnd"]
+	if !ok {
+		t.Fatal("timeEnd missing for region annotation")
+	}
+	if int64(end.(float64)) != finish.UnixMilli() {
+		t.Errorf("timeEnd = %v, want finish %d", end, finish.UnixMilli())
+	}
+}
+
+func TestNotifier_RegionAnnotation_FinishOnlyUsesFinishForBoth(t *testing.T) {
+	finish := time.Date(2026, 1, 1, 12, 5, 0, 0, time.UTC)
+	got := postAndCapture(t, Config{
+		Name:     testInstanceName,
+		Template: "{{.State}}",
+	}, domain.Event{
+		State:      domain.StateFailure,
+		FinishedAt: finish,
+	})
+
+	if int64(got["time"].(float64)) != finish.UnixMilli() {
+		t.Errorf("time = %v, want finish %d", got["time"], finish.UnixMilli())
+	}
+	if int64(got["timeEnd"].(float64)) != finish.UnixMilli() {
+		t.Errorf("timeEnd = %v, want finish %d", got["timeEnd"], finish.UnixMilli())
+	}
+}
+
+func TestNotifier_PointAnnotation_NonTerminalOmitsTimeEnd(t *testing.T) {
+	got := postAndCapture(t, Config{
+		Name:     testInstanceName,
+		Template: "{{.State}}",
+	}, domain.Event{
+		State: domain.StateRunning,
+	})
+
+	if _, ok := got["timeEnd"]; ok {
+		t.Errorf("timeEnd present for non-terminal event: %v", got["timeEnd"])
+	}
+	if _, ok := got["time"]; !ok {
+		t.Error("time missing for point annotation")
+	}
+}
+
+func TestNotifier_ScopedAnnotation_IncludesDashboardAndPanel(t *testing.T) {
+	got := postAndCapture(t, Config{
+		Name:         testInstanceName,
+		Template:     "{{.State}}",
+		DashboardUID: "jcIIG-07z",
+		PanelID:      42,
+	}, domain.Event{
+		State:      domain.StateSuccess,
+		FinishedAt: time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC),
+	})
+
+	if got["dashboardUID"] != "jcIIG-07z" {
+		t.Errorf("dashboardUID = %v", got["dashboardUID"])
+	}
+	if int(got["panelId"].(float64)) != 42 {
+		t.Errorf("panelId = %v", got["panelId"])
+	}
+}
+
+func TestNotifier_OrgAnnotation_OmitsDashboardAndPanelWhenUnset(t *testing.T) {
+	got := postAndCapture(t, Config{
+		Name:     testInstanceName,
+		Template: "{{.State}}",
+	}, domain.Event{
+		State:      domain.StateSuccess,
+		FinishedAt: time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC),
+	})
+
+	if _, ok := got["dashboardUID"]; ok {
+		t.Errorf("dashboardUID present when unset: %v", got["dashboardUID"])
+	}
+	if _, ok := got["panelId"]; ok {
+		t.Errorf("panelId present when unset: %v", got["panelId"])
 	}
 }
 

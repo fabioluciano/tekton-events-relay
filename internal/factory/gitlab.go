@@ -105,6 +105,7 @@ func (f *GitLabFactory) buildHandler(inst config.GitLabInstance, action config.A
 			Client:   client,
 			Name:     inst.Name,
 			Template: action.Template,
+			Mode:     action.Mode,
 			Log:      log,
 		})
 	case notifier.ActionPRComment:
@@ -113,6 +114,21 @@ func (f *GitLabFactory) buildHandler(inst config.GitLabInstance, action config.A
 			Name:     inst.Name,
 			Template: action.Template,
 			Mode:     action.Mode,
+			Log:      log,
+		})
+	case notifier.ActionIssueComment:
+		return gitlab.NewIssueCommentHandler(gitlab.IssueCommentConfig{
+			Client:   client,
+			Name:     inst.Name,
+			Template: action.Template,
+			Mode:     action.Mode,
+			Log:      log,
+		})
+	case notifier.ActionDiscussionComment:
+		return gitlab.NewDiscussionHandler(gitlab.DiscussionConfig{
+			Client:   client,
+			Name:     inst.Name,
+			Template: action.Template,
 			Log:      log,
 		})
 	case notifier.ActionDeploymentStatus:

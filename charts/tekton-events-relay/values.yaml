@@ -565,6 +565,28 @@ config:
             # template: |
             #   Pipeline {{.Context}} finished with state: **{{.State}}**
             #   {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
+          # discussion_comment posts a resolvable MR discussion thread (MR-only).
+          - name: discussion-comment
+            # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
+            type: discussion_comment
+            # -- Enable or disable this SCM provider instance
+            enabled: false
+            when: 'isPR() && stateIn("failure", "error")'
+            template:
+              configmapRef:
+                key: gitlab-note.tmpl
+          # commit_comment with mode: upsert edits one comment per run.
+          - name: commit-comment
+            # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
+            type: commit_comment
+            # -- Enable or disable this SCM provider instance
+            enabled: false
+            # -- Comment mode: "create" (default) or "upsert" (edit per run)
+            mode: upsert
+            when: 'stateIn("success", "failure")'
+            template:
+              configmapRef:
+                key: gitlab-note.tmpl
           - name: label
             # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
             type: label
@@ -748,6 +770,8 @@ config:
             #   ## Pipeline {{.State}}
             #   **Run:** {{.RunName}}
             #   {{if .TargetURL}}[View Results]({{.TargetURL}}){{end}}
+            # -- Comment mode: "create" (default) or "upsert" (edit one comment per run)
+            mode: upsert
           - name: label
             # -- Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status)
             type: label
@@ -893,6 +917,11 @@ config:
         username: "Tekton CI"
         # -- Emoji icon for the bot (e.g., :robot_face:, :warning:)
         icon_emoji: ":robot_face:"
+        # -- Message mode: "create" (default) posts a new message per event;
+        # "upsert" edits the original message per RunID (requires bot_token auth).
+        # mode: upsert
+        # -- Post/update the message as a reply in this thread (bot_token mode).
+        # thread_ts: "1718000000.000100"
         # -- CEL expression to filter which events trigger notifications
         when: 'event.State == "failure" || event.State == "error"'
         template:
@@ -956,6 +985,9 @@ config:
         #   channel_id: "123456789012345678"
         # -- Display name for the bot posting messages
         username: "Tekton CI"
+        # -- Message mode: "create" (default) posts a new message per event;
+        # "upsert" edits the original message per RunID.
+        # mode: upsert
         # -- CEL expression to filter which events trigger notifications
         when: 'event.Namespace == "staging" || event.Namespace == "production"'
         template:
@@ -985,6 +1017,8 @@ config:
         #     key: integration_key
         # -- Incident severity level (critical, error, warning, info)
         severity: "critical"
+        # -- Send an acknowledge event while the run is in progress (opt-in).
+        # acknowledge_on_running: false
         # -- CEL expression to filter which events trigger incidents
         when: 'event.State == "failure" || event.State == "error"'
 
@@ -1061,6 +1095,10 @@ config:
       #     secretRef:
       #       name: grafana-token
       #       key: token
+      #   # Scope the annotation to a dashboard (optional; org-wide when empty).
+      #   dashboard_uid: "abc123"
+      #   # Scope to a panel within that dashboard (optional; requires dashboard_uid).
+      #   panel_id: 4
       #   template:
       #     configmapRef:
       #       name: grafana-templates
@@ -1102,11 +1140,26 @@ config:
         #     name: email-default-credentials
         #     key: password
         # username: ci@example.com
+        # XOAUTH2 (Gmail/M365): set xoauth2 and supply the access token from a
+        # mounted secret (key: token). Mutually exclusive with password.
+        # xoauth2: true
+        # token:
+        #   secretRef:
+        #     name: email-default-credentials
+        #     key: token
         # -- Sender address
         from: "tekton@example.com"
         # -- Recipient list
         to:
           - "platform-team@example.com"
+        # -- Visible carbon-copy recipients (optional)
+        # cc:
+        #   - "leads@example.com"
+        # -- Blind carbon-copy recipients (envelope only, never in headers) (optional)
+        # bcc:
+        #   - "audit@example.com"
+        # -- Override the Reply-To header (defaults to From when empty) (optional)
+        # reply_to: "noreply@example.com"
         # -- Subject template. Omit for the shipped default (email-subject.tmpl).
         # Override inline or from a ConfigMap, like every other template:
         # subject:
@@ -1141,6 +1194,9 @@ config:
       enabled: false
       # -- Jira base URL (Cloud: https://yourorg.atlassian.net)
       base_url: "https://yourorg.atlassian.net"
+      # -- Jira REST API version: "2" (default, plain-text bodies) or "3"
+      # (Atlassian Document Format). Omit for "2".
+      # api_version: "3"
       # Credentials: token via secretRef (key "token"). With auth.email set,
       # Cloud basic auth (email + API token); without it, Data Center bearer PAT.
       # OAuth2 client_credentials (Data Center/gateway) is also supported and is

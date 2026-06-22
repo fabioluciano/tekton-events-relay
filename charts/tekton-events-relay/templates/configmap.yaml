@@ -576,6 +576,12 @@ data:
           {{- if .icon_emoji }}
           icon_emoji: {{ .icon_emoji | quote }}
           {{- end }}
+          {{- if .mode }}
+          mode: {{ .mode | quote }}
+          {{- end }}
+          {{- if .thread_ts }}
+          thread_ts: {{ .thread_ts | quote }}
+          {{- end }}
           {{- if .when }}
           when: {{ .when | quote }}
           {{- end }}
@@ -636,6 +642,9 @@ data:
           {{- if .avatar_url }}
           avatar_url: {{ .avatar_url | quote }}
           {{- end }}
+          {{- if .mode }}
+          mode: {{ .mode | quote }}
+          {{- end }}
           {{- if .when }}
           when: {{ .when | quote }}
           {{- end }}
@@ -662,6 +671,9 @@ data:
           {{- end }}
           {{- if .severity }}
           severity: {{ .severity | quote }}
+          {{- end }}
+          {{- if .acknowledge_on_running }}
+          acknowledge_on_running: {{ .acknowledge_on_running }}
           {{- end }}
           {{- if .when }}
           when: {{ .when | quote }}
@@ -706,6 +718,12 @@ data:
             {{- range .tags }}
             - {{ . | quote }}
             {{- end }}
+          {{- end }}
+          {{- if .dashboard_uid }}
+          dashboard_uid: {{ .dashboard_uid | quote }}
+          {{- end }}
+          {{- if .panel_id }}
+          panel_id: {{ .panel_id }}
           {{- end }}
           {{- if .when }}
           when: {{ .when | quote }}
@@ -765,12 +783,34 @@ data:
           auth:
             username: {{ .username | quote }}
             password_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .password "provider" "email" "instance" .name "key" (default "password" .password.secretRef.key)) }}
+          {{- else if and .xoauth2 .token }}
+          auth:
+            {{- if .username }}
+            username: {{ .username | quote }}
+            {{- end }}
+            xoauth2: true
+            token_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .token "provider" "email" "instance" .name "key" (default "token" .token.secretRef.key)) }}
           {{- end }}
           from: {{ .from | quote }}
           to:
             {{- range .to }}
             - {{ . | quote }}
             {{- end }}
+          {{- if .cc }}
+          cc:
+            {{- range .cc }}
+            - {{ . | quote }}
+            {{- end }}
+          {{- end }}
+          {{- if .bcc }}
+          bcc:
+            {{- range .bcc }}
+            - {{ . | quote }}
+            {{- end }}
+          {{- end }}
+          {{- if .reply_to }}
+          reply_to: {{ .reply_to | quote }}
+          {{- end }}
           {{- if and .subject .subject.value }}
           subject: {{ .subject.value | quote }}
           {{- else if and .subject .subject.configmapRef }}
@@ -868,6 +908,9 @@ data:
       - name: {{ .name }}
         enabled: {{ .enabled }}
         base_url: {{ .base_url | quote }}
+        {{- if .api_version }}
+        api_version: {{ .api_version | quote }}
+        {{- end }}
         {{- if and .auth (or .auth.token .auth.oauth2) }}
         auth:
           {{- if .auth.email }}

@@ -14,6 +14,9 @@ import (
 
 	"go.uber.org/zap"
 
+	jirav3 "github.com/ctreminiom/go-atlassian/v2/jira/v3"
+	adfmodel "github.com/ctreminiom/go-atlassian/v2/pkg/infra/models"
+
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/scm"
@@ -24,6 +27,10 @@ const notifierName = "jira"
 // ClientConfig holds connection and authentication settings.
 type ClientConfig struct {
 	BaseURL string // https://yourorg.atlassian.net (Cloud) or Data Center URL
+	// APIVersion selects the Jira REST API: "3" sends Atlassian Document Format
+	// comment bodies via go-atlassian; anything else (including "") uses the
+	// plain-text REST v2 path.
+	APIVersion string
 	// Cloud: Email + Token (basic auth). Data Center: Token only (bearer PAT).
 	Email string
 	// Token resolves the credential fresh per request (file re-read or OAuth2
@@ -33,14 +40,19 @@ type ClientConfig struct {
 	Debug              bool
 }
 
-// Client is a thin Jira REST v2 client (v2 keeps comment bodies plain text).
+// Client talks to Jira over REST. The v2 path uses BaseClient with plain-text
+// bodies; when apiVersion is "3" the adf client posts ADF comment bodies.
 type Client struct {
 	*scm.BaseClient
+	apiVersion string
+	adf        *jirav3.Client
 }
 
 // NewClient builds a Jira client. With Email set it uses Cloud basic auth
 // (email + token); otherwise the token is sent as a bearer (Data Center PAT or
 // OAuth2 access token). The token is resolved per request via authTransport.
+// When cfg.APIVersion is "3" a go-atlassian v3 client is wired through the same
+// transport so ADF comment bodies can be posted.
 func NewClient(cfg ClientConfig, log *zap.Logger) *Client {
 	bc := scm.NewBaseClient(strings.TrimSuffix(cfg.BaseURL, "/"),
 		cfg.InsecureSkipVerify, cfg.Debug, log, notifierName, nil)
@@ -49,7 +61,16 @@ func NewClient(cfg ClientConfig, log *zap.Logger) *Client {
 		email:     cfg.Email,
 		refresher: cfg.Token,
 	}
-	return &Client{BaseClient: bc}
+	c := &Client{BaseClient: bc, apiVersion: cfg.APIVersion}
+	if cfg.APIVersion == "3" {
+		adf, err := jirav3.New(bc.HTTP, bc.BaseURL)
+		if err != nil {
+			log.Error("jira: build v3 client", zap.Error(err))
+		} else {
+			c.adf = adf
+		}
+	}
+	return c
 }
 
 // authTransport injects a freshly resolved Jira credential on every request.
@@ -108,12 +129,47 @@ func (h *CommentHandler) Handle(ctx context.Context, e domain.Event) error {
 	if err := h.tmpl.Execute(&body, e); err != nil {
 		return fmt.Errorf("jira: render comment: %w", err)
 	}
+	if h.client.apiVersion == "3" {
+		return h.handleV3(ctx, e, body.String())
+	}
 	url := fmt.Sprintf("%s/rest/api/2/issue/%s/comment", h.client.BaseURL, e.JiraIssueKey)
 	if err := h.client.Do(ctx, http.MethodPost, url, map[string]string{"body": body.String()}); err != nil {
 		return fmt.Errorf("jira: comment on %s: %w", e.JiraIssueKey, err)
 	}
 	h.log.Debug("jira comment posted", zap.String("issue", e.JiraIssueKey), zap.String("run", e.RunName))
 	return nil
+}
+
+// handleV3 posts the comment through go-atlassian's REST v3 endpoint, wrapping
+// the rendered text in a single-paragraph Atlassian Document Format body.
+func (h *CommentHandler) handleV3(ctx context.Context, e domain.Event, text string) error {
+	if h.client.adf == nil {
+		return fmt.Errorf("jira: v3 client unavailable for %s", e.JiraIssueKey)
+	}
+	if _, _, err := h.client.adf.Issue.Comment.Add(ctx, e.JiraIssueKey, adfCommentBody(text), nil); err != nil {
+		return fmt.Errorf("jira: comment on %s: %w", e.JiraIssueKey, err)
+	}
+	h.log.Debug("jira comment posted (v3/adf)", zap.String("issue", e.JiraIssueKey), zap.String("run", e.RunName))
+	return nil
+}
+
+// adfCommentBody wraps plain text in a minimal ADF document: a "doc" root with
+// one paragraph holding a single text node.
+func adfCommentBody(text string) *adfmodel.CommentPayloadScheme {
+	return &adfmodel.CommentPayloadScheme{
+		Body: &adfmodel.CommentNodeScheme{
+			Version: 1,
+			Type:    "doc",
+			Content: []*adfmodel.CommentNodeScheme{
+				{
+					Type: "paragraph",
+					Content: []*adfmodel.CommentNodeScheme{
+						{Type: "text", Text: text},
+					},
+				},
+			},
+		},
+	}
 }
 
 // TransitionHandler moves the linked issue to the configured status.

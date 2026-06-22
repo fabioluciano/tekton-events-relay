@@ -19,6 +19,7 @@ type CommitCommentHandler struct {
 	client   *Client
 	name     string
 	template *template.Template
+	mode     string
 	log      *zap.Logger
 }
 
@@ -27,6 +28,7 @@ type CommitCommentConfig struct {
 	Client   *Client
 	Name     string
 	Template string
+	Mode     string // scm.ModeCreate (default) or scm.ModeUpsert
 	Log      *zap.Logger
 }
 
@@ -40,6 +42,11 @@ func NewCommitCommentHandler(cfg CommitCommentConfig) (notifier.ActionHandler, e
 			return nil, fmt.Errorf("compile template: %w", err)
 		}
 	}
+
+	mode, err := scm.NormalizeMode(cfg.Mode)
+	if err != nil {
+		return nil, err
+	}
 	log := cfg.Log
 	if log == nil {
 		log = zap.NewNop()
@@ -49,6 +56,7 @@ func NewCommitCommentHandler(cfg CommitCommentConfig) (notifier.ActionHandler, e
 		client:   cfg.Client,
 		name:     cfg.Name,
 		template: tmpl,
+		mode:     mode,
 		log:      log,
 	}, nil
 }
@@ -78,11 +86,50 @@ func (h *CommitCommentHandler) Handle(ctx context.Context, e domain.Event) error
 	if err != nil {
 		return fmt.Errorf("render template: %w", err)
 	}
+
+	if h.mode == scm.ModeUpsert {
+		marker := scm.Marker(e.RunID, "commit_comment")
+		body = scm.WithMarker(marker, body)
+		if err := scm.Validate(h.name, "comment_body", body); err != nil {
+			return err
+		}
+		return h.upsertCommitNote(ctx, projectID, e.CommitSHA, marker, body)
+	}
+
 	if err := scm.Validate(h.name, "comment_body", body); err != nil {
 		return err
 	}
 
 	_, _, err = h.client.gl.Commits.PostCommitComment(projectID, e.CommitSHA,
 		&gl.PostCommitCommentOptions{Note: &body}, gl.WithContext(ctx))
+	return err
+}
+
+// upsertCommitNote edits the existing relay-managed commit discussion note
+// carrying the marker, or creates a new commit discussion if absent. Listing
+// failures fall back to create so an API hiccup never blocks the notification.
+func (h *CommitCommentHandler) upsertCommitNote(ctx context.Context, projectID, commitSHA, marker, body string) error {
+	discussions, _, err := h.client.gl.Discussions.ListCommitDiscussions(projectID, commitSHA,
+		&gl.ListCommitDiscussionsOptions{ListOptions: gl.ListOptions{PerPage: 100}},
+		gl.WithContext(ctx))
+	if err != nil {
+		h.log.Warn("upsert: listing commit discussions failed, falling back to create", zap.Error(err))
+	} else {
+		for _, d := range discussions {
+			if d == nil {
+				continue
+			}
+			for _, n := range d.Notes {
+				if n != nil && scm.HasMarker(n.Body, marker) {
+					_, _, uErr := h.client.gl.Discussions.UpdateCommitDiscussionNote(projectID, commitSHA, d.ID, n.ID,
+						&gl.UpdateCommitDiscussionNoteOptions{Body: &body}, gl.WithContext(ctx))
+					return uErr
+				}
+			}
+		}
+	}
+
+	_, _, err = h.client.gl.Discussions.CreateCommitDiscussion(projectID, commitSHA,
+		&gl.CreateCommitDiscussionOptions{Body: &body}, gl.WithContext(ctx))
 	return err
 }

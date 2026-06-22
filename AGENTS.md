@@ -344,9 +344,9 @@ Adding or changing an auth option (e.g. a new `oauth2` block, a notifier credent
 | `internal/notifier/middleware/` | CEL wrap, filter wrap, context_per_task wrap |
 | `internal/notifier/scm/` | Shared SCM: BaseClient, TokenRefresher, TokenTransport, templates, upsert markers, state maps, labels, limits, refs |
 | `internal/notifier/scm/github/` | 8 handlers + go-github client + App auth |
-| `internal/notifier/scm/gitlab/` | 6 handlers + GitLab SDK (SaaS + self-managed) |
+| `internal/notifier/scm/gitlab/` | 7 handlers + GitLab SDK (SaaS + self-managed) |
 | `internal/notifier/scm/gitea/` | 4 handlers + Gitea SDK |
-| `internal/notifier/scm/azuredevops/` | 4 handlers + Azure DevOps SDK |
+| `internal/notifier/scm/azuredevops/` | 3 handlers + Azure DevOps SDK |
 | `internal/notifier/scm/bitbucket/` | Dual-variant (cloud/server) with separate clients and handlers |
 | `internal/notifier/scm/sourcehut/` | 1 handler (commit status only) + BaseClient |
 | `internal/notifier/slack/` | Webhook + bot token, Block Kit |
@@ -680,7 +680,7 @@ Provider-specific markdown syntax:
 | Provider | commit_status | check_run | pr_comment | commit_comment | issue_comment | discussion_comment | label | deployment_status |
 |----------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 | GitHub | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
-| GitLab | ✓ | — | ✓ | ✓ | — | — | ✓ | ✓ |
+| GitLab | ✓ | — | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Gitea | ✓ | — | ✓ | — | ✓ | — | ✓ | — |
 | Bitbucket | ✓ | — | ✓ | — | — | — | — | — |
 | Azure DevOps | ✓ | — | ✓ | — | — | — | ✓ | — |

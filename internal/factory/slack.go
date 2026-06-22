@@ -6,6 +6,7 @@ import (
 	"github.com/fabioluciano/tekton-events-relay/internal/config"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/middleware"
+	"github.com/fabioluciano/tekton-events-relay/internal/notifier/msgstore"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/slack"
 	"github.com/fabioluciano/tekton-events-relay/internal/secrets"
 )
@@ -21,18 +22,21 @@ func (f *SlackFactory) Build(inst config.SlackInstance, log *zap.Logger) ([]noti
 
 	var slackCfg slack.Config
 	if inst.Auth != nil && inst.Auth.BotToken != nil {
-		// Bot token mode
-		token, err := secrets.ResolveOrInfer(inst.Auth.BotToken.TokenFile, "slack", inst.Name, "token", inst.Auth.BotToken.TokenKey, log)
+		// Bot token mode — per-request token (rotation-safe), never a static string.
+		refresher, err := resolveFileRefresher(inst.Auth.BotToken.TokenFile, inst.Auth.BotToken.TokenKey, "slack", inst.Name, log)
 		if err != nil {
 			return nil, err
 		}
 		slackCfg = slack.Config{
-			BotToken:  token,
-			ChannelID: inst.Auth.BotToken.ChannelID,
-			Channel:   inst.Channel,
-			Username:  inst.Username,
-			IconEmoji: inst.IconEmoji,
-			Template:  inst.Template,
+			Token:        refresher,
+			ChannelID:    inst.Auth.BotToken.ChannelID,
+			Channel:      inst.Channel,
+			Username:     inst.Username,
+			IconEmoji:    inst.IconEmoji,
+			Template:     inst.Template,
+			Mode:         inst.Mode,
+			ThreadTS:     inst.ThreadTS,
+			MessageStore: msgstore.NewMemoryStore(0, 0),
 		}
 	} else {
 		// Webhook mode

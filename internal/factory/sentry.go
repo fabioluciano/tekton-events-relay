@@ -26,7 +26,7 @@ func (f *SentryFactory) Build(inst config.SentryInstance, log *zap.Logger) ([]no
 	// Sentry's API uses an auth token (Bearer); it does not accept OAuth2
 	// client_credentials. Re-read the mounted secret per request so a rotated
 	// token is picked up without a pod restart.
-	token, err := resolveFileRefresher(tokenFile, tokenKey, "sentry", inst.Name, "token", log)
+	token, err := resolveFileRefresher(tokenFile, tokenKey, "sentry", inst.Name, log)
 	if err != nil {
 		return nil, err
 	}

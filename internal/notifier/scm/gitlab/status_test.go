@@ -171,7 +171,7 @@ func TestStatusReporter_Handle_WrongProvider(t *testing.T) {
 	}
 
 	event := domain.Event{
-		Provider:    "github",
+		Provider:    ccForeign,
 		CommitSHA:   testCommitSHA,
 		Repo:        domain.Repo{Owner: testOrgName, Name: testRepoName},
 		Context:     testContext,
@@ -247,7 +247,7 @@ func TestLabelHandler_Handle_WrongProvider(t *testing.T) {
 	}
 
 	event := domain.Event{
-		Provider: "github",
+		Provider: ccForeign,
 		Repo:     domain.Repo{Owner: testOrgName, Name: testRepoName},
 	}
 

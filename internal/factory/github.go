@@ -26,7 +26,7 @@ func (f *GitHubFactory) Build(inst config.GitHubInstance, log *zap.Logger) ([]no
 		if err != nil {
 			return nil, err
 		}
-		client = appClient
+		client = github.NewClientWithRefresher(appClient, inst.BaseURL, inst.InsecureSkipVerify, log, false)
 		log.Info("using GitHub App authentication",
 			zap.Int64("app_id", inst.Auth.AppID),
 			zap.Int64("installation_id", inst.Auth.InstallationID))
@@ -50,60 +50,46 @@ func (f *GitHubFactory) Build(inst config.GitHubInstance, log *zap.Logger) ([]no
 }
 
 // buildHandler creates the appropriate handler based on action type.
-func (f *GitHubFactory) buildHandler(inst config.GitHubInstance, action config.Action, client github.HTTPDoer, log *zap.Logger) (notifier.ActionHandler, error) {
+func (f *GitHubFactory) buildHandler(_ config.GitHubInstance, action config.Action, client github.HTTPDoer, log *zap.Logger) (notifier.ActionHandler, error) {
 	switch action.Type {
 	case notifier.ActionCommitStatus:
 		return github.NewStatusReporter(client, log), nil
 	case notifier.ActionCommitComment:
 		return github.NewCommitCommentHandler(github.CommitCommentConfig{
-			Token:              client.Token(),
-			BaseURL:            client.BaseURL(),
-			Template:           action.Template,
-			InsecureSkipVerify: inst.InsecureSkipVerify,
+			Client:   client,
+			Template: action.Template,
 		}, log)
 	case notifier.ActionPRComment:
 		return github.NewPRCommentHandler(github.PRCommentConfig{
-			Token:              client.Token(),
-			BaseURL:            client.BaseURL(),
-			Template:           action.Template,
-			Mode:               action.Mode,
-			InsecureSkipVerify: inst.InsecureSkipVerify,
+			Client:   client,
+			Template: action.Template,
+			Mode:     action.Mode,
 		}, log)
 	case notifier.ActionIssueComment:
 		return github.NewIssueCommentHandler(github.IssueCommentConfig{
-			Token:              client.Token(),
-			BaseURL:            client.BaseURL(),
-			Template:           action.Template,
-			Mode:               action.Mode,
-			InsecureSkipVerify: inst.InsecureSkipVerify,
+			Client:   client,
+			Template: action.Template,
+			Mode:     action.Mode,
 		}, log)
 	case notifier.ActionDiscussionComment:
 		return github.NewDiscussionCommentHandler(github.DiscussionCommentConfig{
-			Token:              client.Token(),
-			BaseURL:            client.BaseURL(),
-			Template:           action.Template,
-			InsecureSkipVerify: inst.InsecureSkipVerify,
+			Client:   client,
+			Template: action.Template,
 		}, log)
 	case notifier.ActionLabel:
 		return github.NewLabelHandler(github.LabelConfig{
-			Token:              client.Token(),
-			BaseURL:            client.BaseURL(),
-			Labels:             labelSet(action),
-			InsecureSkipVerify: inst.InsecureSkipVerify,
+			Client: client,
+			Labels: labelSet(action),
 		}, log), nil
 	case notifier.ActionCheckRun:
 		return github.NewCheckRunHandler(github.CheckRunConfig{
-			Token:              client.Token(),
-			BaseURL:            client.BaseURL(),
-			Name:               action.Name,
-			Template:           action.Template,
-			InsecureSkipVerify: inst.InsecureSkipVerify,
+			Client:   client,
+			Name:     action.Name,
+			Template: action.Template,
 		}, log)
 	case notifier.ActionDeploymentStatus:
 		return github.NewDeploymentStatusHandler(github.DeploymentStatusConfig{
-			Token:              client.Token(),
-			BaseURL:            client.BaseURL(),
-			InsecureSkipVerify: inst.InsecureSkipVerify,
+			Client: client,
 		}, log), nil
 	default:
 		return nil, ErrUnsupportedActionType

@@ -5,7 +5,6 @@ import (
 
 	"github.com/fabioluciano/tekton-events-relay/internal/config"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
-	"github.com/fabioluciano/tekton-events-relay/internal/notifier/middleware"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/scm/sourcehut"
 	"github.com/fabioluciano/tekton-events-relay/internal/secrets"
 )
@@ -24,25 +23,9 @@ func (f *SourceHutFactory) Build(inst config.SourceHutInstance, log *zap.Logger)
 		return nil, err
 	}
 
-	handlers := make([]notifier.ActionHandler, 0, len(inst.Actions))
-	for _, action := range inst.Actions {
-		if !action.Enabled {
-			continue
-		}
-
-		handler := f.buildHandler(inst, action, token, log)
-		if handler == nil {
-			continue
-		}
-
-		wrapped, err := middleware.WrapWithCEL(handler, action.When, log)
-		if err != nil {
-			return nil, err
-		}
-		wrapped = middleware.WrapWithFilter(wrapped, action.Filter)
-		handlers = append(handlers, wrapped)
-	}
-	return handlers, nil
+	return buildActionsWithMiddleware(inst.Actions, log, func(action config.Action) (notifier.ActionHandler, error) {
+		return f.buildHandler(inst, action, token, log)
+	})
 }
 
 // resolveSourceHutToken resolves the authentication token for a SourceHut instance.
@@ -54,11 +37,11 @@ func resolveSourceHutToken(inst config.SourceHutInstance, log *zap.Logger) (stri
 }
 
 // buildHandler creates the appropriate handler based on action type.
-func (f *SourceHutFactory) buildHandler(inst config.SourceHutInstance, action config.Action, token string, log *zap.Logger) notifier.ActionHandler {
+func (f *SourceHutFactory) buildHandler(inst config.SourceHutInstance, action config.Action, token string, log *zap.Logger) (notifier.ActionHandler, error) {
 	switch action.Type {
 	case notifier.ActionCommitStatus:
-		return sourcehut.NewStatusReporter(token, inst.BaseURL, inst.InsecureSkipVerify, log)
+		return sourcehut.NewStatusReporter(token, inst.BaseURL, inst.InsecureSkipVerify, log), nil
 	default:
-		return nil
+		return nil, ErrUnsupportedActionType
 	}
 }

@@ -551,6 +551,11 @@ type SlackInstance struct {
 	IconEmoji string     `yaml:"icon_emoji"`
 	When      string     `yaml:"when"`
 	Template  string     `yaml:"template,omitempty"`
+	// Mode is "create" (default) or "upsert". Upsert requires bot token auth
+	// and edits the original message per RunID (chat.update).
+	Mode string `yaml:"mode,omitempty"`
+	// ThreadTS, when set, posts/updates the message as a reply in that thread.
+	ThreadTS string `yaml:"thread_ts,omitempty"`
 }
 
 func (s SlackInstance) isEnabled() bool { return s.Enabled }
@@ -602,6 +607,10 @@ type DiscordInstance struct {
 	Username string       `yaml:"username"`
 	When     string       `yaml:"when"`
 	Template string       `yaml:"template,omitempty"`
+	// Mode is "create" (default) or "upsert". Upsert edits the original message
+	// per RunID (WebhookMessageEdit in webhook mode, channel message edit in bot
+	// token mode).
+	Mode string `yaml:"mode,omitempty"`
 }
 
 func (d DiscordInstance) isEnabled() bool { return d.Enabled }
@@ -631,6 +640,12 @@ type EmailInstance struct {
 	Auth       *EmailAuth `yaml:"auth,omitempty"`
 	From       string     `yaml:"from"`
 	To         []string   `yaml:"to"`
+	// Cc adds visible carbon-copy recipients.
+	Cc []string `yaml:"cc,omitempty"`
+	// Bcc adds blind carbon-copy recipients (envelope only, never in headers).
+	Bcc []string `yaml:"bcc,omitempty"`
+	// ReplyTo overrides the Reply-To header (defaults to From when empty).
+	ReplyTo string `yaml:"reply_to,omitempty"`
 	// Subject is a Go template rendered against the event (CR/LF stripped).
 	Subject string `yaml:"subject,omitempty"`
 	// Template is the body Go template; a readable plain-text default applies.
@@ -649,11 +664,17 @@ func (e EmailInstance) GetWhen() string { return e.When }
 // GetTemplate returns the Go template for the Email instance.
 func (e EmailInstance) GetTemplate() string { return e.Template }
 
-// EmailAuth holds SMTP credentials. Password comes from a mounted secret.
+// EmailAuth holds SMTP credentials. Password (PLAIN) or the XOAUTH2 access
+// token come from a mounted secret, re-read per request for rotation safety.
 type EmailAuth struct {
 	Username     string `yaml:"username,omitempty"`
 	PasswordFile string `yaml:"password_file,omitempty"`
 	PasswordKey  string `yaml:"password_key,omitempty"`
+	// XOAuth2 selects the XOAUTH2 SASL mechanism instead of PLAIN. The access
+	// token is read from token_file (or inferred) on every send.
+	XOAuth2   bool   `yaml:"xoauth2,omitempty"`
+	TokenFile string `yaml:"token_file,omitempty"`
+	TokenKey  string `yaml:"token_key,omitempty"`
 }
 
 // JiraInstance represents a Jira (Cloud or Data Center) integration. The
@@ -663,8 +684,11 @@ type JiraInstance struct {
 	Name    string `yaml:"name" validate:"required"`
 	Enabled bool   `yaml:"enabled"`
 	// BaseURL: https://yourorg.atlassian.net (Cloud) or the Data Center URL.
-	BaseURL string    `yaml:"base_url"`
-	Auth    *JiraAuth `yaml:"auth,omitempty"`
+	BaseURL string `yaml:"base_url"`
+	// APIVersion selects the Jira REST API version: "2" (default, plain-text
+	// comment bodies) or "3" (Atlassian Document Format bodies). Empty means "2".
+	APIVersion string    `yaml:"api_version,omitempty"`
+	Auth       *JiraAuth `yaml:"auth,omitempty"`
 	// InsecureSkipVerify disables TLS verification (self-hosted Data Center).
 	InsecureSkipVerify bool         `yaml:"insecure_skip_verify,omitempty"`
 	Actions            []JiraAction `yaml:"actions,omitempty"`
@@ -707,11 +731,12 @@ const (
 
 // PagerDutyInstance represents a single PagerDuty notifier configuration.
 type PagerDutyInstance struct {
-	Name     string         `yaml:"name" validate:"required"`
-	Enabled  bool           `yaml:"enabled"`
-	Auth     *PagerDutyAuth `yaml:"auth,omitempty"`
-	Severity string         `yaml:"severity"`
-	When     string         `yaml:"when"`
+	Name                 string         `yaml:"name" validate:"required"`
+	Enabled              bool           `yaml:"enabled"`
+	Auth                 *PagerDutyAuth `yaml:"auth,omitempty"`
+	Severity             string         `yaml:"severity"`
+	AcknowledgeOnRunning bool           `yaml:"acknowledge_on_running"`
+	When                 string         `yaml:"when"`
 }
 
 func (p PagerDutyInstance) isEnabled() bool { return p.Enabled }
@@ -779,6 +804,11 @@ type GrafanaInstance struct {
 	Tags     []string     `yaml:"tags,omitempty"`
 	When     string       `yaml:"when"`
 	Template string       `yaml:"template,omitempty"`
+	// DashboardUID scopes the annotation to a specific dashboard (optional).
+	// When empty an organization-wide annotation is created.
+	DashboardUID string `yaml:"dashboard_uid,omitempty"`
+	// PanelID scopes the annotation to a specific panel (optional, requires DashboardUID).
+	PanelID int `yaml:"panel_id,omitempty"`
 }
 
 func (g GrafanaInstance) isEnabled() bool { return g.Enabled }

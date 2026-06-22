@@ -8,6 +8,7 @@ import (
 	"text/template"
 	"time"
 
+	gh "github.com/google/go-github/v68/github"
 	"go.uber.org/zap"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
@@ -17,17 +18,15 @@ import (
 
 // CheckRunConfig holds GitHub Check Run handler configuration.
 type CheckRunConfig struct {
-	Token              string
-	BaseURL            string
-	Name               string // check run name displayed in GitHub UI
-	Template           string // optional Go template for markdown summary
-	InsecureSkipVerify bool
+	Client   HTTPDoer
+	Name     string // check run name displayed in GitHub UI
+	Template string // optional Go template for markdown summary
 }
 
 // CheckRunHandler reports pipeline status as GitHub Check Runs.
 // Requires a GitHub App token with checks:write permission.
 type CheckRunHandler struct {
-	client *Client
+	client HTTPDoer
 	name   string
 	tmpl   *template.Template
 	log    *zap.Logger
@@ -49,8 +48,12 @@ func NewCheckRunHandler(cfg CheckRunConfig, log *zap.Logger) (notifier.ActionHan
 		checkName = "Tekton Pipeline"
 	}
 
+	if log == nil {
+		log = zap.NewNop()
+	}
+
 	return &CheckRunHandler{
-		client: NewClient(cfg.Token, cfg.BaseURL, cfg.InsecureSkipVerify, log, false),
+		client: cfg.Client,
 		name:   checkName,
 		tmpl:   tmpl,
 		log:    log,
@@ -92,36 +95,33 @@ func (h *CheckRunHandler) Handle(ctx context.Context, e domain.Event) error {
 	// Map state to Check Run status/conclusion
 	status, conclusion := h.mapState(e.State)
 
-	// Build payload
-	payload := map[string]any{
-		"name":        h.name,
-		"head_sha":    e.CommitSHA,
-		"status":      status,
-		"external_id": e.RunID,
+	opts := gh.CreateCheckRunOptions{
+		Name:       h.name,
+		HeadSHA:    e.CommitSHA,
+		Status:     gh.Ptr(status),
+		ExternalID: gh.Ptr(e.RunID),
 	}
 
 	if conclusion != "" {
-		payload["conclusion"] = conclusion
-		payload["completed_at"] = time.Now().UTC().Format(time.RFC3339)
+		opts.Conclusion = gh.Ptr(conclusion)
+		opts.CompletedAt = &gh.Timestamp{Time: time.Now().UTC()}
 	}
 
 	if status == statusInProgress && !e.StartedAt.IsZero() {
-		payload["started_at"] = e.StartedAt.UTC().Format(time.RFC3339)
+		opts.StartedAt = &gh.Timestamp{Time: e.StartedAt.UTC()}
 	}
 
 	// Generate summary
 	summary := h.generateSummary(&e)
 	if summary != "" {
-		payload["output"] = map[string]any{
-			"title":   fmt.Sprintf("Pipeline: %s", e.RunName),
-			"summary": summary,
+		opts.Output = &gh.CheckRunOutput{
+			Title:   gh.Ptr(fmt.Sprintf("Pipeline: %s", e.RunName)),
+			Summary: gh.Ptr(summary),
 		}
 	}
 
-	url := fmt.Sprintf("%s/repos/%s/%s/check-runs",
-		h.client.baseURL, e.Repo.Owner, e.Repo.Name)
-
-	return h.client.Do(ctx, "POST", url, payload)
+	_, _, err := h.client.GH().Checks.CreateCheckRun(ctx, e.Repo.Owner, e.Repo.Name, opts)
+	return err
 }
 
 // mapState converts domain.State to Check Run status and conclusion.

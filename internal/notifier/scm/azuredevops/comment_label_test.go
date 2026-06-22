@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/microsoft/azure-devops-go-api/azuredevops/v7/git"
 	"go.uber.org/zap"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
@@ -123,5 +124,159 @@ func TestLabelHandler_SkipsWrongProviderAndMissingFields(t *testing.T) {
 	e.PRNumber = &pr
 	if err := empty.Handle(context.Background(), e); err != nil {
 		t.Fatalf("Handle should skip empty label set, got: %v", err)
+	}
+}
+
+// fakeGitClient is an in-memory prCommentClient for exercising the
+// upsert/create paths without HTTP. It records calls and serves a seeded set
+// of threads back to the handler.
+type fakeGitClient struct {
+	threads      []git.GitPullRequestCommentThread
+	createCalls  int
+	updateCalls  int
+	getThreadErr error
+	lastUpdated  string
+	lastCreated  string
+}
+
+func (f *fakeGitClient) GetThreads(_ context.Context, _ git.GetThreadsArgs) (*[]git.GitPullRequestCommentThread, error) {
+	if f.getThreadErr != nil {
+		return nil, f.getThreadErr
+	}
+	threads := f.threads
+	return &threads, nil
+}
+
+func (f *fakeGitClient) CreateThread(_ context.Context, args git.CreateThreadArgs) (*git.GitPullRequestCommentThread, error) {
+	f.createCalls++
+	if args.CommentThread != nil && args.CommentThread.Comments != nil {
+		for _, c := range *args.CommentThread.Comments {
+			if c.Content != nil {
+				f.lastCreated = *c.Content
+			}
+		}
+	}
+	return &git.GitPullRequestCommentThread{}, nil
+}
+
+func (f *fakeGitClient) UpdateComment(_ context.Context, args git.UpdateCommentArgs) (*git.Comment, error) {
+	f.updateCalls++
+	if args.Comment != nil && args.Comment.Content != nil {
+		f.lastUpdated = *args.Comment.Content
+	}
+	return &git.Comment{}, nil
+}
+
+func newUpsertHandler(t *testing.T, fake *fakeGitClient) *CommentHandler {
+	t.Helper()
+	ah, err := NewCommentHandler(CommentConfig{
+		Token:    testToken,
+		BaseURL:  testBaseURL,
+		Genre:    "tekton",
+		Template: "Run {{.RunName}}: {{.State}}",
+		Mode:     scm.ModeUpsert,
+		Log:      zap.NewNop(),
+	})
+	if err != nil {
+		t.Fatalf("NewCommentHandler: %v", err)
+	}
+	h := ah.(*CommentHandler)
+	h.newGitClient = func(context.Context) (prCommentClient, error) { return fake, nil }
+	return h
+}
+
+func TestCommentHandler_UpsertCreatesThenEditsSameComment(t *testing.T) {
+	pr := 7
+	fake := &fakeGitClient{}
+	h := newUpsertHandler(t, fake)
+
+	e := azureEvent()
+	e.PRNumber = &pr
+	e.RunID = "run-uid-1"
+
+	// First call: no marked comment exists yet, so a thread is created.
+	if err := h.Handle(context.Background(), e); err != nil {
+		t.Fatalf("first Handle: %v", err)
+	}
+	if fake.createCalls != 1 || fake.updateCalls != 0 {
+		t.Fatalf("after first call: create=%d update=%d, want create=1 update=0", fake.createCalls, fake.updateCalls)
+	}
+
+	marker := scm.Marker(e.RunID, "pr_comment")
+	if !scm.HasMarker(fake.lastCreated, marker) {
+		t.Fatalf("created body missing marker: %q", fake.lastCreated)
+	}
+
+	// Seed the created comment so the second call finds it via the marker.
+	tid, cid := 11, 22
+	fake.threads = []git.GitPullRequestCommentThread{
+		{
+			Id: &tid,
+			Comments: &[]git.Comment{
+				{Id: &cid, Content: &fake.lastCreated},
+			},
+		},
+	}
+
+	// Second call: marked comment found, edited via UpdateComment.
+	if err := h.Handle(context.Background(), e); err != nil {
+		t.Fatalf("second Handle: %v", err)
+	}
+	if fake.createCalls != 1 || fake.updateCalls != 1 {
+		t.Fatalf("after second call: create=%d update=%d, want create=1 update=1", fake.createCalls, fake.updateCalls)
+	}
+	if !scm.HasMarker(fake.lastUpdated, marker) {
+		t.Fatalf("updated body missing marker: %q", fake.lastUpdated)
+	}
+}
+
+func TestCommentHandler_CreateModePostsThread(t *testing.T) {
+	pr := 7
+	fake := &fakeGitClient{}
+	ah := newTestCommentHandler(t) // default mode = create
+	h := ah.(*CommentHandler)
+	h.newGitClient = func(context.Context) (prCommentClient, error) { return fake, nil }
+
+	e := azureEvent()
+	e.PRNumber = &pr
+
+	if err := h.Handle(context.Background(), e); err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if fake.createCalls != 1 || fake.updateCalls != 0 {
+		t.Fatalf("create mode: create=%d update=%d, want create=1 update=0", fake.createCalls, fake.updateCalls)
+	}
+	if scm.HasMarker(fake.lastCreated, scm.Marker(e.RunID, "pr_comment")) {
+		t.Fatalf("create mode must not embed upsert marker: %q", fake.lastCreated)
+	}
+}
+
+func TestCommentHandler_UpsertSkipsMissingPRWithoutAPICall(t *testing.T) {
+	fake := &fakeGitClient{}
+	h := newUpsertHandler(t, fake)
+
+	e := azureEvent() // no PRNumber
+	if err := h.Handle(context.Background(), e); err != nil {
+		t.Fatalf("Handle should skip missing PR number, got: %v", err)
+	}
+	if fake.createCalls != 0 || fake.updateCalls != 0 {
+		t.Fatalf("missing PR must make no API call: create=%d update=%d", fake.createCalls, fake.updateCalls)
+	}
+}
+
+func TestCommentHandler_UpsertListFailureFallsBackToCreate(t *testing.T) {
+	pr := 7
+	fake := &fakeGitClient{getThreadErr: context.DeadlineExceeded}
+	h := newUpsertHandler(t, fake)
+
+	e := azureEvent()
+	e.PRNumber = &pr
+	e.RunID = "run-uid-2"
+
+	if err := h.Handle(context.Background(), e); err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if fake.createCalls != 1 || fake.updateCalls != 0 {
+		t.Fatalf("lookup failure must fall back to create: create=%d update=%d", fake.createCalls, fake.updateCalls)
 	}
 }

@@ -32,8 +32,9 @@ func (f *PagerDutyFactory) Build(inst config.PagerDutyInstance, log *zap.Logger)
 	}
 
 	handler := pagerduty.New(pagerduty.Config{
-		IntegrationKey: integrationKey,
-		Severity:       inst.Severity,
+		IntegrationKey:       integrationKey,
+		Severity:             inst.Severity,
+		AcknowledgeOnRunning: inst.AcknowledgeOnRunning,
 	}, log)
 
 	wrapped, err := middleware.WrapWithCEL(handler, inst.When, log)

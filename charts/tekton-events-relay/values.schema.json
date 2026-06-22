@@ -685,6 +685,18 @@
 											":warning:"
 										]
 									},
+									"mode": {
+										"type": "string",
+										"description": "Message mode: create (default) posts a new message per event; upsert edits the original message per RunID (requires bot_token auth).",
+										"enum": [
+											"create",
+											"upsert"
+										]
+									},
+									"thread_ts": {
+										"type": "string",
+										"description": "Post/update the message as a reply in this Slack thread (bot_token mode)."
+									},
 									"when": {
 										"type": "string",
 										"description": "CEL expression to filter which events trigger notifications",
@@ -870,6 +882,14 @@
 											"Tekton CI"
 										]
 									},
+									"mode": {
+										"type": "string",
+										"description": "Message mode: create (default) posts a new message per event; upsert edits the original message per RunID.",
+										"enum": [
+											"create",
+											"upsert"
+										]
+									},
 									"when": {
 										"type": "string",
 										"description": "CEL expression to filter which events trigger notifications",
@@ -954,6 +974,11 @@
 											"info"
 										],
 										"default": "critical"
+									},
+									"acknowledge_on_running": {
+										"type": "boolean",
+										"description": "Send an acknowledge event while the run is in progress (opt-in).",
+										"default": false
 									},
 									"when": {
 										"type": "string",
@@ -1081,6 +1106,14 @@
 											"type": "string"
 										},
 										"description": "Extra tags applied to every annotation"
+									},
+									"dashboard_uid": {
+										"type": "string",
+										"description": "Scope the annotation to a specific dashboard (optional; organization-wide when empty)."
+									},
+									"panel_id": {
+										"type": "integer",
+										"description": "Scope the annotation to a specific panel (optional; requires dashboard_uid)."
 									},
 									"when": {
 										"type": "string",
@@ -1521,6 +1554,33 @@
 										"type": "string",
 										"description": "SMTP username (requires secretRef)"
 									},
+									"xoauth2": {
+										"type": "boolean",
+										"description": "Use the XOAUTH2 SASL mechanism instead of PLAIN. The access token is read from the token secret (key: token) on every send. Mutually exclusive with secretRef (password).",
+										"default": false
+									},
+									"token": {
+										"type": "object",
+										"description": "Reference to a Kubernetes Secret with the XOAUTH2 access token (key: token). Used when xoauth2 is true.",
+										"properties": {
+											"secretRef": {
+												"type": "object",
+												"properties": {
+													"name": {
+														"type": "string",
+														"description": "Name of the Kubernetes Secret"
+													},
+													"key": {
+														"type": "string",
+														"description": "Key within the secret (optional, defaults to token)"
+													}
+												},
+												"required": [
+													"name"
+												]
+											}
+										}
+									},
 									"from": {
 										"type": "string",
 										"description": "Sender address"
@@ -1531,6 +1591,24 @@
 											"type": "string"
 										},
 										"description": "Recipient list"
+									},
+									"cc": {
+										"type": "array",
+										"items": {
+											"type": "string"
+										},
+										"description": "Visible carbon-copy recipients (optional)"
+									},
+									"bcc": {
+										"type": "array",
+										"items": {
+											"type": "string"
+										},
+										"description": "Blind carbon-copy recipients (envelope only, never in headers) (optional)"
+									},
+									"reply_to": {
+										"type": "string",
+										"description": "Override the Reply-To header (defaults to From when empty)"
 									},
 									"subject": {
 										"oneOf": [
@@ -1661,6 +1739,14 @@
 							"base_url": {
 								"type": "string",
 								"description": "Jira base URL (Cloud: https://yourorg.atlassian.net)"
+							},
+							"api_version": {
+								"type": "string",
+								"description": "Jira REST API version: 2 (default, plain-text bodies) or 3 (Atlassian Document Format). Empty means 2.",
+								"enum": [
+									"2",
+									"3"
+								]
 							},
 							"insecure_skip_verify": {
 								"type": "boolean",
@@ -2806,7 +2892,7 @@
 				},
 				"mode": {
 					"type": "string",
-					"description": "Comment posting mode: 'create' posts a new comment per event; 'upsert' embeds an invisible marker and edits the existing comment for the same run (idempotent). Supported by GitHub, Gitea and Bitbucket Cloud comment actions.",
+					"description": "Comment posting mode: 'create' posts a new comment per event; 'upsert' embeds an invisible marker and edits the existing comment for the same run (idempotent). Supported by GitHub, GitLab, Gitea, Azure DevOps and Bitbucket Cloud comment actions.",
 					"enum": [
 						"create",
 						"upsert"

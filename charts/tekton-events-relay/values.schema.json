@@ -512,6 +512,22 @@
 							"type": "boolean",
 							"description": "Ignore unknown event types",
 							"default": true
+						},
+						"allow_namespaces": {
+							"type": "array",
+							"items": {
+								"type": "string"
+							},
+							"description": "Namespace allow list (path.Match patterns). Empty = allow all.",
+							"default": []
+						},
+						"deny_namespaces": {
+							"type": "array",
+							"items": {
+								"type": "string"
+							},
+							"description": "Namespace deny list (path.Match patterns). Deny wins over allow.",
+							"default": []
 						}
 					}
 				},
@@ -717,6 +733,31 @@
 										"type": "string",
 										"description": "Post/update the message as a reply in this Slack thread (bot_token mode)."
 									},
+									"dedupe": {
+										"type": "boolean",
+										"description": "Enable notification deduplication (dedupe by handler_name + cloud_event_id)",
+										"default": false
+									},
+									"retry_override": {
+										"type": "object",
+										"description": "Override global retry policy for this notifier instance",
+										"properties": {
+											"max_attempts": {
+												"type": "integer",
+												"description": "Total attempts including the first request (0 = use global default)",
+												"minimum": 0
+											},
+											"initial_backoff": {
+												"type": "string",
+												"description": "First backoff delay (Go duration format; empty string = use global default)"
+											},
+											"max_backoff": {
+												"type": "string",
+												"description": "Backoff ceiling (Go duration format; empty string = use global default)"
+											}
+										},
+										"additionalProperties": false
+									},
 									"when": {
 										"type": "string",
 										"description": "CEL expression to filter which events trigger notifications",
@@ -824,6 +865,31 @@
 												"description": "Inline value (overrides secretRef; not recommended for secrets)"
 											}
 										}
+									},
+									"dedupe": {
+										"type": "boolean",
+										"description": "Enable notification deduplication (dedupe by handler_name + cloud_event_id)",
+										"default": false
+									},
+									"retry_override": {
+										"type": "object",
+										"description": "Override global retry policy for this notifier instance",
+										"properties": {
+											"max_attempts": {
+												"type": "integer",
+												"description": "Total attempts including the first request (0 = use global default)",
+												"minimum": 0
+											},
+											"initial_backoff": {
+												"type": "string",
+												"description": "First backoff delay (Go duration format; empty string = use global default)"
+											},
+											"max_backoff": {
+												"type": "string",
+												"description": "Backoff ceiling (Go duration format; empty string = use global default)"
+											}
+										},
+										"additionalProperties": false
 									},
 									"when": {
 										"type": "string",
@@ -979,6 +1045,31 @@
 											"upsert"
 										]
 									},
+									"dedupe": {
+										"type": "boolean",
+										"description": "Enable notification deduplication (dedupe by handler_name + cloud_event_id)",
+										"default": false
+									},
+									"retry_override": {
+										"type": "object",
+										"description": "Override global retry policy for this notifier instance",
+										"properties": {
+											"max_attempts": {
+												"type": "integer",
+												"description": "Total attempts including the first request (0 = use global default)",
+												"minimum": 0
+											},
+											"initial_backoff": {
+												"type": "string",
+												"description": "First backoff delay (Go duration format; empty string = use global default)"
+											},
+											"max_backoff": {
+												"type": "string",
+												"description": "Backoff ceiling (Go duration format; empty string = use global default)"
+											}
+										},
+										"additionalProperties": false
+									},
 									"when": {
 										"type": "string",
 										"description": "CEL expression to filter which events trigger notifications",
@@ -1103,6 +1194,31 @@
 										"description": "Send an acknowledge event while the run is in progress (opt-in).",
 										"default": false
 									},
+									"dedupe": {
+										"type": "boolean",
+										"description": "Enable notification deduplication (dedupe by handler_name + cloud_event_id)",
+										"default": false
+									},
+									"retry_override": {
+										"type": "object",
+										"description": "Override global retry policy for this notifier instance",
+										"properties": {
+											"max_attempts": {
+												"type": "integer",
+												"description": "Total attempts including the first request (0 = use global default)",
+												"minimum": 0
+											},
+											"initial_backoff": {
+												"type": "string",
+												"description": "First backoff delay (Go duration format; empty string = use global default)"
+											},
+											"max_backoff": {
+												"type": "string",
+												"description": "Backoff ceiling (Go duration format; empty string = use global default)"
+											}
+										},
+										"additionalProperties": false
+									},
 									"when": {
 										"type": "string",
 										"description": "CEL expression to filter which events trigger incidents",
@@ -1198,6 +1314,31 @@
 											]
 										]
 									},
+									"dedupe": {
+										"type": "boolean",
+										"description": "Enable notification deduplication (dedupe by handler_name + cloud_event_id)",
+										"default": false
+									},
+									"retry_override": {
+										"type": "object",
+										"description": "Override global retry policy for this notifier instance",
+										"properties": {
+											"max_attempts": {
+												"type": "integer",
+												"description": "Total attempts including the first request (0 = use global default)",
+												"minimum": 0
+											},
+											"initial_backoff": {
+												"type": "string",
+												"description": "First backoff delay (Go duration format; empty string = use global default)"
+											},
+											"max_backoff": {
+												"type": "string",
+												"description": "Backoff ceiling (Go duration format; empty string = use global default)"
+											}
+										},
+										"additionalProperties": false
+									},
 									"when": {
 										"type": "string",
 										"description": "CEL expression to filter which events are sent to Datadog",
@@ -1287,6 +1428,31 @@
 									"panel_id": {
 										"type": "integer",
 										"description": "Scope the annotation to a specific panel (optional; requires dashboard_uid)."
+									},
+									"dedupe": {
+										"type": "boolean",
+										"description": "Enable notification deduplication (dedupe by handler_name + cloud_event_id)",
+										"default": false
+									},
+									"retry_override": {
+										"type": "object",
+										"description": "Override global retry policy for this notifier instance",
+										"properties": {
+											"max_attempts": {
+												"type": "integer",
+												"description": "Total attempts including the first request (0 = use global default)",
+												"minimum": 0
+											},
+											"initial_backoff": {
+												"type": "string",
+												"description": "First backoff delay (Go duration format; empty string = use global default)"
+											},
+											"max_backoff": {
+												"type": "string",
+												"description": "Backoff ceiling (Go duration format; empty string = use global default)"
+											}
+										},
+										"additionalProperties": false
 									},
 									"when": {
 										"type": "string",
@@ -1399,6 +1565,31 @@
 												"description": "Inline value (overrides secretRef; not recommended for secrets)"
 											}
 										}
+									},
+									"dedupe": {
+										"type": "boolean",
+										"description": "Enable notification deduplication (dedupe by handler_name + cloud_event_id)",
+										"default": false
+									},
+									"retry_override": {
+										"type": "object",
+										"description": "Override global retry policy for this notifier instance",
+										"properties": {
+											"max_attempts": {
+												"type": "integer",
+												"description": "Total attempts including the first request (0 = use global default)",
+												"minimum": 0
+											},
+											"initial_backoff": {
+												"type": "string",
+												"description": "First backoff delay (Go duration format; empty string = use global default)"
+											},
+											"max_backoff": {
+												"type": "string",
+												"description": "Backoff ceiling (Go duration format; empty string = use global default)"
+											}
+										},
+										"additionalProperties": false
 									},
 									"when": {
 										"type": "string",
@@ -1740,6 +1931,31 @@
 										"type": "string",
 										"description": "Go template or expression to transform the event payload before sending"
 									},
+									"dedupe": {
+										"type": "boolean",
+										"description": "Enable notification deduplication (dedupe by handler_name + cloud_event_id)",
+										"default": false
+									},
+									"retry_override": {
+										"type": "object",
+										"description": "Override global retry policy for this notifier instance",
+										"properties": {
+											"max_attempts": {
+												"type": "integer",
+												"description": "Total attempts including the first request (0 = use global default)",
+												"minimum": 0
+											},
+											"initial_backoff": {
+												"type": "string",
+												"description": "First backoff delay (Go duration format; empty string = use global default)"
+											},
+											"max_backoff": {
+												"type": "string",
+												"description": "Backoff ceiling (Go duration format; empty string = use global default)"
+											}
+										},
+										"additionalProperties": false
+									},
 									"when": {
 										"type": "string",
 										"description": "CEL expression to filter which events trigger webhook calls",
@@ -1968,6 +2184,31 @@
 										"type": "boolean",
 										"description": "Skip TLS verification (self-hosted relays)",
 										"default": false
+									},
+									"dedupe": {
+										"type": "boolean",
+										"description": "Enable notification deduplication (dedupe by handler_name + cloud_event_id)",
+										"default": false
+									},
+									"retry_override": {
+										"type": "object",
+										"description": "Override global retry policy for this notifier instance",
+										"properties": {
+											"max_attempts": {
+												"type": "integer",
+												"description": "Total attempts including the first request (0 = use global default)",
+												"minimum": 0
+											},
+											"initial_backoff": {
+												"type": "string",
+												"description": "First backoff delay (Go duration format; empty string = use global default)"
+											},
+											"max_backoff": {
+												"type": "string",
+												"description": "Backoff ceiling (Go duration format; empty string = use global default)"
+											}
+										},
+										"additionalProperties": false
 									},
 									"when": {
 										"type": "string",

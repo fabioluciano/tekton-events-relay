@@ -35,11 +35,15 @@ func (f *WebhookFactory) Build(inst config.WebhookInstance, log *zap.Logger) ([]
 		auth = resolvedAuth
 	}
 
+	httpClient, retryPolicy := buildNotifierClient(inst.RetryOverride)
+
 	handler, err := webhook.New(webhook.Config{
-		URL:       url,
-		Auth:      auth,
-		Transform: inst.Transform,
-		Headers:   inst.Headers,
+		URL:         url,
+		Auth:        auth,
+		Transform:   inst.Transform,
+		Headers:     inst.Headers,
+		HTTPClient:  httpClient,
+		RetryPolicy: retryPolicy,
 	}, log)
 	if err != nil {
 		return nil, err

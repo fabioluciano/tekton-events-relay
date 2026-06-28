@@ -109,6 +109,10 @@ func (d *Dispatcher) Handle(ctx context.Context, env *event.Envelope) error {
 				defer cancel()
 			}
 
+			// Inject the CloudEvent ID into context so notifier dedupe
+			// wrappers can build a composite (handler_name, event_id) key.
+			hCtx = context.WithValue(hCtx, notifier.CloudEventIDKey, env.CloudEventID)
+
 			start := time.Now()
 			err := h.Handle(hCtx, env.Report)
 			duration := time.Since(start)

@@ -57,6 +57,32 @@ func NewValidator() *validator.Validate {
 func ValidateAll(cfg *Config) []ValidationError {
 	var errs []ValidationError
 
+	// Top-level numeric range validations
+	if cfg.HandlerTimeout < 0 {
+		errs = append(errs, ValidationError{
+			Path:    "handler_timeout",
+			Message: fmt.Sprintf("must be non-negative, got %s", cfg.HandlerTimeout),
+		})
+	}
+	if cfg.MaxConcurrency < 0 {
+		errs = append(errs, ValidationError{
+			Path:    "max_concurrency",
+			Message: fmt.Sprintf("must be non-negative, got %d", cfg.MaxConcurrency),
+		})
+	}
+	if cfg.Retry.MaxAttempts < 0 {
+		errs = append(errs, ValidationError{
+			Path:    "retry.max_attempts",
+			Message: fmt.Sprintf("must be non-negative, got %d", cfg.Retry.MaxAttempts),
+		})
+	}
+	if cfg.DedupeSize < 0 {
+		errs = append(errs, ValidationError{
+			Path:    "dedupe_size",
+			Message: fmt.Sprintf("must be non-negative, got %d", cfg.DedupeSize),
+		})
+	}
+
 	// Run struct tag validation via go-playground/validator
 	if err := configValidator.Struct(cfg); err != nil {
 		var validationErrors validator.ValidationErrors

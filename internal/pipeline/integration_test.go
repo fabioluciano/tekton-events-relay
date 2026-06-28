@@ -14,6 +14,7 @@ import (
 const (
 	testProviderGitHub      = "github"
 	testNamespaceDefault    = "default"
+	testNamespaceProd       = "production"
 	testRepoOwner           = "myorg"
 	testRepoName            = "myrepo"
 	testCommitSHA           = "abc123"
@@ -83,7 +84,7 @@ func TestIntegration_FullPipeline_TaskRun(t *testing.T) {
 	// Build chain with EventFilter allowing TaskRun
 	chain := Build(
 		NewValidator(),
-		NewEventFilter(true, false, false, false, false), // Allow TaskRun only
+		NewEventFilter(true, false, false, false, false, nil, nil), // Allow TaskRun only
 		newMemDeduper(100, nil),
 		NewEnricher(""),
 		NewDispatcher(reg, testLogger(), nil, 10),
@@ -161,7 +162,7 @@ func TestIntegration_FilteredByDeny(t *testing.T) {
 
 	chain := Build(
 		NewValidator(),
-		NewEventFilter(true, false, false, false, false),
+		NewEventFilter(true, false, false, false, false, nil, nil),
 		newMemDeduper(100, nil),
 		NewEnricher(""),
 		NewDispatcher(reg, testLogger(), nil, 10),
@@ -225,7 +226,7 @@ func TestIntegration_FilteredByCEL(t *testing.T) {
 
 	chain := Build(
 		NewValidator(),
-		NewEventFilter(true, false, false, false, false),
+		NewEventFilter(true, false, false, false, false, nil, nil),
 		newMemDeduper(100, nil),
 		NewEnricher(""),
 		NewDispatcher(reg, testLogger(), nil, 10),
@@ -297,7 +298,7 @@ func TestIntegration_BothFiltersPass(t *testing.T) {
 
 	chain := Build(
 		NewValidator(),
-		NewEventFilter(true, false, false, false, false),
+		NewEventFilter(true, false, false, false, false, nil, nil),
 		newMemDeduper(100, nil),
 		NewEnricher(""),
 		NewDispatcher(reg, testLogger(), nil, 10),
@@ -307,7 +308,7 @@ func TestIntegration_BothFiltersPass(t *testing.T) {
 		"taskRun": map[string]any{
 			testKeyMetadata: map[string]any{
 				testKeyName:      "deploy-run-999",
-				testKeyNamespace: "production",
+				testKeyNamespace: testNamespaceProd,
 				testKeyUID:       "task-uid-999",
 				testKeyAnnotations: map[string]any{
 					testAnnotationProvider:  testProviderGitHub,
@@ -346,7 +347,7 @@ func TestIntegration_BothFiltersPass(t *testing.T) {
 	if !mock.wasCalled() {
 		t.Error("expected handler to be called when both filters pass")
 	}
-	if mock.calls[0].Namespace != "production" {
+	if mock.calls[0].Namespace != testNamespaceProd {
 		t.Errorf("expected Namespace=production, got %s", mock.calls[0].Namespace)
 	}
 }
@@ -370,7 +371,7 @@ func TestIntegration_PipelineRun(t *testing.T) {
 
 	chain := Build(
 		NewValidator(),
-		NewEventFilter(false, true, false, false, false), // Allow PipelineRun only
+		NewEventFilter(false, true, false, false, false, nil, nil), // Allow PipelineRun only
 		newMemDeduper(100, nil),
 		NewEnricher(""),
 		NewDispatcher(reg, testLogger(), nil, 10),
@@ -442,7 +443,7 @@ func TestIntegration_CustomRun(t *testing.T) {
 
 	chain := Build(
 		NewValidator(),
-		NewEventFilter(false, false, true, false, false), // Allow CustomRun only
+		NewEventFilter(false, false, true, false, false, nil, nil), // Allow CustomRun only
 		newMemDeduper(100, nil),
 		NewEnricher(""),
 		NewDispatcher(reg, testLogger(), nil, 10),
@@ -513,7 +514,7 @@ func TestIntegration_EventListener(t *testing.T) {
 
 	chain := Build(
 		NewValidator(),
-		NewEventFilter(false, false, false, true, false), // Allow EventListener only
+		NewEventFilter(false, false, false, true, false, nil, nil), // Allow EventListener only
 		newMemDeduper(100, nil),
 		NewEnricher(""),
 		NewDispatcher(reg, testLogger(), nil, 10),

@@ -67,7 +67,12 @@ func newValkeyStore(cfg config.StoreConfig, opts Options) (*valkeyStore, error) 
 func (s *valkeyStore) Dedupe() DedupeStore  { return s }
 func (s *valkeyStore) RunBuffer() RunBuffer { return s }
 func (s *valkeyStore) Backend() string      { return BackendValkey }
-func (s *valkeyStore) Close() error         { return s.client.Close() }
+func (s *valkeyStore) Ping(ctx context.Context) error {
+	pingCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	return s.client.Ping(pingCtx).Err()
+}
+func (s *valkeyStore) Close() error { return s.client.Close() }
 
 // FirstSeen records id with SET NX EX; the reply reports whether it was new.
 func (s *valkeyStore) FirstSeen(ctx context.Context, id string) (bool, error) {

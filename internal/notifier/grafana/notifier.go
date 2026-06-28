@@ -20,6 +20,9 @@ import (
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/scm"
 )
 
+// Compile-time checks.
+var _ notifier.ActionHandler = (*Notifier)(nil)
+
 // Notifier posts annotations to Grafana.
 type Notifier struct {
 	base     *notifier.Base
@@ -40,6 +43,10 @@ type Config struct {
 	DashboardUID string
 	PanelID      int
 	Log          *zap.Logger
+	// HTTPClient overrides the HTTP client. When nil, httpx.NewClient() is used.
+	HTTPClient *http.Client
+	// RetryPolicy overrides the global retry policy. When nil, the global default is used.
+	RetryPolicy *httpx.RetryPolicy
 }
 
 // validateURL checks that a URL has an http or https scheme.
@@ -78,11 +85,16 @@ func New(cfg Config) (*Notifier, error) {
 	url := strings.TrimRight(cfg.URL, "/") + "/api/annotations"
 	token := cfg.Token
 
+	httpClient := httpx.NewClient()
+	if cfg.HTTPClient != nil {
+		httpClient = cfg.HTTPClient
+	}
 	n.base = &notifier.Base{
-		HTTP:      httpx.NewClient(),
-		UserAgent: notifier.UserAgent,
-		Log:       cfg.Log,
-		BuildURL:  func(domain.Event) (string, error) { return url, nil },
+		HTTP:        httpClient,
+		UserAgent:   notifier.UserAgent,
+		Log:         cfg.Log,
+		RetryPolicy: cfg.RetryPolicy,
+		BuildURL:    func(domain.Event) (string, error) { return url, nil },
 		Auth: func(req *http.Request) error {
 			tok, err := token.Token(req.Context())
 			if err != nil {

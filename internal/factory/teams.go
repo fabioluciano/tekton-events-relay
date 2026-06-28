@@ -31,9 +31,13 @@ func (f *TeamsFactory) Build(inst config.TeamsInstance, log *zap.Logger) ([]noti
 		return nil, err
 	}
 
+	httpClient, retryPolicy := buildNotifierClient(inst.RetryOverride)
+
 	handler, err := teams.New(teams.Config{
-		WebhookURL: webhookURL,
-		Template:   inst.Template,
+		WebhookURL:  webhookURL,
+		Template:    inst.Template,
+		HTTPClient:  httpClient,
+		RetryPolicy: retryPolicy,
 	}, log)
 	if err != nil {
 		return nil, err

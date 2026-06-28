@@ -2,7 +2,10 @@
 // for the tekton-events-relay binary.
 package config
 
-import "fmt"
+import (
+	"fmt"
+	"net/url"
+)
 
 // SCM provider validators
 
@@ -74,12 +77,20 @@ func validateGitLabInstance(prefix string, inst GitLabInstance) []ValidationErro
 			}
 		}
 
-		// base_url is required only for self-managed variant
+		// base_url is required for self-managed variant; validate URL format when set
 		if inst.Variant == GitLabVariantSelfManaged && inst.BaseURL == "" {
 			errs = append(errs, ValidationError{
 				Path:    prefix + ".base_url",
 				Message: "base_url is required for self-managed variant",
 			})
+		}
+		if inst.BaseURL != "" {
+			if _, err := url.ParseRequestURI(inst.BaseURL); err != nil {
+				errs = append(errs, ValidationError{
+					Path:    prefix + ".base_url",
+					Message: fmt.Sprintf("invalid URL '%s': %v", inst.BaseURL, err),
+				})
+			}
 		}
 	}
 

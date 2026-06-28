@@ -1,4 +1,4 @@
-package factory
+package factory //nolint:dupl // Factory structs are structurally similar by design
 
 import (
 	"go.uber.org/zap"
@@ -29,10 +29,14 @@ func (f *DatadogFactory) Build(inst config.DatadogInstance, log *zap.Logger) ([]
 		return nil, err
 	}
 
+	httpClient, retryPolicy := buildNotifierClient(inst.RetryOverride)
+
 	handler := datadog.New(datadog.Config{
-		APIKey: apiKey,
-		Site:   inst.Site,
-		Tags:   inst.Tags,
+		APIKey:      apiKey,
+		Site:        inst.Site,
+		Tags:        inst.Tags,
+		HTTPClient:  httpClient,
+		RetryPolicy: retryPolicy,
 	}, log)
 
 	wrapped, err := middleware.WrapWithCEL(handler, inst.When, log)

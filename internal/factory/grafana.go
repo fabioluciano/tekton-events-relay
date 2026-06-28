@@ -31,6 +31,8 @@ func (f *GrafanaFactory) Build(inst config.GrafanaInstance, log *zap.Logger) ([]
 		return nil, err
 	}
 
+	httpClient, retryPolicy := buildNotifierClient(inst.RetryOverride)
+
 	handler, err := grafana.New(grafana.Config{
 		Name:         inst.Name,
 		URL:          inst.URL,
@@ -40,6 +42,8 @@ func (f *GrafanaFactory) Build(inst config.GrafanaInstance, log *zap.Logger) ([]
 		DashboardUID: inst.DashboardUID,
 		PanelID:      inst.PanelID,
 		Log:          log,
+		HTTPClient:   httpClient,
+		RetryPolicy:  retryPolicy,
 	})
 	if err != nil {
 		return nil, err

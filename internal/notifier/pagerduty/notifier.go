@@ -20,6 +20,7 @@ import (
 	"net/http"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
+	"github.com/fabioluciano/tekton-events-relay/internal/httpx"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/scm"
 )
@@ -36,6 +37,10 @@ type Config struct {
 	IntegrationKey       scm.TokenRefresher // PagerDuty service routing key
 	Severity             string             // critical, error, warning, info — default: critical
 	AcknowledgeOnRunning bool               // when true, in-progress (running) events send an acknowledge
+	// HTTPClient overrides the HTTP client. When nil, notifier.DefaultHTTPClient() is used.
+	HTTPClient *http.Client
+	// RetryPolicy overrides the global retry policy. When nil, the global default is used.
+	RetryPolicy *httpx.RetryPolicy
 }
 
 // Notifier sends events to PagerDuty.
@@ -50,13 +55,18 @@ func New(cfg Config, log *zap.Logger) *Notifier {
 		cfg.Severity = "critical"
 	}
 	n := &Notifier{cfg: cfg}
+	httpClient := notifier.DefaultHTTPClient()
+	if cfg.HTTPClient != nil {
+		httpClient = cfg.HTTPClient
+	}
 	n.base = &notifier.Base{
-		HTTP:         notifier.DefaultHTTPClient(),
+		HTTP:         httpClient,
 		BuildURL:     func(_ domain.Event) (string, error) { return eventsAPI, nil },
 		BuildPayload: func(e domain.Event) (any, error) { return n.payload(e, "") },
 		Auth:         func(_ *http.Request) error { return nil }, // PagerDuty auth goes in payload
 		UserAgent:    notifier.UserAgent,
 		Log:          log,
+		RetryPolicy:  cfg.RetryPolicy,
 	}
 	return n
 }

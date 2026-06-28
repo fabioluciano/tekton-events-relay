@@ -363,6 +363,10 @@ config:
     allow_eventlistener: false
     # -- Ignore unknown event types
     ignore_unknown: true
+    # -- Namespace allow list (path.Match patterns). Empty = allow all.
+    allow_namespaces: []
+    # -- Namespace deny list (path.Match patterns). Deny wins over allow.
+    deny_namespaces: []
 
   # Pipeline Summary Accumulator (Feature 3)
   # Aggregates TaskRun events into single PR comment when PipelineRun completes
@@ -900,6 +904,13 @@ config:
       - name: main-channel
         # -- Enable or disable this Slack notifier instance
         enabled: false
+        # -- Enable notification deduplication (dedupe by handler_name + cloud_event_id)
+        dedupe: false
+        # -- Override global retry policy for this notifier instance
+        retry_override:
+          max_attempts: 0     # 0 = use global default
+          initial_backoff: "" # "" = use global default
+          max_backoff: ""     # "" = use global default
         # Webhook URL mode (simpler):
         webhook_url:
           secretRef:
@@ -947,6 +958,13 @@ config:
       - name: main-channel
         # -- Enable or disable this Teams notifier instance
         enabled: false
+        # -- Enable notification deduplication (dedupe by handler_name + cloud_event_id)
+        dedupe: false
+        # -- Override global retry policy for this notifier instance
+        retry_override:
+          max_attempts: 0     # 0 = use global default
+          initial_backoff: "" # "" = use global default
+          max_backoff: ""     # "" = use global default
         webhook_url:
           secretRef:
             name: teams-webhook
@@ -977,6 +995,13 @@ config:
       - name: main-channel
         # -- Enable or disable this Discord notifier instance
         enabled: false
+        # -- Enable notification deduplication (dedupe by handler_name + cloud_event_id)
+        dedupe: false
+        # -- Override global retry policy for this notifier instance
+        retry_override:
+          max_attempts: 0     # 0 = use global default
+          initial_backoff: "" # "" = use global default
+          max_backoff: ""     # "" = use global default
         # Webhook URL mode (simpler):
         webhook_url:
           secretRef:
@@ -1019,6 +1044,13 @@ config:
       - name: main-service
         # -- Enable or disable this PagerDuty notifier instance
         enabled: false
+        # -- Enable notification deduplication (dedupe by handler_name + cloud_event_id)
+        dedupe: false
+        # -- Override global retry policy for this notifier instance
+        retry_override:
+          max_attempts: 0     # 0 = use global default
+          initial_backoff: "" # "" = use global default
+          max_backoff: ""     # "" = use global default
         integration_key:
           secretRef:
             name: pagerduty-integration-key
@@ -1041,6 +1073,13 @@ config:
       - name: main-instance
         # -- Enable or disable this Datadog notifier instance
         enabled: false
+        # -- Enable notification deduplication (dedupe by handler_name + cloud_event_id)
+        dedupe: false
+        # -- Override global retry policy for this notifier instance
+        retry_override:
+          max_attempts: 0     # 0 = use global default
+          initial_backoff: "" # "" = use global default
+          max_backoff: ""     # "" = use global default
         api_key:
           secretRef:
             name: datadog-api-key
@@ -1067,6 +1106,13 @@ config:
       - name: main-webhook
         # -- Enable or disable this webhook notifier instance
         enabled: false
+        # -- Enable notification deduplication (dedupe by handler_name + cloud_event_id)
+        dedupe: false
+        # -- Override global retry policy for this notifier instance
+        retry_override:
+          max_attempts: 0     # 0 = use global default
+          initial_backoff: "" # "" = use global default
+          max_backoff: ""     # "" = use global default
         url:
           secretRef:
             name: custom-webhook
@@ -1118,6 +1164,11 @@ config:
           secretRef:
             name: grafana-token
             key: token
+        # -- Override global retry policy for this notifier instance
+        retry_override:
+          max_attempts: 0     # 0 = use global default
+          initial_backoff: "" # "" = use global default
+          max_backoff: ""     # "" = use global default
         # Scope the annotation to a dashboard (optional; org-wide when empty).
         # dashboard_uid: "abc123"
         # Scope to a panel within that dashboard (optional; requires dashboard_uid).
@@ -1140,6 +1191,11 @@ config:
           secretRef:
             name: sentry-token
             key: token
+        # -- Override global retry policy for this notifier instance
+        retry_override:
+          max_attempts: 0     # 0 = use global default
+          initial_backoff: "" # "" = use global default
+          max_backoff: ""     # "" = use global default
         # kubectl create secret generic sentry-token -n tekton-events-relay \
         #   --from-literal=token=<your-auth-token>
 
@@ -1207,6 +1263,11 @@ config:
         html: false
         # -- CEL expression to filter which events are emailed
         when: 'event.Resource == "pipelinerun" && stateIn("failure", "error")'
+        # -- Override global retry policy for this notifier instance
+        retry_override:
+          max_attempts: 0     # 0 = use global default
+          initial_backoff: "" # "" = use global default
+          max_backoff: ""     # "" = use global default
 
   # ---------------------------------------------------------------------------
   # Jira (issue tracking) — top-level integration, sibling of notifiers.

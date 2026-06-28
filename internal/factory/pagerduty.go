@@ -1,4 +1,4 @@
-package factory
+package factory //nolint:dupl // Factory structs are structurally similar by design
 
 import (
 	"go.uber.org/zap"
@@ -29,10 +29,14 @@ func (f *PagerDutyFactory) Build(inst config.PagerDutyInstance, log *zap.Logger)
 		return nil, err
 	}
 
+	httpClient, retryPolicy := buildNotifierClient(inst.RetryOverride)
+
 	handler := pagerduty.New(pagerduty.Config{
 		IntegrationKey:       integrationKey,
 		Severity:             inst.Severity,
 		AcknowledgeOnRunning: inst.AcknowledgeOnRunning,
+		HTTPClient:           httpClient,
+		RetryPolicy:          retryPolicy,
 	}, log)
 
 	wrapped, err := middleware.WrapWithCEL(handler, inst.When, log)

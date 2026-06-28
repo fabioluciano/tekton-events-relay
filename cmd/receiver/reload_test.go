@@ -75,6 +75,9 @@ notifiers:
 	if got := testutil.ToFloat64(a.collectors.ConfigReloads.WithLabelValues("success")); got != 1 {
 		t.Errorf("config_reloads{success} = %v, want 1", got)
 	}
+	if got := testutil.ToFloat64(a.collectors.ConfigReloadLastTimestamp); got == 0 {
+		t.Errorf("config_reload_last_timestamp = 0, want non-zero")
+	}
 }
 
 func TestReload_InvalidConfigKeepsCurrent(t *testing.T) {
@@ -99,5 +102,9 @@ func TestReload_InvalidConfigKeepsCurrent(t *testing.T) {
 	}
 	if got := testutil.ToFloat64(a.collectors.ConfigReloads.WithLabelValues("success")); got != 0 {
 		t.Errorf("config_reloads{success} = %v, want 0", got)
+	}
+	// Also check new histogram and gauge were recorded even on failure.
+	if got := testutil.ToFloat64(a.collectors.ConfigReloadLastTimestamp); got == 0 {
+		t.Errorf("config_reload_last_timestamp = 0, want non-zero even on failure")
 	}
 }

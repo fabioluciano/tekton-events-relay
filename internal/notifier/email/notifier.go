@@ -11,6 +11,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"net/smtp"
 	"strings"
 	"text/template"
 	"time"
@@ -74,69 +75,37 @@ type Notifier struct {
 	cfg         Config
 	subjectTmpl *template.Template
 	bodyTmpl    *template.Template
+	auth        smtp.Auth
 	store       msgstore.Store
 	log         *zap.Logger
 }
 
 // New creates a new email notifier with the given configuration.
 func New(cfg Config, log *zap.Logger) (*Notifier, error) {
-	if cfg.Host == "" {
-		return nil, fmt.Errorf("email %s: host is required", cfg.Name)
-	}
-	if cfg.From == "" {
-		return nil, fmt.Errorf("email %s: from is required", cfg.Name)
-	}
-	if len(cfg.To) == 0 {
-		return nil, fmt.Errorf("email %s: at least one recipient is required", cfg.Name)
-	}
 	if cfg.Port == 0 {
 		cfg.Port = defaultPort
 	}
 	if cfg.Encryption == "" {
 		cfg.Encryption = EncryptionSTARTTLS
 	}
-	switch cfg.Encryption {
-	case EncryptionSTARTTLS, EncryptionTLS, EncryptionNone:
-	default:
-		return nil, fmt.Errorf("email %s: invalid encryption %q (starttls, tls or none)", cfg.Name, cfg.Encryption)
-	}
 	if cfg.Timeout == 0 {
 		cfg.Timeout = defaultTimeout
 	}
-	if cfg.XOAuth2 {
-		if cfg.Username == "" {
-			return nil, fmt.Errorf("email %s: username is required for xoauth2", cfg.Name)
-		}
-		if cfg.Token == nil {
-			return nil, fmt.Errorf("email %s: token source is required for xoauth2", cfg.Name)
-		}
+
+	if err := validateEmailConfig(cfg); err != nil {
+		return nil, err
 	}
 
-	// Subject and body templates must come from ConfigMap (chart default or configmapRef).
-	// LoadTemplateString resolves paths mounted at /etc/templates or inline strings.
-	subjectSrc, err := scm.LoadTemplateString(cfg.Subject)
+	subjectTmpl, bodyTmpl, err := compileEmailTemplates(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("email %s: load subject template: %w", cfg.Name, err)
-	}
-	if subjectSrc == "" {
-		return nil, fmt.Errorf("email %s: subject template is required (must be provided via ConfigMap)", cfg.Name)
-	}
-	subjectTmpl, err := template.New("subject").Parse(subjectSrc)
-	if err != nil {
-		return nil, fmt.Errorf("email %s: invalid subject template: %w", cfg.Name, err)
+		return nil, err
 	}
 
-	bodySrc, err := scm.LoadTemplateString(cfg.Template)
+	auth, err := buildEmailAuth(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("email %s: load template: %w", cfg.Name, err)
+		return nil, err
 	}
-	if bodySrc == "" {
-		return nil, fmt.Errorf("email %s: body template is required (must be provided via ConfigMap)", cfg.Name)
-	}
-	bodyTmpl, err := template.New("body").Parse(bodySrc)
-	if err != nil {
-		return nil, fmt.Errorf("email %s: invalid template: %w", cfg.Name, err)
-	}
+
 	if log == nil {
 		log = zap.NewNop()
 	}
@@ -145,7 +114,72 @@ func New(cfg Config, log *zap.Logger) (*Notifier, error) {
 		store = msgstore.NewMemoryStore(0, 0)
 	}
 
-	return &Notifier{cfg: cfg, subjectTmpl: subjectTmpl, bodyTmpl: bodyTmpl, store: store, log: log}, nil
+	return &Notifier{
+		cfg: cfg, subjectTmpl: subjectTmpl, bodyTmpl: bodyTmpl,
+		auth: auth, store: store, log: log,
+	}, nil
+}
+
+func validateEmailConfig(cfg Config) error {
+	if cfg.Host == "" {
+		return fmt.Errorf("email %s: host is required", cfg.Name)
+	}
+	if cfg.From == "" {
+		return fmt.Errorf("email %s: from is required", cfg.Name)
+	}
+	if len(cfg.To) == 0 {
+		return fmt.Errorf("email %s: at least one recipient is required", cfg.Name)
+	}
+	switch cfg.Encryption {
+	case EncryptionSTARTTLS, EncryptionTLS, EncryptionNone:
+	default:
+		return fmt.Errorf("email %s: invalid encryption %q (starttls, tls or none)", cfg.Name, cfg.Encryption)
+	}
+	if cfg.XOAuth2 {
+		if cfg.Username == "" {
+			return fmt.Errorf("email %s: username is required for xoauth2", cfg.Name)
+		}
+		if cfg.Token == nil {
+			return fmt.Errorf("email %s: token source is required for xoauth2", cfg.Name)
+		}
+	}
+	return nil
+}
+
+func compileEmailTemplates(cfg Config) (subjectTmpl, bodyTmpl *template.Template, err error) {
+	subjectSrc, err := scm.LoadTemplateString(cfg.Subject)
+	if err != nil {
+		return nil, nil, fmt.Errorf("email %s: load subject template: %w", cfg.Name, err)
+	}
+	if subjectSrc == "" {
+		return nil, nil, fmt.Errorf("email %s: subject template is required (must be provided via ConfigMap)", cfg.Name)
+	}
+	subjectTmpl, err = template.New("subject").Parse(subjectSrc)
+	if err != nil {
+		return nil, nil, fmt.Errorf("email %s: invalid subject template: %w", cfg.Name, err)
+	}
+
+	bodySrc, err := scm.LoadTemplateString(cfg.Template)
+	if err != nil {
+		return nil, nil, fmt.Errorf("email %s: load template: %w", cfg.Name, err)
+	}
+	if bodySrc == "" {
+		return nil, nil, fmt.Errorf("email %s: body template is required (must be provided via ConfigMap)", cfg.Name)
+	}
+	bodyTmpl, err = template.New("body").Parse(bodySrc)
+	if err != nil {
+		return nil, nil, fmt.Errorf("email %s: invalid template: %w", cfg.Name, err)
+	}
+
+	return subjectTmpl, bodyTmpl, nil
+}
+
+//nolint:nilnil,unparam // Returning (nil, nil) is valid for "no auth needed" case, and error is always nil
+func buildEmailAuth(cfg Config) (smtp.Auth, error) {
+	if cfg.XOAuth2 || cfg.Username == "" {
+		return nil, nil
+	}
+	return smtp.PlainAuth("", cfg.Username, cfg.Password, cfg.Host), nil
 }
 
 // Name returns the notifier name.

@@ -9,9 +9,11 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net/http"
 	"text/template"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
+	"github.com/fabioluciano/tekton-events-relay/internal/httpx"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/scm"
 )
@@ -31,6 +33,10 @@ const (
 type Config struct {
 	WebhookURL string
 	Template   string // optional Go template; if empty, uses default format
+	// HTTPClient overrides the HTTP client. When nil, notifier.DefaultHTTPClient() is used.
+	HTTPClient *http.Client
+	// RetryPolicy overrides the global retry policy. When nil, the global default is used.
+	RetryPolicy *httpx.RetryPolicy
 }
 
 // Notifier implements the notifier for Microsoft Teams Incoming Webhooks.
@@ -59,12 +65,17 @@ func New(cfg Config, log *zap.Logger) (*Notifier, error) {
 		n.tmpl = tmpl
 	}
 
+	httpClient := notifier.DefaultHTTPClient()
+	if cfg.HTTPClient != nil {
+		httpClient = cfg.HTTPClient
+	}
 	n.base = &notifier.Base{
-		HTTP:         notifier.DefaultHTTPClient(),
+		HTTP:         httpClient,
 		BuildURL:     func(_ domain.Event) (string, error) { return cfg.WebhookURL, nil },
 		BuildPayload: n.payload,
 		UserAgent:    notifier.UserAgent,
 		Log:          log,
+		RetryPolicy:  cfg.RetryPolicy,
 	}
 	return n, nil
 }

@@ -6,7 +6,9 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/dlq"
@@ -16,7 +18,10 @@ import (
 
 const (
 	dlqDefaultListLimit  = 100
+	dlqMaxListLimit      = 100
 	dlqReplayConcurrency = 10
+	dlqReplayRPS         = 10
+	dlqReplayBurst       = 20
 )
 
 // dlqListHandler serves GET /api/v1/dlq.
@@ -28,7 +33,6 @@ func dlqListHandler(queue dlq.Queue, log *zap.Logger) http.HandlerFunc {
 		}
 
 		limit := dlqDefaultListLimit
-		const dlqMaxListLimit = 1000
 		if raw := r.URL.Query().Get("limit"); raw != "" {
 			if v, err := strconv.Atoi(raw); err == nil && v > 0 {
 				limit = v
@@ -38,20 +42,52 @@ func dlqListHandler(queue dlq.Queue, log *zap.Logger) http.HandlerFunc {
 			}
 		}
 
-		entries, err := queue.List(r.Context(), limit)
+		offset := 0
+		if raw := r.URL.Query().Get("offset"); raw != "" {
+			if v, err := strconv.Atoi(raw); err == nil && v >= 0 {
+				offset = v
+			}
+		}
+
+		// Request enough items to support offset+limit pagination.
+		// List currently reads all entries into memory, so this is
+		// equivalent to requesting the full set and slicing.
+		fetchCount := limit + offset
+		if fetchCount < 1 {
+			fetchCount = 1
+		}
+		entries, err := queue.List(r.Context(), fetchCount)
 		if err != nil {
 			log.Error("dlq list failed", zap.Error(err))
 			http.Error(w, "dlq unavailable", http.StatusInternalServerError)
 			return
 		}
-		if entries == nil {
-			entries = []dlq.DeadEvent{}
+
+		// Fetch the total count independently so pagination metadata is
+		// correct even when List truncates entries at (limit + offset).
+		total := len(entries)
+		if totalCount, err := queue.Size(r.Context()); err == nil {
+			total = totalCount
+		}
+		if offset > total {
+			offset = total
+		}
+		end := offset + limit
+		if end > total {
+			end = total
+		}
+		page := entries[offset:end]
+		if page == nil {
+			page = []dlq.DeadEvent{}
 		}
 
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(map[string]any{
-			"count":  len(entries),
-			"events": entries,
+			"count":  len(page),
+			"events": page,
+			"total":  total,
+			"offset": offset,
+			"limit":  limit,
 		}); err != nil {
 			log.Error("dlq list encode failed", zap.Error(err))
 		}
@@ -75,6 +111,11 @@ func dlqReplayHandler(queue dlq.Queue, chain pipeline.Handler, collectors *metri
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
+		}
+
+		var replayStart time.Time
+		if collectors != nil && collectors.DlqReplayTotal != nil {
+			replayStart = time.Now()
 		}
 
 		entries, err := queue.List(r.Context(), 0)
@@ -126,6 +167,7 @@ func dlqReplayHandler(queue dlq.Queue, chain pipeline.Handler, collectors *metri
 		}
 		wg.Wait()
 
+		recordDlqReplayMetrics(collectors, replayStart, result.Failed, result.RemoveFailed)
 		updateDLQSizeGauge(r.Context(), queue, collectors)
 
 		log.Info("dlq replay finished",
@@ -147,6 +189,18 @@ func dlqReplayHandler(queue dlq.Queue, chain pipeline.Handler, collectors *metri
 			log.Error("dlq replay encode failed", zap.Error(err))
 		}
 	}
+}
+
+func recordDlqReplayMetrics(collectors *metrics.Collectors, start time.Time, failed, removeFailed int) {
+	if collectors == nil || collectors.DlqReplayTotal == nil {
+		return
+	}
+	status := "success"
+	if failed > 0 || removeFailed > 0 {
+		status = "error"
+	}
+	collectors.DlqReplayTotal.With(prometheus.Labels{"status": status}).Inc()
+	collectors.DlqReplayDuration.WithLabelValues().Observe(time.Since(start).Seconds())
 }
 
 func updateDLQSizeGauge(ctx context.Context, queue dlq.Queue, collectors *metrics.Collectors) {

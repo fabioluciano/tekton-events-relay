@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
@@ -100,7 +101,128 @@ func TestDLQ_PermanentErrorIsPreservedAndReplayable(t *testing.T) {
 	}
 	size, _ = queue.Size(context.Background())
 	if size != 0 {
-		t.Errorf("dlq size after replay = %d, want 0", size)
+		t.Errorf("dlq size = %d, want 0", size)
+	}
+}
+
+//nolint:dupl // Test subtest blocks are necessarily similar
+func TestDLQ_ListPaginationMetadata(t *testing.T) {
+	queue, err := dlq.NewFileQueue(filepath.Join(t.TempDir(), "dlq.jsonl"), 0)
+	if err != nil {
+		t.Fatalf("NewFileQueue: %v", err)
+	}
+	log := zap.NewNop()
+	ctx := context.Background()
+
+	for i := range 10 {
+		_ = queue.Enqueue(ctx, dlqTestEnvelope(fmt.Sprintf("evt-%d", i)), errors.New("x"))
+	}
+
+	t.Run("default limit and offset", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		dlqListHandler(queue, log)(rec, httptest.NewRequest("GET", "/api/v1/dlq", nil))
+		var resp struct {
+			Count  int               `json:"count"`
+			Events []json.RawMessage `json:"events"`
+			Total  int               `json:"total"`
+			Offset int               `json:"offset"`
+			Limit  int               `json:"limit"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if resp.Total != 10 {
+			t.Errorf("total = %d, want 10", resp.Total)
+		}
+		if resp.Offset != 0 {
+			t.Errorf("offset = %d, want 0", resp.Offset)
+		}
+		if resp.Limit != 100 {
+			t.Errorf("limit = %d, want 100", resp.Limit)
+		}
+		if resp.Count != 10 {
+			t.Errorf("count = %d, want 10", resp.Count)
+		}
+	})
+
+	t.Run("offset pagination", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		dlqListHandler(queue, log)(rec, httptest.NewRequest("GET", "/api/v1/dlq?limit=3&offset=4", nil))
+		var resp struct {
+			Count  int               `json:"count"`
+			Events []json.RawMessage `json:"events"`
+			Total  int               `json:"total"`
+			Offset int               `json:"offset"`
+			Limit  int               `json:"limit"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if resp.Total != 10 {
+			t.Errorf("total = %d, want 10", resp.Total)
+		}
+		if resp.Offset != 4 {
+			t.Errorf("offset = %d, want 4", resp.Offset)
+		}
+		if resp.Limit != 3 {
+			t.Errorf("limit = %d, want 3", resp.Limit)
+		}
+		if resp.Count != 3 {
+			t.Errorf("count = %d, want 3", resp.Count)
+		}
+	})
+
+	t.Run("offset beyond total returns empty page", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		dlqListHandler(queue, log)(rec, httptest.NewRequest("GET", "/api/v1/dlq?offset=100", nil))
+		var resp struct {
+			Count  int               `json:"count"`
+			Events []json.RawMessage `json:"events"`
+			Total  int               `json:"total"`
+			Offset int               `json:"offset"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if resp.Total != 10 {
+			t.Errorf("total = %d, want 10", resp.Total)
+		}
+		if resp.Count != 0 {
+			t.Errorf("count = %d, want 0", resp.Count)
+		}
+	})
+}
+
+func TestDLQ_ListMaxLimit(t *testing.T) {
+	queue, err := dlq.NewFileQueue(filepath.Join(t.TempDir(), "dlq.jsonl"), 0)
+	if err != nil {
+		t.Fatalf("NewFileQueue: %v", err)
+	}
+	log := zap.NewNop()
+	ctx := context.Background()
+
+	for i := range 200 {
+		_ = queue.Enqueue(ctx, dlqTestEnvelope(fmt.Sprintf("evt-%d", i)), errors.New("x"))
+	}
+
+	rec := httptest.NewRecorder()
+	dlqListHandler(queue, log)(rec, httptest.NewRequest("GET", "/api/v1/dlq?limit=200", nil))
+	var resp struct {
+		Count int `json:"count"`
+		Limit int `json:"limit"`
+		Total int `json:"total"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Limit != 100 {
+		t.Errorf("limit = %d, want 100 (max cap)", resp.Limit)
+	}
+	if resp.Count > 100 {
+		t.Errorf("count = %d, want <= 100", resp.Count)
+	}
+	if resp.Total != 200 {
+		t.Errorf("total = %d, want 200", resp.Total)
 	}
 }
 

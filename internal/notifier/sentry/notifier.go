@@ -22,13 +22,14 @@ const defaultBaseURL = "https://sentry.io"
 
 // Notifier creates Sentry releases and deploys.
 type Notifier struct {
-	name     string
-	baseURL  string
-	token    scm.TokenRefresher
-	org      string
-	projects []string
-	http     *http.Client
-	log      *zap.Logger
+	name        string
+	baseURL     string
+	token       scm.TokenRefresher
+	org         string
+	projects    []string
+	http        *http.Client
+	retryPolicy *httpx.RetryPolicy
+	log         *zap.Logger
 }
 
 // Config configures the Sentry notifier.
@@ -41,6 +42,10 @@ type Config struct {
 	Org      string
 	Projects []string
 	Log      *zap.Logger
+	// HTTPClient overrides the HTTP client. When nil, httpx.NewClient() is used.
+	HTTPClient *http.Client
+	// RetryPolicy overrides the global retry policy. When nil, the global default is used.
+	RetryPolicy *httpx.RetryPolicy
 }
 
 // validateURL checks that a URL has an http or https scheme.
@@ -76,14 +81,19 @@ func New(cfg Config) *Notifier {
 	if log == nil {
 		log = zap.NewNop()
 	}
+	httpClient := httpx.NewClient()
+	if cfg.HTTPClient != nil {
+		httpClient = cfg.HTTPClient
+	}
 	return &Notifier{
-		name:     cfg.Name,
-		baseURL:  strings.TrimRight(base, "/"),
-		token:    cfg.Token,
-		org:      cfg.Org,
-		projects: cfg.Projects,
-		http:     httpx.NewClient(),
-		log:      log,
+		name:        cfg.Name,
+		baseURL:     strings.TrimRight(base, "/"),
+		token:       cfg.Token,
+		org:         cfg.Org,
+		projects:    cfg.Projects,
+		http:        httpClient,
+		retryPolicy: cfg.RetryPolicy,
+		log:         log,
 	}
 }
 
@@ -144,7 +154,11 @@ func (n *Notifier) post(ctx context.Context, url string, payload any) error {
 	req.Header.Set("Authorization", "Bearer "+tok)
 	req.Header.Set("User-Agent", notifier.UserAgent)
 
-	resp, err := httpx.DoWithRetryPolicy(n.http, req, httpx.DefaultRetryPolicy())
+	rp := httpx.DefaultRetryPolicy()
+	if n.retryPolicy != nil {
+		rp = *n.retryPolicy
+	}
+	resp, err := httpx.DoWithRetryPolicy(n.http, req, rp)
 	if err != nil {
 		return err
 	}

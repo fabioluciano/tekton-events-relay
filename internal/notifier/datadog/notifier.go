@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
+	"github.com/fabioluciano/tekton-events-relay/internal/httpx"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/scm"
 )
@@ -45,6 +46,10 @@ type Config struct {
 	APIKey scm.TokenRefresher
 	Site   string   // default: datadoghq.com (alternative: datadoghq.eu)
 	Tags   []string // extra tags besides the automatically generated ones
+	// HTTPClient overrides the HTTP client. When nil, notifier.DefaultHTTPClient() is used.
+	HTTPClient *http.Client
+	// RetryPolicy overrides the global retry policy. When nil, the global default is used.
+	RetryPolicy *httpx.RetryPolicy
 }
 
 // Notifier sends events to Datadog via the Events API.
@@ -59,13 +64,18 @@ func New(cfg Config, log *zap.Logger) *Notifier {
 		cfg.Site = defaultSite
 	}
 	n := &Notifier{cfg: cfg}
+	httpClient := notifier.DefaultHTTPClient()
+	if cfg.HTTPClient != nil {
+		httpClient = cfg.HTTPClient
+	}
 	n.base = &notifier.Base{
-		HTTP:         notifier.DefaultHTTPClient(),
+		HTTP:         httpClient,
 		BuildURL:     n.url,
 		BuildPayload: n.payload,
 		Auth:         n.auth,
 		UserAgent:    notifier.UserAgent,
 		Log:          log,
+		RetryPolicy:  cfg.RetryPolicy,
 	}
 	return n
 }

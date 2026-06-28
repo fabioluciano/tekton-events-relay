@@ -22,6 +22,9 @@ import (
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
 )
 
+// Compile-time checks.
+var _ notifier.ActionHandler = (*Notifier)(nil)
+
 // Payload field names for webhook events.
 const (
 	PayloadFieldRunID       = "run_id"
@@ -43,6 +46,10 @@ type Config struct {
 	Auth      *ResolvedAuth
 	Transform string            // gojq expression to transform payload
 	Headers   map[string]string // custom headers (Authorization, X-Token, etc.)
+	// HTTPClient overrides the HTTP client. When nil, httpx.NewClient() is used.
+	HTTPClient *http.Client
+	// RetryPolicy overrides the global retry policy. When nil, the global default is used.
+	RetryPolicy *httpx.RetryPolicy
 }
 
 // Notifier sends events to a generic HTTP webhook endpoint.
@@ -70,13 +77,18 @@ func New(cfg Config, log *zap.Logger) (*Notifier, error) {
 		n.transform = code
 	}
 
+	httpClient := httpx.NewClient()
+	if cfg.HTTPClient != nil {
+		httpClient = cfg.HTTPClient
+	}
 	n.base = &notifier.Base{
-		HTTP:         httpx.NewClient(),
+		HTTP:         httpClient,
 		BuildURL:     func(_ domain.Event) (string, error) { return cfg.URL, validateURL(cfg.URL) },
 		BuildPayload: n.payload,
 		Auth:         n.auth,
 		UserAgent:    notifier.UserAgent,
 		Log:          log,
+		RetryPolicy:  cfg.RetryPolicy,
 	}
 	return n, nil
 }

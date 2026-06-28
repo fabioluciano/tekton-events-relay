@@ -35,6 +35,15 @@ type RetryConfig struct {
 	MaxBackoff     time.Duration `yaml:"max_backoff" json:"max_backoff"`         // backoff ceiling
 }
 
+// RetryOverride allows overriding the global retry policy for a specific
+// notifier or SCM instance. All fields are optional; zero/omitted fields
+// fall back to the global defaults from the top-level retry config.
+type RetryOverride struct {
+	MaxAttempts    int           `yaml:"max_attempts,omitempty"`
+	InitialBackoff time.Duration `yaml:"initial_backoff,omitempty"`
+	MaxBackoff     time.Duration `yaml:"max_backoff,omitempty"`
+}
+
 // StoreConfig selects the state backend shared by the deduper and the
 // accumulator. The default in-memory backend is per-pod: state is lost on
 // restart and not shared between replicas, so deduplication and accumulation
@@ -171,11 +180,13 @@ const (
 
 // FilterConfig controls which event types are processed.
 type FilterConfig struct {
-	AllowTaskRun       bool `yaml:"allow_taskrun"`
-	AllowPipelineRun   bool `yaml:"allow_pipelinerun"`
-	AllowCustomRun     bool `yaml:"allow_customrun"`
-	AllowEventListener bool `yaml:"allow_eventlistener"`
-	IgnoreUnknown      bool `yaml:"ignore_unknown"`
+	AllowTaskRun       bool     `yaml:"allow_taskrun"`
+	AllowPipelineRun   bool     `yaml:"allow_pipelinerun"`
+	AllowCustomRun     bool     `yaml:"allow_customrun"`
+	AllowEventListener bool     `yaml:"allow_eventlistener"`
+	IgnoreUnknown      bool     `yaml:"ignore_unknown"`
+	AllowNamespaces    []string `yaml:"allow_namespaces"`
+	DenyNamespaces     []string `yaml:"deny_namespaces"`
 }
 
 // SCMConfig contains all SCM provider configurations.
@@ -210,6 +221,11 @@ type Action struct {
 	Type    ActionType `yaml:"type" validate:"required"`
 	Enabled bool       `yaml:"enabled"`
 	When    string     `yaml:"when,omitempty"`
+
+	// Dedupe enables notification deduplication: when true the same
+	// (handler_name, cloud_event_id) pair is only processed once per
+	// the store backend's TTL window.
+	Dedupe bool `yaml:"dedupe,omitempty"`
 
 	// Mode controls comment actions: "create" (default) posts a new comment
 	// per event; "upsert" embeds an invisible marker and edits the existing
@@ -553,11 +569,17 @@ type SlackInstance struct {
 	IconEmoji string     `yaml:"icon_emoji"`
 	When      string     `yaml:"when"`
 	Template  string     `yaml:"template,omitempty"`
+	// Dedupe enables notification deduplication: when true the same
+	// (handler_name, cloud_event_id) pair is only processed once per
+	// the store backend's TTL window.
+	Dedupe bool `yaml:"dedupe,omitempty"`
 	// Mode is "create" (default) or "upsert". Upsert requires bot token auth
 	// and edits the original message per RunID (chat.update).
 	Mode string `yaml:"mode,omitempty"`
 	// ThreadTS, when set, posts/updates the message as a reply in that thread.
 	ThreadTS string `yaml:"thread_ts,omitempty"`
+	// RetryOverride overrides the global retry policy for this notifier instance.
+	RetryOverride *RetryOverride `yaml:"retry_override,omitempty"`
 }
 
 func (s SlackInstance) isEnabled() bool { return s.Enabled }
@@ -583,6 +605,9 @@ type TeamsInstance struct {
 	Auth     *TeamsAuth `yaml:"auth,omitempty"`
 	When     string     `yaml:"when"`
 	Template string     `yaml:"template,omitempty"`
+	Dedupe   bool       `yaml:"dedupe,omitempty"`
+	// RetryOverride overrides the global retry policy for this notifier instance.
+	RetryOverride *RetryOverride `yaml:"retry_override,omitempty"`
 }
 
 func (t TeamsInstance) isEnabled() bool { return t.Enabled }
@@ -609,10 +634,13 @@ type DiscordInstance struct {
 	Username string       `yaml:"username"`
 	When     string       `yaml:"when"`
 	Template string       `yaml:"template,omitempty"`
+	Dedupe   bool         `yaml:"dedupe,omitempty"`
 	// Mode is "create" (default) or "upsert". Upsert edits the original message
 	// per RunID (WebhookMessageEdit in webhook mode, channel message edit in bot
 	// token mode).
 	Mode string `yaml:"mode,omitempty"`
+	// RetryOverride overrides the global retry policy for this notifier instance.
+	RetryOverride *RetryOverride `yaml:"retry_override,omitempty"`
 }
 
 func (d DiscordInstance) isEnabled() bool { return d.Enabled }
@@ -635,8 +663,12 @@ func (d DiscordInstance) WebhookURL() string {
 type EmailInstance struct {
 	Name    string `yaml:"name" validate:"required"`
 	Enabled bool   `yaml:"enabled"`
-	Host    string `yaml:"host"`
-	Port    int    `yaml:"port,omitempty"` // default 587
+	// Dedupe enables notification deduplication: when true the same
+	// (handler_name, cloud_event_id) pair is only processed once per
+	// the store backend's TTL window.
+	Dedupe bool   `yaml:"dedupe,omitempty"`
+	Host   string `yaml:"host"`
+	Port   int    `yaml:"port,omitempty"` // default 587
 	// Encryption: starttls (default), tls (implicit, 465) or none (in-cluster relays)
 	Encryption string     `yaml:"encryption,omitempty" validate:"omitempty,oneof=starttls tls none"`
 	Auth       *EmailAuth `yaml:"auth,omitempty"`
@@ -656,6 +688,8 @@ type EmailInstance struct {
 	// InsecureSkipVerify disables TLS verification (self-hosted relays).
 	InsecureSkipVerify bool   `yaml:"insecure_skip_verify,omitempty"`
 	When               string `yaml:"when"`
+	// RetryOverride overrides the global retry policy for this notifier instance.
+	RetryOverride *RetryOverride `yaml:"retry_override,omitempty"`
 }
 
 func (e EmailInstance) isEnabled() bool { return e.Enabled }
@@ -685,6 +719,10 @@ type EmailAuth struct {
 type JiraInstance struct {
 	Name    string `yaml:"name" validate:"required"`
 	Enabled bool   `yaml:"enabled"`
+	// Dedupe enables notification deduplication: when true the same
+	// (handler_name, cloud_event_id) pair is only processed once per
+	// the store backend's TTL window.
+	Dedupe bool `yaml:"dedupe,omitempty"`
 	// BaseURL: https://yourorg.atlassian.net (Cloud) or the Data Center URL.
 	BaseURL string `yaml:"base_url"`
 	// APIVersion selects the Jira REST API version: "2" (default, plain-text
@@ -739,6 +777,9 @@ type PagerDutyInstance struct {
 	Severity             string         `yaml:"severity"`
 	AcknowledgeOnRunning bool           `yaml:"acknowledge_on_running"`
 	When                 string         `yaml:"when"`
+	Dedupe               bool           `yaml:"dedupe,omitempty"`
+	// RetryOverride overrides the global retry policy for this notifier instance.
+	RetryOverride *RetryOverride `yaml:"retry_override,omitempty"`
 }
 
 func (p PagerDutyInstance) isEnabled() bool { return p.Enabled }
@@ -754,6 +795,9 @@ type DatadogInstance struct {
 	Site    string       `yaml:"site"`
 	Tags    []string     `yaml:"tags"`
 	When    string       `yaml:"when"`
+	Dedupe  bool         `yaml:"dedupe,omitempty"`
+	// RetryOverride overrides the global retry policy for this notifier instance.
+	RetryOverride *RetryOverride `yaml:"retry_override,omitempty"`
 }
 
 func (d DatadogInstance) isEnabled() bool { return d.Enabled }
@@ -771,6 +815,9 @@ type WebhookInstance struct {
 	Transform string             `yaml:"transform,omitempty"` // trusted admin gojq expression to transform payload
 	Headers   map[string]string  `yaml:"headers"`
 	When      string             `yaml:"when"`
+	Dedupe    bool               `yaml:"dedupe,omitempty"`
+	// RetryOverride overrides the global retry policy for this notifier instance.
+	RetryOverride *RetryOverride `yaml:"retry_override,omitempty"`
 }
 
 func (w WebhookInstance) isEnabled() bool { return w.Enabled }
@@ -806,11 +853,14 @@ type GrafanaInstance struct {
 	Tags     []string     `yaml:"tags,omitempty"`
 	When     string       `yaml:"when"`
 	Template string       `yaml:"template,omitempty"`
+	Dedupe   bool         `yaml:"dedupe,omitempty"`
 	// DashboardUID scopes the annotation to a specific dashboard (optional).
 	// When empty an organization-wide annotation is created.
 	DashboardUID string `yaml:"dashboard_uid,omitempty"`
 	// PanelID scopes the annotation to a specific panel (optional, requires DashboardUID).
 	PanelID int `yaml:"panel_id,omitempty"`
+	// RetryOverride overrides the global retry policy for this notifier instance.
+	RetryOverride *RetryOverride `yaml:"retry_override,omitempty"`
 }
 
 func (g GrafanaInstance) isEnabled() bool { return g.Enabled }
@@ -831,6 +881,9 @@ type SentryInstance struct {
 	Projects []string    `yaml:"projects,omitempty"`
 	Auth     *SentryAuth `yaml:"auth,omitempty"`
 	When     string      `yaml:"when"`
+	Dedupe   bool        `yaml:"dedupe,omitempty"`
+	// RetryOverride overrides the global retry policy for this notifier instance.
+	RetryOverride *RetryOverride `yaml:"retry_override,omitempty"`
 }
 
 func (s SentryInstance) isEnabled() bool { return s.Enabled }

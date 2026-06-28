@@ -25,6 +25,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
+	"github.com/fabioluciano/tekton-events-relay/internal/httpx"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/msgstore"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/scm"
@@ -72,6 +73,13 @@ type Config struct {
 	// MessageStore persists the message ts per RunID for upsert mode. When nil,
 	// upsert degrades to posting a new message (fail-open).
 	MessageStore msgstore.Store
+
+	// HTTPClient overrides the HTTP client for webhook mode. When nil,
+	// notifier.DefaultHTTPClient() is used.
+	HTTPClient *http.Client
+	// RetryPolicy overrides the global retry policy. When nil, the global
+	// default is used.
+	RetryPolicy *httpx.RetryPolicy
 
 	// apiURL overrides the Slack API base URL. Test-only.
 	apiURL string
@@ -137,12 +145,17 @@ func New(cfg Config, log *zap.Logger) (*Notifier, error) {
 	}
 
 	// Webhook mode (no upsert support — webhooks return no message ts).
+	httpClient := notifier.DefaultHTTPClient()
+	if cfg.HTTPClient != nil {
+		httpClient = cfg.HTTPClient
+	}
 	n.base = &notifier.Base{
-		HTTP:         notifier.DefaultHTTPClient(),
+		HTTP:         httpClient,
 		BuildPayload: n.payload,
 		BuildURL:     func(_ domain.Event) (string, error) { return cfg.WebhookURL, nil },
 		UserAgent:    notifier.UserAgent,
 		Log:          log,
+		RetryPolicy:  cfg.RetryPolicy,
 	}
 	return n, nil
 }

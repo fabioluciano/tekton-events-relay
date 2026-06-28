@@ -20,6 +20,8 @@ func (f *SlackFactory) Build(inst config.SlackInstance, log *zap.Logger) ([]noti
 		return nil, nil
 	}
 
+	httpClient, retryPolicy := buildNotifierClient(inst.RetryOverride)
+
 	var slackCfg slack.Config
 	if inst.Auth != nil && inst.Auth.BotToken != nil {
 		// Bot token mode — per-request token (rotation-safe), never a static string.
@@ -51,11 +53,13 @@ func (f *SlackFactory) Build(inst config.SlackInstance, log *zap.Logger) ([]noti
 			return nil, err
 		}
 		slackCfg = slack.Config{
-			WebhookURL: webhookURL,
-			Channel:    inst.Channel,
-			Username:   inst.Username,
-			IconEmoji:  inst.IconEmoji,
-			Template:   inst.Template,
+			WebhookURL:  webhookURL,
+			Channel:     inst.Channel,
+			Username:    inst.Username,
+			IconEmoji:   inst.IconEmoji,
+			Template:    inst.Template,
+			HTTPClient:  httpClient,
+			RetryPolicy: retryPolicy,
 		}
 	}
 

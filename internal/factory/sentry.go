@@ -31,13 +31,17 @@ func (f *SentryFactory) Build(inst config.SentryInstance, log *zap.Logger) ([]no
 		return nil, err
 	}
 
+	httpClient, retryPolicy := buildNotifierClient(inst.RetryOverride)
+
 	handler := sentry.New(sentry.Config{
-		Name:     inst.Name,
-		BaseURL:  inst.BaseURL,
-		Token:    token,
-		Org:      inst.Org,
-		Projects: inst.Projects,
-		Log:      log,
+		Name:        inst.Name,
+		BaseURL:     inst.BaseURL,
+		Token:       token,
+		Org:         inst.Org,
+		Projects:    inst.Projects,
+		Log:         log,
+		HTTPClient:  httpClient,
+		RetryPolicy: retryPolicy,
 	})
 
 	wrapped, err := middleware.WrapWithCEL(handler, inst.When, log)

@@ -3,6 +3,7 @@ package store
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"log"
 	"runtime"
 	"strings"
@@ -107,7 +108,7 @@ func TestZapLogWriter(t *testing.T) {
 
 // TestOlricStore_SingleNode boots a real embedded olric member, so it is
 // skipped in -short runs.
-func TestOlricStore_SingleNode(t *testing.T) {
+func TestOlricPing(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping embedded olric test in short mode")
 	}
@@ -118,6 +119,36 @@ func TestOlricStore_SingleNode(t *testing.T) {
 		Olric: config.OlricConfig{
 			Env:            "local",
 			BindAddr:       "127.0.0.1",
+			BindPort:       13330,
+			MemberlistPort: 13332,
+		},
+	}, Options{})
+	if err != nil {
+		t.Fatalf("new olric store: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	if err := s.Ping(context.Background()); err != nil {
+		t.Fatalf("olric Ping: %v", err)
+	}
+}
+
+const (
+	olricTestEnv  = "local"
+	olricTestBind = "127.0.0.1"
+)
+
+func TestOlricStore_SingleNode(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping embedded olric test in short mode")
+	}
+
+	s, err := New(config.StoreConfig{
+		Backend: BackendOlric,
+		TTL:     time.Minute,
+		Olric: config.OlricConfig{
+			Env:            olricTestEnv,
+			BindAddr:       olricTestBind,
 			BindPort:       13320,
 			MemberlistPort: 13322,
 		},
@@ -154,17 +185,169 @@ func TestOlricStore_SingleNode(t *testing.T) {
 	}
 }
 
+func TestOlricStore_DistributedLock(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping embedded olric test in short mode")
+	}
+
+	s, err := New(config.StoreConfig{
+		Backend: BackendOlric,
+		TTL:     time.Minute,
+		Olric: config.OlricConfig{
+			Env:            olricTestEnv,
+			BindAddr:       olricTestBind,
+			BindPort:       13330,
+			MemberlistPort: 13332,
+		},
+	}, Options{})
+	if err != nil {
+		t.Fatalf("new olric store: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	ctx := context.Background()
+	rb := s.RunBuffer()
+
+	const workers = 10
+	errs := make(chan error, workers)
+	for i := range workers {
+		go func(idx int) {
+			task := fmt.Sprintf("task-%c", 'A'+idx)
+			errs <- rb.Add(ctx, "uid-concurrent", task, sampleEvent(task, domain.StateRunning))
+		}(i)
+	}
+
+	for range workers {
+		if err := <-errs; err != nil {
+			t.Errorf("concurrent Add: %v", err)
+		}
+	}
+
+	tasks, found, err := rb.Flush(ctx, "uid-concurrent")
+	if err != nil {
+		t.Fatalf("Flush after concurrent Add: %v", err)
+	}
+	if !found {
+		t.Fatal("Flush after concurrent Add returned not found")
+	}
+	if len(tasks) != workers {
+		t.Errorf("len(tasks) = %d, want %d (possible data loss under lock)", len(tasks), workers)
+	}
+
+	for i := range workers {
+		task := "task-" + string(rune('A'+i))
+		if _, ok := tasks[task]; !ok {
+			t.Errorf("task %q missing from flushed result (data loss)", task)
+		}
+	}
+}
+
+func TestOlricStore_DistributedLock_Flush(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping embedded olric test in short mode")
+	}
+
+	s, err := New(config.StoreConfig{
+		Backend: BackendOlric,
+		TTL:     time.Minute,
+		Olric: config.OlricConfig{
+			Env:            olricTestEnv,
+			BindAddr:       olricTestBind,
+			BindPort:       13331,
+			MemberlistPort: 13333,
+		},
+	}, Options{})
+	if err != nil {
+		t.Fatalf("new olric store: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	ctx := context.Background()
+	rb := s.RunBuffer()
+
+	_, found, err := rb.Flush(ctx, "nonexistent")
+	if err != nil {
+		t.Fatalf("Flush on nonexistent: %v", err)
+	}
+	if found {
+		t.Error("Flush on nonexistent key should be false")
+	}
+
+	if err := rb.Add(ctx, "uid-flush", "build", sampleEvent("build", domain.StateSuccess)); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	tasks, found, err := rb.Flush(ctx, "uid-flush")
+	if err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+	if !found {
+		t.Fatal("Flush should return found")
+	}
+	if len(tasks) != 1 || tasks["build"].State != domain.StateSuccess {
+		t.Errorf("unexpected tasks after flush: %+v", tasks)
+	}
+
+	if _, found, _ := rb.Flush(ctx, "uid-flush"); found {
+		t.Error("second Flush should report not found (atomic delete under lock)")
+	}
+}
+
+func TestOlricStore_PeerDiscovery(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping embedded olric test in short mode")
+	}
+
+	s, err := New(config.StoreConfig{
+		Backend: BackendOlric,
+		TTL:     time.Minute,
+		Olric: config.OlricConfig{
+			Env:            olricTestEnv,
+			BindAddr:       olricTestBind,
+			BindPort:       13350,
+			MemberlistPort: 13352,
+			Peers:          []string{"127.0.0.1:13353"},
+		},
+	}, Options{})
+	if err != nil {
+		t.Fatalf("new olric store with peers: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	ctx := context.Background()
+
+	first, err := s.Dedupe().FirstSeen(ctx, "peer-evt")
+	if err != nil || !first {
+		t.Fatalf("FirstSeen = (%v, %v), want (true, nil)", first, err)
+	}
+	again, err := s.Dedupe().FirstSeen(ctx, "peer-evt")
+	if err != nil || again {
+		t.Fatalf("FirstSeen repeat = (%v, %v), want (false, nil)", again, err)
+	}
+
+	rb := s.RunBuffer()
+	if err := rb.Add(ctx, "uid-peer", "build", sampleEvent("build", domain.StateRunning)); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	tasks, found, err := rb.Flush(ctx, "uid-peer")
+	if err != nil || !found {
+		t.Fatalf("Flush = (found=%v, %v), want (true, nil)", found, err)
+	}
+	if tasks["build"].State != domain.StateRunning {
+		t.Errorf("state = %q, want running", tasks["build"].State)
+	}
+}
+
 func TestOlricStore_StartTimeout(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping embedded olric test in short mode")
 	}
 
-	oc := olricconfig.New("local")
+	oc := olricconfig.New(olricTestEnv)
 	oc.LogLevel = "WARN"
 	oc.Logger = log.New(&zapLogWriter{log: zap.NewNop()}, "", 0)
-	oc.BindAddr = "127.0.0.1"
+	oc.BindAddr = olricTestBind
 	oc.BindPort = 13340
-	oc.MemberlistConfig.BindAddr = "127.0.0.1"
+	oc.MemberlistConfig.BindAddr = olricTestBind
 	oc.MemberlistConfig.BindPort = 13342
 
 	db, err := olric.New(oc)

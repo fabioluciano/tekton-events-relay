@@ -113,7 +113,7 @@ func TestValidator_RejectsMissingRunName(t *testing.T) {
 }
 
 func TestEventFilter_DropsTaskRunWhenDisabled(t *testing.T) {
-	f := NewEventFilter(false, true, false, false, false)
+	f := NewEventFilter(false, true, false, false, false, nil, nil)
 	term := &terminal{}
 	Build(f, term)
 
@@ -128,7 +128,7 @@ func TestEventFilter_DropsTaskRunWhenDisabled(t *testing.T) {
 }
 
 func TestEventFilter_DropsPipelineRunWhenDisabled(t *testing.T) {
-	f := NewEventFilter(true, false, false, false, false)
+	f := NewEventFilter(true, false, false, false, false, nil, nil)
 	term := &terminal{}
 	Build(f, term)
 
@@ -143,7 +143,7 @@ func TestEventFilter_DropsPipelineRunWhenDisabled(t *testing.T) {
 }
 
 func TestEventFilter_PassesTaskRunWhenEnabled(t *testing.T) {
-	f := NewEventFilter(true, false, false, false, false)
+	f := NewEventFilter(true, false, false, false, false, nil, nil)
 	term := &terminal{}
 	Build(f, term)
 
@@ -158,7 +158,7 @@ func TestEventFilter_PassesTaskRunWhenEnabled(t *testing.T) {
 }
 
 func TestEventFilter_DropsUnknown(t *testing.T) {
-	f := NewEventFilter(true, true, false, false, true)
+	f := NewEventFilter(true, true, false, false, true, nil, nil)
 	term := &terminal{}
 	Build(f, term)
 
@@ -173,7 +173,7 @@ func TestEventFilter_DropsUnknown(t *testing.T) {
 }
 
 func TestEventFilter_DropsCustomRunWhenDisabled(t *testing.T) {
-	f := NewEventFilter(true, true, false, false, false)
+	f := NewEventFilter(true, true, false, false, false, nil, nil)
 	term := &terminal{}
 	Build(f, term)
 
@@ -188,7 +188,7 @@ func TestEventFilter_DropsCustomRunWhenDisabled(t *testing.T) {
 }
 
 func TestEventFilter_PassesCustomRunWhenEnabled(t *testing.T) {
-	f := NewEventFilter(false, false, true, false, false)
+	f := NewEventFilter(false, false, true, false, false, nil, nil)
 	term := &terminal{}
 	Build(f, term)
 
@@ -203,7 +203,7 @@ func TestEventFilter_PassesCustomRunWhenEnabled(t *testing.T) {
 }
 
 func TestEventFilter_DropsEventListenerWhenDisabled(t *testing.T) {
-	f := NewEventFilter(true, true, false, false, false)
+	f := NewEventFilter(true, true, false, false, false, nil, nil)
 	term := &terminal{}
 	Build(f, term)
 
@@ -218,7 +218,7 @@ func TestEventFilter_DropsEventListenerWhenDisabled(t *testing.T) {
 }
 
 func TestEventFilter_PassesEventListenerWhenEnabled(t *testing.T) {
-	f := NewEventFilter(false, false, false, true, false)
+	f := NewEventFilter(false, false, false, true, false, nil, nil)
 	term := &terminal{}
 	Build(f, term)
 

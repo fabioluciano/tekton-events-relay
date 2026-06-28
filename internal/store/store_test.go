@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 
@@ -78,6 +79,7 @@ func TestMemoryRunBuffer_AddFlushDeepCopies(t *testing.T) {
 	}
 }
 
+//nolint:unparam // ttl is always time.Hour in tests; kept for clarity
 func newTestValkey(t *testing.T, ttl time.Duration) (*miniredis.Miniredis, Store) {
 	t.Helper()
 	mr := miniredis.RunT(t)
@@ -141,6 +143,30 @@ func TestValkeyRunBuffer_AddFlush(t *testing.T) {
 	}
 }
 
+func TestMemoryPing(t *testing.T) {
+	s := newMemoryStore(config.StoreConfig{}, Options{})
+	if err := s.Ping(context.Background()); err != nil {
+		t.Fatalf("memory Ping: %v", err)
+	}
+}
+
+func TestValkeyPing_Healthy(t *testing.T) {
+	_, s := newTestValkey(t, time.Hour)
+	if err := s.Ping(context.Background()); err != nil {
+		t.Fatalf("valkey Ping: %v", err)
+	}
+}
+
+func TestValkeyPing_TimeoutOnClosedServer(t *testing.T) {
+	// miniredis does a TCP close, not a real timeout, but validates
+	// that Ping returns an error when the connection fails.
+	mr, s := newTestValkey(t, time.Hour)
+	mr.Close()
+	if err := s.Ping(context.Background()); err == nil {
+		t.Fatal("expected Ping error after closing miniredis")
+	}
+}
+
 func TestValkeyDedupe_FailsClosedWithError(t *testing.T) {
 	mr, s := newTestValkey(t, time.Hour)
 	mr.Close() // simulate backend outage
@@ -148,5 +174,79 @@ func TestValkeyDedupe_FailsClosedWithError(t *testing.T) {
 	_, err := s.Dedupe().FirstSeen(context.Background(), "evt-1")
 	if err == nil {
 		t.Fatal("expected error when backend is down (callers fail open on it)")
+	}
+}
+
+func TestValkey_Backend(t *testing.T) {
+	_, s := newTestValkey(t, time.Hour)
+	if got := s.Backend(); got != BackendValkey {
+		t.Errorf("Backend() = %q, want %q", got, BackendValkey)
+	}
+}
+
+func TestNewValkeyStore_WithPasswordFile(t *testing.T) {
+	f, err := os.CreateTemp(t.TempDir(), "valkey-password-*")
+	if err != nil {
+		t.Fatalf("creating temp password file: %v", err)
+	}
+	if _, err := f.WriteString("hunter2\n"); err != nil {
+		t.Fatalf("writing password file: %v", err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatalf("closing password file: %v", err)
+	}
+
+	mr := miniredis.RunT(t)
+	cfg := config.StoreConfig{
+		Backend: BackendValkey,
+		TTL:     time.Hour,
+		Valkey: config.ValkeyConfig{
+			Address:      mr.Addr(),
+			PasswordFile: f.Name(),
+		},
+	}
+	s, err := New(cfg, Options{})
+	if err != nil {
+		t.Fatalf("new valkey store with password file: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	if err := s.Ping(context.Background()); err != nil {
+		t.Errorf("Ping after password-file setup: %v", err)
+	}
+	first, err := s.Dedupe().FirstSeen(context.Background(), "pw-test")
+	if err != nil {
+		t.Fatalf("FirstSeen with password file: %v", err)
+	}
+	if !first {
+		t.Error("FirstSeen should be true for new ID")
+	}
+	if got := s.Backend(); got != BackendValkey {
+		t.Errorf("Backend() = %q, want %q", got, BackendValkey)
+	}
+}
+
+func TestNewValkeyStore_WithCustomPrefix(t *testing.T) {
+	mr := miniredis.RunT(t)
+	cfg := config.StoreConfig{
+		Backend: BackendValkey,
+		TTL:     time.Hour,
+		Valkey: config.ValkeyConfig{
+			Address:   mr.Addr(),
+			KeyPrefix: "custom-test",
+		},
+	}
+	s, err := New(cfg, Options{})
+	if err != nil {
+		t.Fatalf("new valkey store with custom prefix: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	ctx := context.Background()
+	if _, err := s.Dedupe().FirstSeen(ctx, "key-1"); err != nil {
+		t.Fatalf("FirstSeen: %v", err)
+	}
+	if !mr.Exists("custom-test:dedupe:key-1") {
+		t.Error("dedupe key should use custom prefix, not default")
 	}
 }

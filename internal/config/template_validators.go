@@ -68,7 +68,7 @@ func requireBaseURL(prefix string, inst any) []ValidationError {
 			return []ValidationError{{Path: prefix + ".base_url", Message: ValidationMsgBaseURLRequired}}
 		}
 		if _, err := url.ParseRequestURI(p.GetBaseURL()); err != nil {
-			return []ValidationError{{Path: prefix + ".base_url", Message: fmt.Sprintf("invalid URL: %v", err)}}
+			return []ValidationError{{Path: prefix + ".base_url", Message: fmt.Sprintf("invalid URL '%s': %v", p.GetBaseURL(), err)}}
 		}
 	}
 	return nil
@@ -118,6 +118,14 @@ func validateAction(prefix string, action Action) []ValidationError {
 		errs = append(errs, ValidationError{
 			Path:    prefix + ".labels",
 			Message: "label actions require a labels block with at least one add or remove entry",
+		})
+	}
+
+	// context_per_task is only valid for commit_status actions
+	if action.ContextPerTask && action.Type != notifier.ActionCommitStatus {
+		errs = append(errs, ValidationError{
+			Path:    prefix + ".context_per_task",
+			Message: fmt.Sprintf("context_per_task is only valid for commit_status actions, but action type is '%s'", action.Type),
 		})
 	}
 

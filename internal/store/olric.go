@@ -18,6 +18,9 @@ import (
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
 )
 
+// pingTimeout is the context deadline for olric Ping calls.
+const pingTimeout = 5 * time.Second
+
 const (
 	olricStartTimeout  = 30 * time.Second
 	olricLockDeadline  = 5 * time.Second
@@ -30,6 +33,7 @@ const (
 // replicas discover each other via memberlist gossip (no extra deployment).
 type olricStore struct {
 	db     *olric.Olric
+	client *olric.EmbeddedClient
 	dedupe olric.DMap
 	runs   olric.DMap
 	ttl    time.Duration
@@ -81,7 +85,7 @@ func newOlricStore(cfg config.StoreConfig, opts Options) (*olricStore, error) {
 		return nil, fmt.Errorf("store.olric: dmap %s: %w", olricRunBufferDMap, err)
 	}
 
-	return &olricStore{db: db, dedupe: dedupe, runs: runs, ttl: cfg.TTL}, nil
+	return &olricStore{db: db, client: client, dedupe: dedupe, runs: runs, ttl: cfg.TTL}, nil
 }
 
 // startOlric launches db.Start in a goroutine and waits for either the Started
@@ -116,6 +120,18 @@ func startOlric(db *olric.Olric, started <-chan struct{}, timeout time.Duration)
 func (s *olricStore) Dedupe() DedupeStore  { return s }
 func (s *olricStore) RunBuffer() RunBuffer { return s }
 func (s *olricStore) Backend() string      { return BackendOlric }
+func (s *olricStore) Ping(ctx context.Context) error {
+	pingCtx, cancel := context.WithTimeout(ctx, pingTimeout)
+	defer cancel()
+	members, err := s.client.Members(pingCtx)
+	if err != nil {
+		return fmt.Errorf("olric ping: %w", err)
+	}
+	if len(members) == 0 {
+		return errors.New("olric: no cluster members")
+	}
+	return nil
+}
 
 func (s *olricStore) Close() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

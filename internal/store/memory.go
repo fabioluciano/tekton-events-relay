@@ -52,11 +52,12 @@ func newMemoryStore(cfg config.StoreConfig, opts Options) *memoryStore {
 	}
 }
 
-func (m *memoryStore) Dedupe() DedupeStore  { return m.dedupe }
-func (m *memoryStore) RunBuffer() RunBuffer { return m.buffer }
-func (m *memoryStore) Backend() string      { return BackendMemory }
-func (m *memoryStore) Close() error         { return nil }
-func (m *memoryStore) DedupeLen() int       { return m.dedupe.Len() }
+func (m *memoryStore) Dedupe() DedupeStore          { return m.dedupe }
+func (m *memoryStore) RunBuffer() RunBuffer         { return m.buffer }
+func (m *memoryStore) Backend() string              { return BackendMemory }
+func (m *memoryStore) Ping(_ context.Context) error { return nil }
+func (m *memoryStore) Close() error                 { return nil }
+func (m *memoryStore) DedupeLen() int               { return m.dedupe.Len() }
 
 // memoryDedupe wraps a size-bounded LRU; entries expire by eviction.
 type memoryDedupe struct {

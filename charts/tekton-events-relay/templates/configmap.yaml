@@ -112,6 +112,14 @@ data:
       allow_customrun: {{ .Values.config.filter.allow_customrun }}
       allow_eventlistener: {{ .Values.config.filter.allow_eventlistener }}
       ignore_unknown: {{ .Values.config.filter.ignore_unknown }}
+      allow_namespaces:
+      {{- range .Values.config.filter.allow_namespaces }}
+        - {{ . | quote }}
+      {{- end }}
+      deny_namespaces:
+      {{- range .Values.config.filter.deny_namespaces }}
+        - {{ . | quote }}
+      {{- end }}
 
     {{- if .Values.config.tracing }}
     {{- if .Values.config.tracing.endpoint }}

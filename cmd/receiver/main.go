@@ -97,7 +97,7 @@ func newApp(configPath string) (*app, error) {
 
 	// State backend for dedupe and accumulation. The store outlives config
 	// reloads so dedupe state survives chain rebuilds.
-	st, err := store.New(cfg.Store, store.Options{
+	rawSt, err := store.New(cfg.Store, store.Options{
 		DedupeCapacity: cfg.DedupeSize,
 		Log:            log,
 		Collectors:     collectors,
@@ -107,8 +107,13 @@ func newApp(configPath string) (*app, error) {
 		_ = log.Sync()
 		return nil, fmt.Errorf("build store: %w", err)
 	}
+	st := store.NewInstrumentedStore(rawSt, collectors.StoreDuration, collectors.StoreOpErrors)
 
 	var buildOpts []factory.BuildOption
+	// Inject the store's dedupe backend so notifiers and SCM actions can
+	// optionally deduplicate by (handler_name, cloud_event_id).
+	buildOpts = append(buildOpts, factory.WithDedupeStore(st.Dedupe()))
+
 	if st.Backend() != store.BackendMemory {
 		// The memory backend keeps the accumulator's original LRU buffer;
 		// shared backends route accumulation through the store.
@@ -148,7 +153,7 @@ func newApp(configPath string) (*app, error) {
 		log.Info("dead letter queue enabled", zap.String("path", cfg.DLQ.Path))
 	}
 
-	srv, err := httpx.BuildServer(cfg, decoders, chain, regHolder, log, promReg, collectors, deadLetter, status)
+	srv, err := httpx.BuildServer(cfg, decoders, chain, regHolder, log, promReg, collectors, deadLetter, status, st)
 	if err != nil {
 		cleanupTracer()
 		_ = log.Sync()
@@ -157,7 +162,7 @@ func newApp(configPath string) (*app, error) {
 
 	var metricsSrv *http.Server
 	if cfg.Server.MetricsAddr != "" {
-		metricsSrv = httpx.BuildMetricsServer(cfg.Server.MetricsAddr, promReg)
+		metricsSrv = httpx.BuildMetricsServer(cfg.Server.MetricsAddr, promReg, st)
 	}
 
 	cleanup := func() {
@@ -309,6 +314,8 @@ func buildChain(cfg *config.Config, reg pipeline.HandlerSource, log *zap.Logger,
 		cfg.Filter.AllowCustomRun,
 		cfg.Filter.AllowEventListener,
 		cfg.Filter.IgnoreUnknown,
+		cfg.Filter.AllowNamespaces,
+		cfg.Filter.DenyNamespaces,
 	)
 	deduper := pipeline.NewDeduperWithStore(st.Dedupe(), st.Backend(), collectors, log)
 	enricher := pipeline.NewEnricher(cfg.DashboardURL)

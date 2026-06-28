@@ -45,6 +45,9 @@ type Store interface {
 	Dedupe() DedupeStore
 	RunBuffer() RunBuffer
 	Backend() string
+	// Ping checks store connectivity. Memory always returns nil (no network);
+	// Valkey sends PING; Olric checks cluster membership.
+	Ping(ctx context.Context) error
 	Close() error
 }
 

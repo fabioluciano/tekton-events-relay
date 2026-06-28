@@ -67,16 +67,18 @@ func (h *chainHolder) SetNext(pipeline.Handler) {}
 // using the old chain. An invalid config leaves the current one untouched.
 // Server, store, dlq, logging and tracing sections require a restart.
 func (a *app) reload() {
+	start := time.Now()
+
 	cfg, err := config.Load(a.configPath)
 	if err != nil {
-		a.observeReload("failure")
+		a.observeReload("failure", start)
 		a.log.Error("config reload: load failed, keeping current configuration", zap.Error(err))
 		return
 	}
 
 	reg, err := factory.BuildAll(cfg, a.log, a.buildOpts...)
 	if err != nil {
-		a.observeReload("failure")
+		a.observeReload("failure", start)
 		a.log.Error("config reload: handler build failed, keeping current configuration", zap.Error(err))
 		return
 	}
@@ -89,15 +91,18 @@ func (a *app) reload() {
 	a.chainHolder.p.Store(&chain)
 	a.collectors.HandlersRegistered.Set(float64(len(reg.Names())))
 
-	a.observeReload("success")
+	a.observeReload("success", start)
 	a.log.Info("configuration reloaded",
 		zap.Strings("handlers", reg.Names()))
 }
 
-func (a *app) observeReload(result string) {
-	if a.collectors != nil {
-		a.collectors.ConfigReloads.WithLabelValues(result).Inc()
+func (a *app) observeReload(result string, start time.Time) {
+	if a.collectors == nil {
+		return
 	}
+	a.collectors.ConfigReloads.WithLabelValues(result).Inc()
+	a.collectors.ConfigReloadDuration.Observe(time.Since(start).Seconds())
+	a.collectors.ConfigReloadLastTimestamp.Set(float64(time.Now().Unix()))
 }
 
 // warnImmutableChanges flags config sections that only apply after restart.

@@ -40,6 +40,9 @@ type Base struct {
 	Method       MethodSelector
 	UserAgent    string
 	Log          *zap.Logger
+	// RetryPolicy overrides the global retry policy for this notifier.
+	// When nil, httpx.DefaultRetryPolicy() is used.
+	RetryPolicy *httpx.RetryPolicy
 }
 
 // Send executes the common HTTP send flow with retry.
@@ -97,7 +100,11 @@ func (b *Base) Send(ctx context.Context, e domain.Event) error {
 		}
 	}
 
-	resp, err := httpx.DoWithRetryPolicy(b.HTTP, req, httpx.DefaultRetryPolicy())
+	rp := httpx.DefaultRetryPolicy()
+	if b.RetryPolicy != nil {
+		rp = *b.RetryPolicy
+	}
+	resp, err := httpx.DoWithRetryPolicy(b.HTTP, req, rp)
 	duration := time.Since(start)
 
 	if err != nil {

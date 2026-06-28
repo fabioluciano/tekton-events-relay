@@ -70,6 +70,20 @@ func TestAuthTimestamp_MissingHeaderRejected(t *testing.T) {
 	}
 }
 
+func TestAuthTimestamp_DisabledAcceptsSignedRequestWithoutTimestamp(t *testing.T) {
+	// Given: replay protection is disabled on the lower-level middleware config.
+	cfg := AuthConfig{Type: "hmac-sha256", Secret: "s3cret"}
+	req := signedRequest(t, "s3cret", "payload", time.Now(), false)
+
+	// When: a request has a valid HMAC but no replay timestamp.
+	code := runAuth(t, cfg, req)
+
+	// Then: the middleware preserves its existing direct-constructor behavior.
+	if code != http.StatusOK {
+		t.Errorf("status = %d, want 200 (timestamp validation off)", code)
+	}
+}
+
 func TestAuthTimestamp_DisabledIgnoresHeader(t *testing.T) {
 	cfg := AuthConfig{Type: "hmac-sha256", Secret: "s3cret"}
 	req := signedRequest(t, "s3cret", "payload", time.Now().Add(-time.Hour), true)

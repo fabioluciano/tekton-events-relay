@@ -149,6 +149,7 @@ const (
 const (
 	DefaultServerAddr        = ":8080"
 	AuthTypeBearer           = "bearer"
+	AuthTypeHMACSHA256       = "hmac-sha256"
 	BitbucketVariantCloud    = "cloud"
 	BitbucketVariantServer   = "server"
 	GitLabVariantSaaS        = "saas"
@@ -160,6 +161,7 @@ const (
 	ValidationMsgRequired                 = "required"
 	ValidationMsgRequiredForEnabled       = "required for enabled instance"
 	ValidationMsgRequiredWhenEnabled      = "required when auth is enabled"
+	ValidationMsgHMACReplayRequired       = "must be true when server.auth.type is 'hmac-sha256'"
 	ValidationMsgRequiredForCloudVariant  = "required for cloud variant"
 	ValidationMsgRequiredForServerVariant = "required for server variant"
 	ValidationPathAuth                    = ".auth"
@@ -766,7 +768,7 @@ type WebhookInstance struct {
 	URLFile   string             `yaml:"url_file"`
 	URLKey    string             `yaml:"url_key,omitempty"` // Optional: override default "url"
 	Auth      *WebhookAuthConfig `yaml:"auth,omitempty"`
-	Transform string             `yaml:"transform,omitempty"` // gojq expression to transform payload
+	Transform string             `yaml:"transform,omitempty"` // trusted admin gojq expression to transform payload
 	Headers   map[string]string  `yaml:"headers"`
 	When      string             `yaml:"when"`
 }

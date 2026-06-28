@@ -1,8 +1,9 @@
 package factory
 
 import (
-	"context"
+	"encoding/base64"
 	"fmt"
+	"net/http"
 
 	"go.uber.org/zap"
 
@@ -21,58 +22,64 @@ func (f *BitbucketFactory) Build(inst config.BitbucketInstance, log *zap.Logger)
 		return nil, nil
 	}
 
-	// Resolve secrets from volume mounts based on variant
-	var username, appPassword, token string
-	var err error
-
 	if inst.Variant == config.BitbucketVariantCloud {
-		username, appPassword, err = resolveCloudAuth(inst, log)
+		client, username, appPassword, err := resolveCloudAuth(inst, log)
 		if err != nil {
 			return nil, err
 		}
-	} else {
-		token, err = resolveServerAuth(inst, log)
-		if err != nil {
-			return nil, err
-		}
+		return buildActionsWithMiddleware(inst.Actions, log, func(action config.Action) (notifier.ActionHandler, error) {
+			return f.buildCloudHandler(inst, action, client, username, appPassword, log)
+		})
 	}
 
+	token, err := resolveServerAuth(inst, log)
+	if err != nil {
+		return nil, err
+	}
 	return buildActionsWithMiddleware(inst.Actions, log, func(action config.Action) (notifier.ActionHandler, error) {
-		return f.buildHandler(inst, action, username, appPassword, token, log)
+		return f.buildServerHandler(inst, action, token, log)
 	})
 }
 
 // resolveCloudAuth resolves authentication for Bitbucket Cloud.
 // Supports both basic auth (username_file + app_password_file) and OAuth2.
-// For OAuth2, the token is resolved via TokenRefresher and passed as x-token-auth.
-func resolveCloudAuth(inst config.BitbucketInstance, log *zap.Logger) (username, appPassword string, err error) {
+// For OAuth2, returns a pre-built CloudClient that resolves tokens per-request.
+// For basic auth, returns username and appPassword strings.
+func resolveCloudAuth(inst config.BitbucketInstance, log *zap.Logger) (client *bitbucket.CloudClient, username, appPassword string, err error) {
 	if inst.Auth == nil {
 		username, err = secrets.ResolveOrInfer("", "bitbucket", inst.Name, "username", "", log)
 		if err != nil {
-			return "", "", err
+			return nil, "", "", err
 		}
 		appPassword, err = secrets.ResolveOrInfer("", "bitbucket", inst.Name, "app_password", "", log)
-		return username, appPassword, err
+		return nil, username, appPassword, err
 	}
 
 	if inst.Auth.OAuth2 != nil {
 		refresher, rErr := resolveOAuth2Refresher(inst.Auth.OAuth2, "bitbucket", inst.Name, log)
 		if rErr != nil {
-			return "", "", fmt.Errorf("cloud oauth2: %w", rErr)
+			return nil, "", "", fmt.Errorf("cloud oauth2: %w", rErr)
 		}
-		tok, tErr := refresher.Token(context.Background())
-		if tErr != nil {
-			return "", "", fmt.Errorf("cloud oauth2 token: %w", tErr)
+		authFn := func(r *http.Request) {
+			tok, tErr := refresher.Token(r.Context())
+			if tErr != nil {
+				log.Warn("bitbucket cloud oauth2 token refresh failed",
+					zap.String("instance", inst.Name), zap.Error(tErr))
+				return
+			}
+			cred := base64.StdEncoding.EncodeToString([]byte("x-token-auth:" + tok))
+			r.Header.Set("Authorization", "Basic "+cred)
 		}
-		return "x-token-auth", tok, nil
+		client = bitbucket.NewCloudClientWithAuth(authFn, inst.BaseURL, inst.InsecureSkipVerify, false, log)
+		return client, "", "", nil
 	}
 
 	username, err = secrets.ResolveOrInfer(inst.Auth.UsernameFile, "bitbucket", inst.Name, "username", inst.Auth.UsernameKey, log)
 	if err != nil {
-		return "", "", err
+		return nil, "", "", err
 	}
 	appPassword, err = secrets.ResolveOrInfer(inst.Auth.AppPasswordFile, "bitbucket", inst.Name, "app_password", inst.Auth.AppPasswordKey, log)
-	return username, appPassword, err
+	return nil, username, appPassword, err
 }
 
 // resolveServerAuth resolves the token for Bitbucket Server.
@@ -83,26 +90,36 @@ func resolveServerAuth(inst config.BitbucketInstance, log *zap.Logger) (string, 
 	return secrets.ResolveOrInfer(inst.Auth.TokenFile, "bitbucket", inst.Name, "token", inst.Auth.TokenKey, log)
 }
 
-// buildHandler creates the appropriate handler based on action type and variant.
-func (f *BitbucketFactory) buildHandler(inst config.BitbucketInstance, action config.Action, username, appPassword, token string, log *zap.Logger) (notifier.ActionHandler, error) {
+// buildCloudHandler creates a Bitbucket Cloud handler for the given action.
+func (f *BitbucketFactory) buildCloudHandler(inst config.BitbucketInstance, action config.Action, client *bitbucket.CloudClient, username, appPassword string, log *zap.Logger) (notifier.ActionHandler, error) {
 	switch action.Type {
 	case notifier.ActionCommitStatus:
-		if inst.Variant == config.BitbucketVariantCloud {
-			return bitbucket.NewCloudStatusReporter(username, appPassword, inst.BaseURL, inst.InsecureSkipVerify, log), nil
+		if client != nil {
+			return bitbucket.NewCloudStatusReporterWithClient(client), nil
 		}
+		return bitbucket.NewCloudStatusReporter(username, appPassword, inst.BaseURL, inst.InsecureSkipVerify, log), nil
+	case notifier.ActionPRComment:
+		return bitbucket.NewCloudCommentHandler(bitbucket.CloudCommentConfig{
+			Username:           username,
+			AppPassword:        appPassword,
+			BaseURL:            inst.BaseURL,
+			Template:           action.Template,
+			Mode:               action.Mode,
+			InsecureSkipVerify: inst.InsecureSkipVerify,
+			Log:                log,
+			Client:             client,
+		})
+	default:
+		return nil, ErrUnsupportedActionType
+	}
+}
+
+// buildServerHandler creates a Bitbucket Server handler for the given action.
+func (f *BitbucketFactory) buildServerHandler(inst config.BitbucketInstance, action config.Action, token string, log *zap.Logger) (notifier.ActionHandler, error) {
+	switch action.Type {
+	case notifier.ActionCommitStatus:
 		return bitbucket.NewServerStatusReporter(token, inst.BaseURL, inst.InsecureSkipVerify, log), nil
 	case notifier.ActionPRComment:
-		if inst.Variant == config.BitbucketVariantCloud {
-			return bitbucket.NewCloudCommentHandler(bitbucket.CloudCommentConfig{
-				Username:           username,
-				AppPassword:        appPassword,
-				BaseURL:            inst.BaseURL,
-				Template:           action.Template,
-				Mode:               action.Mode,
-				InsecureSkipVerify: inst.InsecureSkipVerify,
-				Log:                log,
-			})
-		}
 		if action.Mode == "upsert" {
 			log.Warn("comment mode 'upsert' is not supported on Bitbucket Server, using 'create'",
 				zap.String("instance", inst.Name),

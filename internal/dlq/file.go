@@ -196,11 +196,32 @@ func (q *FileQueue) writeAll(entries []DeadEvent) error {
 		_ = f.Close()
 		return fmt.Errorf("dlq: flush: %w", err)
 	}
+	// Sync data to disk before close so the rename targets durable bytes.
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("dlq: sync: %w", err)
+	}
 	if err := f.Close(); err != nil {
 		return fmt.Errorf("dlq: close tmp: %w", err)
 	}
 	if err := os.Rename(tmp, q.path); err != nil {
 		return fmt.Errorf("dlq: rename: %w", err)
 	}
+	// Best-effort parent-directory sync so the directory entry is durable.
+	// On platforms/filesystems that do not support fsync on directories
+	// (e.g. some network mounts), this is a documented no-op fallback.
+	syncParentDir(filepath.Dir(q.path))
 	return nil
+}
+
+// syncParentDir opens the directory and calls Sync to flush the directory
+// entry created by Rename. Errors are silently ignored — this is a
+// best-effort durability improvement, not a correctness requirement.
+func syncParentDir(dir string) {
+	df, err := os.Open(dir) // #nosec G304 -- parent of configured path
+	if err != nil {
+		return
+	}
+	defer func() { _ = df.Close() }()
+	_ = df.Sync()
 }

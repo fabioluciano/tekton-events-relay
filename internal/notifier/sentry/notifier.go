@@ -82,7 +82,7 @@ func New(cfg Config) *Notifier {
 		token:    cfg.Token,
 		org:      cfg.Org,
 		projects: cfg.Projects,
-		http:     notifier.DefaultHTTPClient(),
+		http:     httpx.NewClient(),
 		log:      log,
 	}
 }

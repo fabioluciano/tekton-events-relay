@@ -33,11 +33,13 @@ func NewStoreBuffer(rb store.RunBuffer, backend string, collectors *metrics.Coll
 }
 
 // Add stores the event for its task; the run UID keys the accumulation.
-func (b *StoreBuffer) Add(uid string, event *domain.Event) {
+// The caller's context controls cancellation; a 5s operation timeout is
+// applied as a child context so slow backends cannot stall indefinitely.
+func (b *StoreBuffer) Add(ctx context.Context, uid string, event *domain.Event) {
 	if event.Resource != domain.ResourceTaskRun {
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), storeOpTimeout)
+	ctx, cancel := context.WithTimeout(ctx, storeOpTimeout)
 	defer cancel()
 	if err := b.buffer.Add(ctx, uid, event.RunName, event); err != nil {
 		b.observeError("add")
@@ -55,8 +57,10 @@ func (b *StoreBuffer) Get(_ string) (*RunState, bool) {
 }
 
 // Flush removes and returns accumulated state for the run.
-func (b *StoreBuffer) Flush(uid string) (*RunState, bool) {
-	ctx, cancel := context.WithTimeout(context.Background(), storeOpTimeout)
+// The caller's context controls cancellation; a 5s operation timeout is
+// applied as a child context so slow backends cannot stall indefinitely.
+func (b *StoreBuffer) Flush(ctx context.Context, uid string) (*RunState, bool) {
+	ctx, cancel := context.WithTimeout(ctx, storeOpTimeout)
 	defer cancel()
 	tasks, found, err := b.buffer.Flush(ctx, uid)
 	if err != nil {

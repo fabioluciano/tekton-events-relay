@@ -337,6 +337,17 @@ func TestWebhookTransformValidation(t *testing.T) {
 			errContains: "transform: invalid jq syntax",
 		},
 		{
+			name: "invalid jq compile",
+			fileContent: `notifiers:
+  webhook:
+    - name: test
+      enabled: true
+      url_file: "https://example.com/webhook"
+      transform: 'input'`,
+			wantErr:     true,
+			errContains: "transform: invalid jq expression",
+		},
+		{
 			name: "no transform",
 			fileContent: `notifiers:
   webhook:
@@ -364,6 +375,82 @@ func TestWebhookTransformValidation(t *testing.T) {
 				t.Errorf("error should contain %q, got: %v", tt.errContains, err)
 			}
 		})
+	}
+}
+
+func TestLoad_AcceptsTrustedAdminPolicySurfaces(t *testing.T) {
+	fileContent := `scm:
+  github:
+    - name: github
+      enabled: true
+      auth:
+        secret_file: /tmp/token
+      actions:
+        - name: status
+          type: commit_status
+          enabled: true
+          when: 'isPipelineRun() && stateIn("running", "success", "failure")'
+notifiers:
+  webhook:
+    - name: audit
+      enabled: true
+      url_file: https://example.com/webhook
+      when: 'event.Namespace == "production"'
+      transform: '. | {id: .run_id, status: .state, repo: (.repo.owner + "/" + .repo.name)}'`
+
+	tmpDir := t.TempDir()
+	cfgPath := filepath.Join(tmpDir, "config.yaml")
+	if err := os.WriteFile(cfgPath, []byte(fileContent), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if got := cfg.SCM.GitHub[0].Actions[0].When; got == "" {
+		t.Fatal("expected CEL when expression to remain configured")
+	}
+	if got := cfg.Notifiers.Webhook[0].Transform; got == "" {
+		t.Fatal("expected gojq transform to remain configured")
+	}
+}
+
+func TestLoad_RejectsInvalidCELWithoutTestHook(t *testing.T) {
+	previous := CELCompileFunc
+	CELCompileFunc = nil
+	t.Cleanup(func() { CELCompileFunc = previous })
+
+	fileContent := `scm:
+  github:
+    - name: github
+      enabled: true
+      auth:
+        secret_file: /tmp/token
+      actions:
+        - name: status
+          type: commit_status
+          enabled: true
+          when: 'event.State =='
+notifiers:
+  webhook:
+    - name: audit
+      enabled: true
+      url_file: https://example.com/webhook
+      transform: '. | {id: .run_id}'`
+
+	tmpDir := t.TempDir()
+	cfgPath := filepath.Join(tmpDir, "config.yaml")
+	if err := os.WriteFile(cfgPath, []byte(fileContent), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(cfgPath)
+	if err == nil {
+		t.Fatal("expected Load to reject invalid CEL without a test hook")
+	}
+	if !strings.Contains(err.Error(), "scm.github[0].actions[0].when") {
+		t.Errorf("error should contain CEL path, got: %v", err)
 	}
 }
 

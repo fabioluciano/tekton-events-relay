@@ -133,3 +133,55 @@ func TestDLQ_ListRejectsNonGET(t *testing.T) {
 		t.Errorf("status = %d, want 405", rec.Code)
 	}
 }
+
+// removeFailingQueue wraps a real FileQueue but returns an error on Remove.
+type removeFailingQueue struct {
+	*dlq.FileQueue
+	removeErr error
+}
+
+func (q *removeFailingQueue) Remove(_ context.Context, _ string) error {
+	return q.removeErr
+}
+
+func TestDLQ_ReplayReturns500OnRemoveFailure(t *testing.T) {
+	queue, err := dlq.NewFileQueue(filepath.Join(t.TempDir(), "dlq.jsonl"), 0)
+	if err != nil {
+		t.Fatalf("NewFileQueue: %v", err)
+	}
+	collectors := metrics.NewCollectors(prometheus.NewRegistry())
+	log := zap.NewNop()
+
+	if err := queue.Enqueue(context.Background(), dlqTestEnvelope("evt-1"), errors.New("x")); err != nil {
+		t.Fatalf("Enqueue: %v", err)
+	}
+
+	mockQueue := &removeFailingQueue{
+		FileQueue: queue,
+		removeErr: errors.New("disk full"),
+	}
+
+	chain := &flakyChain{failuresLeft: 0}
+	pipeline.Build(chain)
+
+	rec := httptest.NewRecorder()
+	dlqReplayHandler(mockQueue, chain, collectors, log)(rec, httptest.NewRequest("POST", "/api/v1/dlq/replay", nil))
+
+	if rec.Code != 500 {
+		t.Errorf("status = %d, want 500", rec.Code)
+	}
+
+	var resp map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	want := "replay succeeded but failed to remove DLQ entry"
+	if resp["error"] != want {
+		t.Errorf("error = %q, want %q", resp["error"], want)
+	}
+
+	size, _ := queue.Size(context.Background())
+	if size != 1 {
+		t.Errorf("dlq size = %d, want 1 (entry left on remove failure)", size)
+	}
+}

@@ -470,7 +470,7 @@ func TestBitbucketFactory_Build_creates_cloud_status_handler(t *testing.T) {
 	handlers, err := f.Build(config.BitbucketInstance{
 		Name:    "cloud", //nolint:goconst
 		Enabled: true,
-		Variant: "cloud",
+		Variant: config.BitbucketVariantCloud,
 		Auth:    &config.BitbucketAuth{UsernameFile: userFile, AppPasswordFile: passFile},
 		BaseURL: "https://api.bitbucket.org/2.0",
 		Actions: []config.Action{
@@ -499,7 +499,7 @@ func TestBitbucketFactory_Build_creates_server_status_handler(t *testing.T) {
 	handlers, err := f.Build(config.BitbucketInstance{
 		Name:    "server",
 		Enabled: true,
-		Variant: "server",
+		Variant: config.BitbucketVariantServer,
 		Auth:    &config.BitbucketAuth{TokenFile: tokenFile},
 		BaseURL: "https://bitbucket.example.com",
 		Actions: []config.Action{
@@ -532,7 +532,7 @@ func TestBitbucketFactory_Build_creates_cloud_pr_comment_handler(t *testing.T) {
 	handlers, err := f.Build(config.BitbucketInstance{
 		Name:    "cloud",
 		Enabled: true,
-		Variant: "cloud",
+		Variant: config.BitbucketVariantCloud,
 		Auth:    &config.BitbucketAuth{UsernameFile: userFile, AppPasswordFile: passFile},
 		BaseURL: "https://api.bitbucket.org/2.0",
 		Actions: []config.Action{},
@@ -559,7 +559,7 @@ func TestBitbucketFactory_Build_creates_server_pr_comment_handler(t *testing.T) 
 	handlers, err := f.Build(config.BitbucketInstance{
 		Name:    "server",
 		Enabled: true,
-		Variant: "server",
+		Variant: config.BitbucketVariantServer,
 		Auth:    &config.BitbucketAuth{TokenFile: tokenFile},
 		BaseURL: "https://bitbucket.example.com",
 		Actions: []config.Action{},
@@ -580,7 +580,7 @@ func TestBitbucketFactory_Build_returns_error_for_invalid_CEL(t *testing.T) {
 	_, err := f.Build(config.BitbucketInstance{
 		Name:    testInstanceNameMain,
 		Enabled: true,
-		Variant: "cloud",
+		Variant: config.BitbucketVariantCloud,
 		BaseURL: "https://api.bitbucket.org/2.0",
 		Actions: []config.Action{
 			{Name: "s", Type: notifier.ActionCommitStatus, Enabled: true, When: notifierBadSyntax},
@@ -609,7 +609,7 @@ func TestBitbucketFactory_Build_skips_unknown_action_type(t *testing.T) {
 	handlers, err := f.Build(config.BitbucketInstance{
 		Name:    testInstanceNameMain,
 		Enabled: true,
-		Variant: "cloud",
+		Variant: config.BitbucketVariantCloud,
 		Auth:    &config.BitbucketAuth{UsernameFile: userFile, AppPasswordFile: passFile},
 		BaseURL: "https://api.bitbucket.org/2.0",
 		Actions: []config.Action{

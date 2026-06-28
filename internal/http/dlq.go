@@ -60,9 +60,10 @@ func dlqListHandler(queue dlq.Queue, log *zap.Logger) http.HandlerFunc {
 
 // dlqReplayResult summarizes a replay request.
 type dlqReplayResult struct {
-	Replayed int      `json:"replayed"`
-	Failed   int      `json:"failed"`
-	FailedID []string `json:"failed_ids,omitempty"`
+	Replayed     int      `json:"replayed"`
+	Failed       int      `json:"failed"`
+	FailedID     []string `json:"failed_ids,omitempty"`
+	RemoveFailed int      `json:"remove_failed,omitempty"`
 }
 
 // dlqReplayHandler serves POST /api/v1/dlq/replay. Each stored event is
@@ -110,9 +111,13 @@ func dlqReplayHandler(queue dlq.Queue, chain pipeline.Handler, collectors *metri
 					return
 				}
 				if err := queue.Remove(r.Context(), entry.ID); err != nil {
-					log.Warn("dlq remove after replay failed",
+					mu.Lock()
+					result.RemoveFailed++
+					mu.Unlock()
+					log.Error("dlq remove after replay failed",
 						zap.String("ce_id", entry.ID),
 						zap.Error(err))
+					return
 				}
 				mu.Lock()
 				result.Replayed++
@@ -125,7 +130,17 @@ func dlqReplayHandler(queue dlq.Queue, chain pipeline.Handler, collectors *metri
 
 		log.Info("dlq replay finished",
 			zap.Int("replayed", result.Replayed),
-			zap.Int("failed", result.Failed))
+			zap.Int("failed", result.Failed),
+			zap.Int("remove_failed", result.RemoveFailed))
+
+		if result.RemoveFailed > 0 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"error": "replay succeeded but failed to remove DLQ entry",
+			})
+			return
+		}
 
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(result); err != nil {

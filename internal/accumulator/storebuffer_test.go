@@ -24,18 +24,19 @@ func taskEvent(name string, state domain.State) *domain.Event {
 }
 
 func TestStoreBuffer_RoundTrip(t *testing.T) {
+	ctx := context.Background()
 	st, err := store.New(config.StoreConfig{TTL: time.Minute}, store.Options{})
 	if err != nil {
 		t.Fatalf("new store: %v", err)
 	}
 	buf := NewStoreBuffer(st.RunBuffer(), st.Backend(), nil, nil)
 
-	buf.Add("uid-1", taskEvent("build", domain.StateSuccess))
-	buf.Add("uid-1", taskEvent("test", domain.StateFailure))
+	buf.Add(ctx, "uid-1", taskEvent("build", domain.StateSuccess))
+	buf.Add(ctx, "uid-1", taskEvent("test", domain.StateFailure))
 	// Non-TaskRun events must be ignored, like LRUBuffer does.
-	buf.Add("uid-1", &domain.Event{Resource: domain.ResourcePipelineRun, RunName: "run"})
+	buf.Add(ctx, "uid-1", &domain.Event{Resource: domain.ResourcePipelineRun, RunName: "run"})
 
-	state, found := buf.Flush("uid-1")
+	state, found := buf.Flush(ctx, "uid-1")
 	if !found {
 		t.Fatal("expected state for uid-1")
 	}
@@ -46,7 +47,7 @@ func TestStoreBuffer_RoundTrip(t *testing.T) {
 		t.Errorf("build state = %q, want success", state.Tasks["build"].State)
 	}
 
-	if _, found := buf.Flush("uid-1"); found {
+	if _, found := buf.Flush(ctx, "uid-1"); found {
 		t.Error("second Flush should report not found")
 	}
 }
@@ -62,11 +63,12 @@ func (failingRunBuffer) Flush(context.Context, string) (map[string]*domain.Event
 }
 
 func TestStoreBuffer_FailsOpenOnError(t *testing.T) {
+	ctx := context.Background()
 	collectors := metrics.NewCollectors(prometheus.NewRegistry())
 	buf := NewStoreBuffer(failingRunBuffer{}, "valkey", collectors, nil)
 
-	buf.Add("uid-1", taskEvent("build", domain.StateSuccess)) // must not panic
-	if _, found := buf.Flush("uid-1"); found {
+	buf.Add(ctx, "uid-1", taskEvent("build", domain.StateSuccess)) // must not panic
+	if _, found := buf.Flush(ctx, "uid-1"); found {
 		t.Error("Flush on failing backend should report not found")
 	}
 
@@ -75,5 +77,59 @@ func TestStoreBuffer_FailsOpenOnError(t *testing.T) {
 	}
 	if got := testutil.ToFloat64(collectors.StoreErrors.WithLabelValues("valkey", "flush")); got != 1 {
 		t.Errorf("store_errors{flush} = %v, want 1", got)
+	}
+}
+
+func TestStoreBuffer_FlushHonorsContextCancellation(t *testing.T) {
+	collectors := metrics.NewCollectors(prometheus.NewRegistry())
+	buf := NewStoreBuffer(slowRunBuffer{delay: 2 * time.Second}, "valkey", collectors, nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	_, found := buf.Flush(ctx, "uid-slow")
+	if found {
+		t.Error("Flush with cancelled context should report not found")
+	}
+
+	if got := testutil.ToFloat64(collectors.StoreErrors.WithLabelValues("valkey", "flush")); got != 1 {
+		t.Errorf("store_errors{flush} = %v, want 1", got)
+	}
+}
+
+func TestStoreBuffer_AddHonorsContextCancellation(t *testing.T) {
+	collectors := metrics.NewCollectors(prometheus.NewRegistry())
+	buf := NewStoreBuffer(slowRunBuffer{delay: 2 * time.Second}, "valkey", collectors, nil)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	buf.Add(ctx, "uid-slow", taskEvent("build", domain.StateSuccess))
+
+	if got := testutil.ToFloat64(collectors.StoreErrors.WithLabelValues("valkey", "add")); got != 1 {
+		t.Errorf("store_errors{add} = %v, want 1", got)
+	}
+}
+
+// slowRunBuffer simulates a slow backend that blocks for the configured delay.
+type slowRunBuffer struct {
+	delay time.Duration
+}
+
+func (s slowRunBuffer) Add(ctx context.Context, _, _ string, _ *domain.Event) error {
+	select {
+	case <-time.After(s.delay):
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (s slowRunBuffer) Flush(ctx context.Context, _ string) (map[string]*domain.Event, bool, error) {
+	select {
+	case <-time.After(s.delay):
+		return nil, false, nil
+	case <-ctx.Done():
+		return nil, false, ctx.Err()
 	}
 }

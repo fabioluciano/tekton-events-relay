@@ -15,6 +15,7 @@ import (
 
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
+	"github.com/fabioluciano/tekton-events-relay/internal/notifier/scm"
 )
 
 // validateURL checks that a URL has an http or https scheme.
@@ -41,7 +42,7 @@ const (
 
 // Config holds the Datadog notifier configuration.
 type Config struct {
-	APIKey string
+	APIKey scm.TokenRefresher
 	Site   string   // default: datadoghq.com (alternative: datadoghq.eu)
 	Tags   []string // extra tags besides the automatically generated ones
 }
@@ -89,7 +90,14 @@ func (n *Notifier) url(_ domain.Event) (string, error) {
 }
 
 func (n *Notifier) auth(req *http.Request) error {
-	req.Header.Set("DD-API-KEY", n.cfg.APIKey)
+	if n.cfg.APIKey == nil {
+		return fmt.Errorf("datadog: api key refresher is required")
+	}
+	apiKey, err := n.cfg.APIKey.Token(req.Context())
+	if err != nil {
+		return fmt.Errorf("datadog: resolve api key: %w", err)
+	}
+	req.Header.Set("DD-API-KEY", apiKey)
 	return nil
 }
 

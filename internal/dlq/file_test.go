@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -143,5 +144,62 @@ func TestFileQueue_SurvivesReopen(t *testing.T) {
 	size, _ := q2.Size(context.Background())
 	if size != 1 {
 		t.Errorf("Size after reopen = %d, want 1", size)
+	}
+}
+
+func TestFileQueue_EnqueuePropagatesWriteError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "dlq.jsonl")
+
+	q, err := NewFileQueue(path, 0)
+	if err != nil {
+		t.Fatalf("NewFileQueue: %v", err)
+	}
+
+	_ = os.RemoveAll(dir)
+
+	err = q.Enqueue(context.Background(), testEnvelope("evt-1"), errors.New("x"))
+	if err == nil {
+		t.Fatal("expected error on Enqueue after directory removal, got nil")
+	}
+}
+
+func TestFileQueue_RemovePropagatesWriteError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "dlq.jsonl")
+
+	q, err := NewFileQueue(path, 0)
+	if err != nil {
+		t.Fatalf("NewFileQueue: %v", err)
+	}
+	_ = q.Enqueue(context.Background(), testEnvelope("evt-1"), errors.New("x"))
+	_ = q.Enqueue(context.Background(), testEnvelope("evt-2"), errors.New("y"))
+
+	_ = os.RemoveAll(dir)
+
+	err = q.Remove(context.Background(), "evt-1")
+	if err == nil {
+		t.Fatal("expected error on Remove after directory removal, got nil")
+	}
+}
+
+func TestFileQueue_RenameFailurePropagated(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "dlq.jsonl")
+
+	q, err := NewFileQueue(path, 0)
+	if err != nil {
+		t.Fatalf("NewFileQueue: %v", err)
+	}
+	_ = q.Enqueue(context.Background(), testEnvelope("evt-1"), errors.New("x"))
+
+	_ = os.Remove(path)
+	if err := os.Mkdir(path, 0o750); err != nil {
+		t.Fatalf("Mkdir: %v", err)
+	}
+
+	err = q.Enqueue(context.Background(), testEnvelope("evt-2"), errors.New("y"))
+	if err == nil {
+		t.Fatal("expected error on Enqueue when destination is a directory, got nil")
 	}
 }

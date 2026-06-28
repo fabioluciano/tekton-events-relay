@@ -1,6 +1,7 @@
 package accumulator
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"testing"
@@ -8,6 +9,25 @@ import (
 
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
 )
+
+// waitForCondition polls cond every 10ms until it returns true or the timeout expires.
+// Uses time.NewTicker + time.After for deterministic synchronization without blocking sleeps.
+func waitForCondition(t *testing.T, timeout time.Duration, cond func() bool) {
+	t.Helper()
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	deadline := time.After(timeout)
+	for {
+		if cond() {
+			return
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("condition not met within %v", timeout)
+		case <-ticker.C:
+		}
+	}
+}
 
 func makeEvent(runName string) *domain.Event {
 	return &domain.Event{
@@ -18,10 +38,12 @@ func makeEvent(runName string) *domain.Event {
 }
 
 func TestNewLRUBuffer(t *testing.T) {
+	ctx := context.Background()
+
 	t.Run("usable with zero values (defaults applied)", func(t *testing.T) {
 		buf := NewLRUBuffer(0, 0)
 		defer buf.Close()
-		buf.Add("uid-1", makeEvent("task-a"))
+		buf.Add(ctx, "uid-1", makeEvent("task-a"))
 		_, ok := buf.Get("uid-1")
 		if !ok {
 			t.Error("expected entry to exist after Add")
@@ -31,7 +53,7 @@ func TestNewLRUBuffer(t *testing.T) {
 	t.Run("usable with explicit values", func(t *testing.T) {
 		buf := NewLRUBuffer(5*time.Second, 50)
 		defer buf.Close()
-		buf.Add("uid-1", makeEvent("task-a"))
+		buf.Add(ctx, "uid-1", makeEvent("task-a"))
 		_, ok := buf.Get("uid-1")
 		if !ok {
 			t.Error("expected entry to exist after Add")
@@ -40,12 +62,13 @@ func TestNewLRUBuffer(t *testing.T) {
 }
 
 func TestLRUBuffer_Add(t *testing.T) {
+	ctx := context.Background()
 	buf := NewLRUBuffer(10*time.Second, 100)
 	defer buf.Close()
 
-	buf.Add("pipeline-uid-1", makeEvent("task-build"))
-	buf.Add("pipeline-uid-1", makeEvent("task-test"))
-	buf.Add("pipeline-uid-2", makeEvent("task-deploy"))
+	buf.Add(ctx, "pipeline-uid-1", makeEvent("task-build"))
+	buf.Add(ctx, "pipeline-uid-1", makeEvent("task-test"))
+	buf.Add(ctx, "pipeline-uid-2", makeEvent("task-deploy"))
 
 	state1, ok := buf.Get("pipeline-uid-1")
 	if !ok {
@@ -71,11 +94,12 @@ func TestLRUBuffer_Add(t *testing.T) {
 }
 
 func TestLRUBuffer_Add_OverwritesSameTask(t *testing.T) {
+	ctx := context.Background()
 	buf := NewLRUBuffer(10*time.Second, 100)
 	defer buf.Close()
 
-	buf.Add("uid-1", &domain.Event{RunName: "task-a", Resource: domain.ResourceTaskRun, State: domain.StateRunning})
-	buf.Add("uid-1", &domain.Event{RunName: "task-a", Resource: domain.ResourceTaskRun, State: domain.StateSuccess})
+	buf.Add(ctx, "uid-1", &domain.Event{RunName: "task-a", Resource: domain.ResourceTaskRun, State: domain.StateRunning})
+	buf.Add(ctx, "uid-1", &domain.Event{RunName: "task-a", Resource: domain.ResourceTaskRun, State: domain.StateSuccess})
 
 	state, _ := buf.Get("uid-1")
 	if state.Tasks["task-a"].State != domain.StateSuccess {
@@ -84,6 +108,7 @@ func TestLRUBuffer_Add_OverwritesSameTask(t *testing.T) {
 }
 
 func TestLRUBuffer_Get(t *testing.T) {
+	ctx := context.Background()
 	buf := NewLRUBuffer(10*time.Second, 100)
 	defer buf.Close()
 
@@ -92,7 +117,7 @@ func TestLRUBuffer_Get(t *testing.T) {
 		t.Error("expected false for nonexistent UID")
 	}
 
-	buf.Add("uid-1", makeEvent("task-a"))
+	buf.Add(ctx, "uid-1", makeEvent("task-a"))
 
 	state, ok := buf.Get("uid-1")
 	if !ok {
@@ -110,13 +135,14 @@ func TestLRUBuffer_Get(t *testing.T) {
 }
 
 func TestLRUBuffer_Flush(t *testing.T) {
+	ctx := context.Background()
 	buf := NewLRUBuffer(10*time.Second, 100)
 	defer buf.Close()
 
-	buf.Add("uid-1", makeEvent("task-a"))
-	buf.Add("uid-1", makeEvent("task-b"))
+	buf.Add(ctx, "uid-1", makeEvent("task-a"))
+	buf.Add(ctx, "uid-1", makeEvent("task-b"))
 
-	state, ok := buf.Flush("uid-1")
+	state, ok := buf.Flush(ctx, "uid-1")
 	if !ok {
 		t.Fatal("expected Flush to return true")
 	}
@@ -131,43 +157,40 @@ func TestLRUBuffer_Flush(t *testing.T) {
 	}
 
 	// Flush nonexistent
-	_, ok = buf.Flush("nonexistent")
+	_, ok = buf.Flush(ctx, "nonexistent")
 	if ok {
 		t.Error("expected false for flushing nonexistent UID")
 	}
 }
 
 func TestLRUBuffer_TTLExpiry(t *testing.T) {
+	ctx := context.Background()
 	ttl := 100 * time.Millisecond
 	buf := NewLRUBuffer(ttl, 100)
 	defer buf.Close()
 
-	buf.Add("uid-1", makeEvent("task-a"))
+	buf.Add(ctx, "uid-1", makeEvent("task-a"))
 
 	_, ok := buf.Get("uid-1")
 	if !ok {
 		t.Fatal("expected uid-1 to exist immediately after Add")
 	}
 
-	time.Sleep(ttl + 50*time.Millisecond)
-
-	_, ok = buf.Get("uid-1")
-	if ok {
-		t.Error("expected uid-1 to be expired after TTL")
-	}
+	waitForCondition(t, ttl+200*time.Millisecond, func() bool {
+		_, found := buf.Get("uid-1")
+		return !found
+	})
 }
 
 func TestLRUBuffer_MaxSize(t *testing.T) {
+	ctx := context.Background()
 	buf := NewLRUBuffer(10*time.Second, 3)
 	defer buf.Close()
 
-	buf.Add("uid-1", makeEvent("task-a"))
-	time.Sleep(time.Millisecond)
-	buf.Add("uid-2", makeEvent("task-b"))
-	time.Sleep(time.Millisecond)
-	buf.Add("uid-3", makeEvent("task-c"))
-	time.Sleep(time.Millisecond)
-	buf.Add("uid-4", makeEvent("task-d"))
+	buf.Add(ctx, "uid-1", makeEvent("task-a"))
+	buf.Add(ctx, "uid-2", makeEvent("task-b"))
+	buf.Add(ctx, "uid-3", makeEvent("task-c"))
+	buf.Add(ctx, "uid-4", makeEvent("task-d"))
 
 	_, ok := buf.Get("uid-1")
 	if ok {
@@ -182,6 +205,7 @@ func TestLRUBuffer_MaxSize(t *testing.T) {
 
 func TestLRUBuffer_Concurrent(t *testing.T) {
 	t.Helper()
+	ctx := context.Background()
 	buf := NewLRUBuffer(5*time.Second, 1000)
 	defer buf.Close()
 
@@ -196,7 +220,7 @@ func TestLRUBuffer_Concurrent(t *testing.T) {
 			uid := fmt.Sprintf("pipeline-%d", id%10)
 			for j := 0; j < eventsPerGoroutine; j++ {
 				event := makeEvent(fmt.Sprintf("task-%d-%d", id, j))
-				buf.Add(uid, event)
+				buf.Add(ctx, uid, event)
 			}
 		}(i)
 	}
@@ -208,7 +232,7 @@ func TestLRUBuffer_Concurrent(t *testing.T) {
 			uid := fmt.Sprintf("pipeline-%d", id)
 			for j := 0; j < 5; j++ {
 				buf.Get(uid)
-				buf.Flush(uid)
+				buf.Flush(ctx, uid)
 			}
 		}(i)
 	}
@@ -217,6 +241,7 @@ func TestLRUBuffer_Concurrent(t *testing.T) {
 }
 
 func TestLRUBuffer_Concurrency(t *testing.T) {
+	ctx := context.Background()
 	buf := NewLRUBuffer(1*time.Minute, 100)
 	defer buf.Close()
 
@@ -229,7 +254,7 @@ func TestLRUBuffer_Concurrency(t *testing.T) {
 				Resource: domain.ResourceTaskRun,
 				RunName:  fmt.Sprintf("task-%d", id),
 			}
-			buf.Add("pipeline-1", event)
+			buf.Add(ctx, "pipeline-1", event)
 		}(i)
 	}
 	wg.Wait()
@@ -244,13 +269,13 @@ func TestLRUBuffer_Concurrency(t *testing.T) {
 }
 
 func TestLRUBuffer_Eviction(t *testing.T) {
+	ctx := context.Background()
 	buf := NewLRUBuffer(1*time.Hour, 3)
 	defer buf.Close()
 
 	for i := 1; i <= 5; i++ {
 		event := &domain.Event{Resource: domain.ResourcePipelineRun}
-		buf.Add(fmt.Sprintf("uid-%d", i), event)
-		time.Sleep(time.Millisecond)
+		buf.Add(ctx, fmt.Sprintf("uid-%d", i), event)
 	}
 
 	count := 0
@@ -278,21 +303,20 @@ func TestLRUBuffer_Eviction(t *testing.T) {
 }
 
 func TestLRUBuffer_TTLExpiryLoop(t *testing.T) {
+	ctx := context.Background()
 	buf := NewLRUBuffer(100*time.Millisecond, 100)
 	defer buf.Close()
 
 	event := &domain.Event{Resource: domain.ResourcePipelineRun}
-	buf.Add("uid-1", event)
+	buf.Add(ctx, "uid-1", event)
 
 	_, ok := buf.Get("uid-1")
 	if !ok {
 		t.Fatal("expected state immediately after Add")
 	}
 
-	time.Sleep(200 * time.Millisecond)
-
-	_, ok = buf.Get("uid-1")
-	if ok {
-		t.Error("state should be expired after TTL")
-	}
+	waitForCondition(t, 500*time.Millisecond, func() bool {
+		_, found := buf.Get("uid-1")
+		return !found
+	})
 }

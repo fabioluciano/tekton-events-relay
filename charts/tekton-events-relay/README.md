@@ -4,7 +4,7 @@
 
 **Your pipelines run. Your platforms get updated. You write zero notification code.**
 
-Tekton Events Relay turns the CloudEvents your Tekton pipelines already emit into commit statuses, PR comments, labels, deployments and alerts — across **6 SCM platforms** (GitHub, GitLab, Gitea, Bitbucket, Azure DevOps, SourceHut) and **8 notification channels** (Slack, Teams, Discord, PagerDuty, Datadog, Grafana, Sentry, webhooks). Routing is declared with CEL expressions and a one-time set of annotations on your `PipelineRun`s — **your pipelines never change**.
+Tekton Events Relay turns the CloudEvents your Tekton pipelines already emit into commit statuses, PR comments, labels, deployments and alerts — across **6 SCM platforms** (GitHub, GitLab, Gitea, Bitbucket, Azure DevOps, SourceHut) and **10 notification channels** (Slack, Teams, Discord, PagerDuty, Datadog, Webhook, Grafana, Sentry, Jira, Email). Routing is declared with CEL expressions and a one-time set of annotations on your `PipelineRun`s — **your pipelines never change**.
 
 **Homepage:** <https://github.com/fabioluciano/tekton-events-relay>
 
@@ -42,7 +42,9 @@ config:
       - name: github                       # matched by the scm.provider annotation
         enabled: true
         auth:
-          secret_name: github-token        # Secret with key "token"
+          secretRef:                      # mounted at /etc/secrets/github/{instance}/token
+            name: github-token
+            key: token
         actions:
           - name: ci-status
             type: commit_status
@@ -57,10 +59,15 @@ config:
     slack:
       - name: prod-alerts
         enabled: true
-        secret_name: slack-webhook         # Secret with key "webhook_url"
+        webhook_url:
+          secretRef:                      # mounted at /etc/secrets/slack/{instance}/webhook_url
+            name: slack-webhook
+            key: webhook_url
         channel: "#prod-alerts"
         when: 'event.Namespace == "production" && stateIn("failure", "error")'
 ```
+
+The chart mounts referenced Kubernetes Secrets at `/etc/secrets/{provider}/{instance}/{key}` and renders those paths into the relay config `*_file` fields automatically.
 
 ```bash
 kubectl create secret generic github-token -n tekton-events-relay \
@@ -314,12 +321,12 @@ The default in-memory state backend is per-pod: run **one replica**, or set `con
 | config.scm.sourcehut[0].actions[0].enabled | bool | `false` | Enable or disable this SCM provider instance |
 | config.scm.sourcehut[0].actions[0].type | string | `"commit_status"` | Action type (commit_status, check_run, pr_comment, issue_comment, discussion_comment, label, deployment_status) |
 | config.scm.sourcehut[0].enabled | bool | `false` | Enable or disable this SCM provider instance |
-| config.server | object | `{"addr":":8080","auth":{"enabled":false,"secret":{"secretRef":{"key":"hmac-key","name":"webhook-secret"}},"timestamp_tolerance":"5m","type":"hmac-sha256","validate_timestamp":false},"max_body_size":1048576,"metrics_addr":"","rate_limit":{"burst":200,"enabled":false,"requests_per_second":100},"read_timeout_sec":10,"shutdown_timeout_sec":30,"tls":{"cert_file":"","key_file":""},"write_timeout_sec":10}` | HTTP server configuration |
+| config.server | object | `{"addr":":8080","auth":{"enabled":false,"secret":{"secretRef":{"key":"hmac-key","name":"webhook-secret"}},"timestamp_tolerance":"5m","type":"hmac-sha256","validate_timestamp":true},"max_body_size":1048576,"metrics_addr":"","rate_limit":{"burst":200,"enabled":false,"requests_per_second":100},"read_timeout_sec":10,"shutdown_timeout_sec":30,"tls":{"cert_file":"","key_file":""},"write_timeout_sec":10}` | HTTP server configuration |
 | config.server.addr | string | `":8080"` | Server listen address and port |
-| config.server.auth | object | `{"enabled":false,"secret":{"secretRef":{"key":"hmac-key","name":"webhook-secret"}},"timestamp_tolerance":"5m","type":"hmac-sha256","validate_timestamp":false}` | Webhook authentication configuration |
+| config.server.auth | object | `{"enabled":false,"secret":{"secretRef":{"key":"hmac-key","name":"webhook-secret"}},"timestamp_tolerance":"5m","type":"hmac-sha256","validate_timestamp":true}` | Webhook authentication configuration |
 | config.server.auth.secret | object | `{"secretRef":{"key":"hmac-key","name":"webhook-secret"}}` | Reference to webhook secret for HMAC validation Use secretRef for K8s Secret mount |
 | config.server.auth.timestamp_tolerance | string | `"5m"` | Accepted clock skew for replay protection (Go duration format) |
-| config.server.auth.validate_timestamp | bool | `false` | Replay protection: require an X-Webhook-Timestamp header (unix seconds) within timestamp_tolerance of the server clock |
+| config.server.auth.validate_timestamp | bool | `true` | Replay protection for hmac-sha256 auth: require an X-Webhook-Timestamp header (unix seconds) within timestamp_tolerance of the server clock. Required when type is hmac-sha256. |
 | config.server.max_body_size | int | `1048576` | Maximum request body size in bytes |
 | config.server.metrics_addr | string | `""` | Metrics server address (empty to use main server) |
 | config.server.rate_limit | object | `{"burst":200,"enabled":false,"requests_per_second":100}` | Rate limiting configuration |

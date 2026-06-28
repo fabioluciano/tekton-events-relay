@@ -280,8 +280,8 @@
 								},
 								"validate_timestamp": {
 									"type": "boolean",
-									"description": "Replay protection: require an X-Webhook-Timestamp header (unix seconds) within timestamp_tolerance of the server clock",
-									"default": false
+									"description": "Replay protection for hmac-sha256 auth: require an X-Webhook-Timestamp header (unix seconds) within timestamp_tolerance of the server clock. Required when type is hmac-sha256.",
+									"default": true
 								},
 								"timestamp_tolerance": {
 									"type": "string",
@@ -615,30 +615,13 @@
 										"description": "Enable or disable this Slack notifier instance",
 										"default": false
 									},
-									"secretRef": {
+									"webhook_url": {
 										"type": "object",
-										"description": "Reference to a Kubernetes Secret containing the Slack Incoming Webhook URL (webhook_url key). Used for webhook mode.",
-										"properties": {
-											"name": {
-												"type": "string",
-												"description": "Name of the Kubernetes Secret"
-											},
-											"key": {
-												"type": "string",
-												"description": "Key within the secret (optional, provider-specific default)"
-											}
-										},
-										"required": [
-											"name"
-										]
-									},
-									"bot_token": {
-										"type": "object",
-										"description": "Slack Bot Token auth (uses chat.postMessage API). Mutually exclusive with secretRef.",
+										"description": "Reference to a Kubernetes Secret containing the Slack Incoming Webhook URL (webhook mode). Mutually exclusive with bot_token.",
 										"properties": {
 											"secretRef": {
 												"type": "object",
-												"description": "Reference to a Kubernetes Secret containing the xoxb- Bot Token",
+												"description": "Reference to a Kubernetes Secret holding the credential",
 												"properties": {
 													"name": {
 														"type": "string",
@@ -652,6 +635,43 @@
 												"required": [
 													"name"
 												]
+											},
+											"value": {
+												"type": "string",
+												"description": "Inline value (overrides secretRef; not recommended for secrets)"
+											}
+										}
+									},
+									"bot_token": {
+										"type": "object",
+										"description": "Slack Bot Token auth (uses chat.postMessage API). Mutually exclusive with secretRef.",
+										"properties": {
+											"token": {
+												"type": "object",
+												"description": "Reference to a Kubernetes Secret containing the xoxb- Bot Token",
+												"properties": {
+													"secretRef": {
+														"type": "object",
+														"description": "Reference to a Kubernetes Secret holding the credential",
+														"properties": {
+															"name": {
+																"type": "string",
+																"description": "Name of the Kubernetes Secret"
+															},
+															"key": {
+																"type": "string",
+																"description": "Key within the secret (optional, provider-specific default)"
+															}
+														},
+														"required": [
+															"name"
+														]
+													},
+													"value": {
+														"type": "string",
+														"description": "Inline value (overrides secretRef; not recommended for secrets)"
+													}
+												}
 											},
 											"channel_id": {
 												"type": "string",
@@ -708,7 +728,7 @@
 										"oneOf": [
 											{
 												"type": "string",
-												"description": "Go template for the Slack message body. Available variables: .State, .RunName, .CommitSHA, .TargetURL"
+												"description": "Optional Go template for the Slack message body. Omit to use Slack's native structured fallback. Available variables: .State, .RunName, .CommitSHA, .TargetURL"
 											},
 											{
 												"type": "object",
@@ -735,7 +755,31 @@
 								},
 								"required": [
 									"name"
-								]
+								],
+								"if": {
+									"properties": {
+										"enabled": {
+											"const": true
+										}
+									},
+									"required": [
+										"enabled"
+									]
+								},
+								"then": {
+									"anyOf": [
+										{
+											"required": [
+												"webhook_url"
+											]
+										},
+										{
+											"required": [
+												"bot_token"
+											]
+										}
+									]
+								}
 							}
 						},
 						"teams": {
@@ -754,22 +798,32 @@
 										"description": "Enable or disable this Teams notifier instance",
 										"default": false
 									},
-									"secretRef": {
+									"webhook_url": {
 										"type": "object",
-										"description": "Reference to a Kubernetes Secret containing the Teams Incoming Webhook URL (webhook_url key)",
+										"description": "Reference to a Kubernetes Secret containing the Teams Incoming Webhook URL",
 										"properties": {
-											"name": {
-												"type": "string",
-												"description": "Name of the Kubernetes Secret"
+											"secretRef": {
+												"type": "object",
+												"description": "Reference to a Kubernetes Secret holding the credential",
+												"properties": {
+													"name": {
+														"type": "string",
+														"description": "Name of the Kubernetes Secret"
+													},
+													"key": {
+														"type": "string",
+														"description": "Key within the secret (optional, provider-specific default)"
+													}
+												},
+												"required": [
+													"name"
+												]
 											},
-											"key": {
+											"value": {
 												"type": "string",
-												"description": "Key within the secret (optional, provider-specific default)"
+												"description": "Inline value (overrides secretRef; not recommended for secrets)"
 											}
-										},
-										"required": [
-											"name"
-										]
+										}
 									},
 									"when": {
 										"type": "string",
@@ -782,7 +836,7 @@
 										"oneOf": [
 											{
 												"type": "string",
-												"description": "Go template for the Teams message body. Available variables: .State, .RunName, .Namespace, .CommitSHA, .TargetURL"
+												"description": "Optional Go template for the Teams message body. Omit to use Teams' native structured fallback. Available variables: .State, .RunName, .Namespace, .CommitSHA, .TargetURL"
 											},
 											{
 												"type": "object",
@@ -809,7 +863,22 @@
 								},
 								"required": [
 									"name"
-								]
+								],
+								"if": {
+									"properties": {
+										"enabled": {
+											"const": true
+										}
+									},
+									"required": [
+										"enabled"
+									]
+								},
+								"then": {
+									"required": [
+										"webhook_url"
+									]
+								}
 							}
 						},
 						"discord": {
@@ -828,30 +897,13 @@
 										"description": "Enable or disable this Discord notifier instance",
 										"default": false
 									},
-									"secretRef": {
+									"webhook_url": {
 										"type": "object",
-										"description": "Reference to a Kubernetes Secret containing the Discord Webhook URL (webhook_url key). Used for webhook mode.",
-										"properties": {
-											"name": {
-												"type": "string",
-												"description": "Name of the Kubernetes Secret"
-											},
-											"key": {
-												"type": "string",
-												"description": "Key within the secret (optional, provider-specific default)"
-											}
-										},
-										"required": [
-											"name"
-										]
-									},
-									"bot_token": {
-										"type": "object",
-										"description": "Discord Bot Token auth (uses channels/{id}/messages API). Mutually exclusive with secretRef.",
+										"description": "Reference to a Kubernetes Secret containing the Discord Webhook URL (webhook mode). Mutually exclusive with bot_token.",
 										"properties": {
 											"secretRef": {
 												"type": "object",
-												"description": "Reference to a Kubernetes Secret containing the Discord Bot Token",
+												"description": "Reference to a Kubernetes Secret holding the credential",
 												"properties": {
 													"name": {
 														"type": "string",
@@ -865,6 +917,43 @@
 												"required": [
 													"name"
 												]
+											},
+											"value": {
+												"type": "string",
+												"description": "Inline value (overrides secretRef; not recommended for secrets)"
+											}
+										}
+									},
+									"bot_token": {
+										"type": "object",
+										"description": "Discord Bot Token auth (uses channels/{id}/messages API). Mutually exclusive with secretRef.",
+										"properties": {
+											"token": {
+												"type": "object",
+												"description": "Reference to a Kubernetes Secret containing the Discord Bot Token",
+												"properties": {
+													"secretRef": {
+														"type": "object",
+														"description": "Reference to a Kubernetes Secret holding the credential",
+														"properties": {
+															"name": {
+																"type": "string",
+																"description": "Name of the Kubernetes Secret"
+															},
+															"key": {
+																"type": "string",
+																"description": "Key within the secret (optional, provider-specific default)"
+															}
+														},
+														"required": [
+															"name"
+														]
+													},
+													"value": {
+														"type": "string",
+														"description": "Inline value (overrides secretRef; not recommended for secrets)"
+													}
+												}
 											},
 											"channel_id": {
 												"type": "string",
@@ -901,7 +990,7 @@
 										"oneOf": [
 											{
 												"type": "string",
-												"description": "Go template for the Discord message body. Available variables: .State, .RunName, .Namespace, .CommitSHA, .TargetURL"
+												"description": "Optional Go template for the Discord message body. Omit to use Discord's native embed fallback. Available variables: .State, .RunName, .Namespace, .CommitSHA, .TargetURL"
 											},
 											{
 												"type": "object",
@@ -928,7 +1017,31 @@
 								},
 								"required": [
 									"name"
-								]
+								],
+								"if": {
+									"properties": {
+										"enabled": {
+											"const": true
+										}
+									},
+									"required": [
+										"enabled"
+									]
+								},
+								"then": {
+									"anyOf": [
+										{
+											"required": [
+												"webhook_url"
+											]
+										},
+										{
+											"required": [
+												"bot_token"
+											]
+										}
+									]
+								}
 							}
 						},
 						"pagerduty": {
@@ -947,22 +1060,32 @@
 										"description": "Enable or disable this PagerDuty notifier instance",
 										"default": false
 									},
-									"secretRef": {
+									"integration_key": {
 										"type": "object",
-										"description": "Reference to a Kubernetes Secret containing the PagerDuty integration key (integration_key key)",
+										"description": "Reference to a Kubernetes Secret containing the PagerDuty integration key",
 										"properties": {
-											"name": {
-												"type": "string",
-												"description": "Name of the Kubernetes Secret"
+											"secretRef": {
+												"type": "object",
+												"description": "Reference to a Kubernetes Secret holding the credential",
+												"properties": {
+													"name": {
+														"type": "string",
+														"description": "Name of the Kubernetes Secret"
+													},
+													"key": {
+														"type": "string",
+														"description": "Key within the secret (optional, provider-specific default)"
+													}
+												},
+												"required": [
+													"name"
+												]
 											},
-											"key": {
+											"value": {
 												"type": "string",
-												"description": "Key within the secret (optional, provider-specific default)"
+												"description": "Inline value (overrides secretRef; not recommended for secrets)"
 											}
-										},
-										"required": [
-											"name"
-										]
+										}
 									},
 									"severity": {
 										"type": "string",
@@ -990,7 +1113,22 @@
 								},
 								"required": [
 									"name"
-								]
+								],
+								"if": {
+									"properties": {
+										"enabled": {
+											"const": true
+										}
+									},
+									"required": [
+										"enabled"
+									]
+								},
+								"then": {
+									"required": [
+										"integration_key"
+									]
+								}
 							}
 						},
 						"datadog": {
@@ -1009,22 +1147,32 @@
 										"description": "Enable or disable this Datadog notifier instance",
 										"default": false
 									},
-									"secretRef": {
+									"api_key": {
 										"type": "object",
-										"description": "Reference to a Kubernetes Secret containing the Datadog API key (api_key key)",
+										"description": "Reference to a Kubernetes Secret containing the Datadog API key",
 										"properties": {
-											"name": {
-												"type": "string",
-												"description": "Name of the Kubernetes Secret"
+											"secretRef": {
+												"type": "object",
+												"description": "Reference to a Kubernetes Secret holding the credential",
+												"properties": {
+													"name": {
+														"type": "string",
+														"description": "Name of the Kubernetes Secret"
+													},
+													"key": {
+														"type": "string",
+														"description": "Key within the secret (optional, provider-specific default)"
+													}
+												},
+												"required": [
+													"name"
+												]
 											},
-											"key": {
+											"value": {
 												"type": "string",
-												"description": "Key within the secret (optional, provider-specific default)"
+												"description": "Inline value (overrides secretRef; not recommended for secrets)"
 											}
-										},
-										"required": [
-											"name"
-										]
+										}
 									},
 									"site": {
 										"type": "string",
@@ -1060,7 +1208,22 @@
 								},
 								"required": [
 									"name"
-								]
+								],
+								"if": {
+									"properties": {
+										"enabled": {
+											"const": true
+										}
+									},
+									"required": [
+										"enabled"
+									]
+								},
+								"then": {
+									"required": [
+										"api_key"
+									]
+								}
 							}
 						},
 						"grafana": {
@@ -1083,22 +1246,32 @@
 										"type": "string",
 										"description": "Grafana base URL"
 									},
-									"secretRef": {
+									"token": {
 										"type": "object",
-										"description": "Reference to a Kubernetes Secret containing the service account token (token key)",
+										"description": "Reference to a Kubernetes Secret containing the Grafana service account token",
 										"properties": {
-											"name": {
-												"type": "string",
-												"description": "Name of the Kubernetes Secret"
+											"secretRef": {
+												"type": "object",
+												"description": "Reference to a Kubernetes Secret holding the credential",
+												"properties": {
+													"name": {
+														"type": "string",
+														"description": "Name of the Kubernetes Secret"
+													},
+													"key": {
+														"type": "string",
+														"description": "Key within the secret (optional, provider-specific default)"
+													}
+												},
+												"required": [
+													"name"
+												]
 											},
-											"key": {
+											"value": {
 												"type": "string",
-												"description": "Key within the secret (optional, provider-specific default)"
+												"description": "Inline value (overrides secretRef; not recommended for secrets)"
 											}
-										},
-										"required": [
-											"name"
-										]
+										}
 									},
 									"tags": {
 										"type": "array",
@@ -1123,7 +1296,7 @@
 										"oneOf": [
 											{
 												"type": "string",
-												"description": "Go template for the annotation text"
+												"description": "Go template for the annotation text. Required by the Go handler; when omitted, the chart renders the shipped deploy-marker.tmpl path."
 											},
 											{
 												"type": "object",
@@ -1150,7 +1323,23 @@
 								},
 								"required": [
 									"name"
-								]
+								],
+								"if": {
+									"properties": {
+										"enabled": {
+											"const": true
+										}
+									},
+									"required": [
+										"enabled"
+									]
+								},
+								"then": {
+									"required": [
+										"url",
+										"token"
+									]
+								}
 							}
 						},
 						"sentry": {
@@ -1184,22 +1373,32 @@
 										},
 										"description": "Project slugs the release belongs to"
 									},
-									"secretRef": {
+									"token": {
 										"type": "object",
-										"description": "Reference to a Kubernetes Secret containing the auth token (token key)",
+										"description": "Reference to a Kubernetes Secret containing the Sentry auth token",
 										"properties": {
-											"name": {
-												"type": "string",
-												"description": "Name of the Kubernetes Secret"
+											"secretRef": {
+												"type": "object",
+												"description": "Reference to a Kubernetes Secret holding the credential",
+												"properties": {
+													"name": {
+														"type": "string",
+														"description": "Name of the Kubernetes Secret"
+													},
+													"key": {
+														"type": "string",
+														"description": "Key within the secret (optional, provider-specific default)"
+													}
+												},
+												"required": [
+													"name"
+												]
 											},
-											"key": {
+											"value": {
 												"type": "string",
-												"description": "Key within the secret (optional, provider-specific default)"
+												"description": "Inline value (overrides secretRef; not recommended for secrets)"
 											}
-										},
-										"required": [
-											"name"
-										]
+										}
 									},
 									"when": {
 										"type": "string",
@@ -1208,7 +1407,23 @@
 								},
 								"required": [
 									"name"
-								]
+								],
+								"if": {
+									"properties": {
+										"enabled": {
+											"const": true
+										}
+									},
+									"required": [
+										"enabled"
+									]
+								},
+								"then": {
+									"required": [
+										"org",
+										"token"
+									]
+								}
 							}
 						},
 						"webhook": {
@@ -1227,22 +1442,32 @@
 										"description": "Enable or disable this webhook notifier instance",
 										"default": false
 									},
-									"secretRef": {
+									"url": {
 										"type": "object",
-										"description": "Reference to a Kubernetes Secret containing the webhook URL",
+										"description": "Reference to a Kubernetes Secret containing the webhook URL. Required when this webhook notifier is enabled.",
 										"properties": {
-											"name": {
-												"type": "string",
-												"description": "Name of the Kubernetes Secret"
+											"secretRef": {
+												"type": "object",
+												"description": "Reference to a Kubernetes Secret holding the webhook URL",
+												"properties": {
+													"name": {
+														"type": "string",
+														"description": "Name of the Kubernetes Secret"
+													},
+													"key": {
+														"type": "string",
+														"description": "Key within the secret (optional, provider-specific default)"
+													}
+												},
+												"required": [
+													"name"
+												]
 											},
-											"key": {
+											"value": {
 												"type": "string",
-												"description": "Key within the secret (optional, provider-specific default)"
+												"description": "Inline webhook URL value (overrides secretRef; not recommended for secrets)"
 											}
-										},
-										"required": [
-											"name"
-										]
+										}
 									},
 									"auth": {
 										"type": "object",
@@ -1425,13 +1650,17 @@
 															}
 														}
 													},
-													"token_url": {
-														"type": "string",
-														"description": "OAuth2 token endpoint URL"
-													},
+											"token_url": {
+												"type": "string",
+												"minLength": 1,
+												"description": "OAuth2 token endpoint URL"
+											},
 													"grant_type": {
 														"type": "string",
-														"enum": ["client_credentials", "refresh_token"],
+														"enum": [
+															"client_credentials",
+															"refresh_token"
+														],
 														"description": "OAuth2 grant type: client_credentials (default) or refresh_token"
 													},
 													"refresh_token": {
@@ -1458,7 +1687,10 @@
 															}
 														}
 													}
-												}
+												},
+												"required": [
+													"token_url"
+												]
 											},
 											"header": {
 												"type": "string",
@@ -1467,6 +1699,34 @@
 										},
 										"required": [
 											"type"
+										],
+										"allOf": [
+											{
+												"if": {
+													"properties": {
+														"type": {
+															"const": "oauth2"
+														}
+													},
+													"required": [
+														"type"
+													]
+												},
+												"then": {
+													"required": [
+														"oauth2"
+													],
+													"not": {
+														"anyOf": [
+															{"required": ["token"]},
+															{"required": ["username"]},
+															{"required": ["password"]},
+															{"required": ["hmac_secret"]},
+															{"required": ["header"]}
+														]
+													}
+												}
+											}
 										]
 									},
 									"headers": {
@@ -1490,7 +1750,22 @@
 								},
 								"required": [
 									"name"
-								]
+								],
+								"if": {
+									"properties": {
+										"enabled": {
+											"const": true
+										}
+									},
+									"required": [
+										"enabled"
+									]
+								},
+								"then": {
+									"required": [
+										"url"
+									]
+								}
 							}
 						},
 						"email": {
@@ -1533,22 +1808,32 @@
 										"description": "Connection security",
 										"default": "starttls"
 									},
-									"secretRef": {
+									"password": {
 										"type": "object",
-										"description": "Reference to a Kubernetes Secret with the SMTP password (key: password)",
+										"description": "Reference to a Kubernetes Secret containing the SMTP password (used with username; mutually exclusive with xoauth2 token)",
 										"properties": {
-											"name": {
-												"type": "string",
-												"description": "Name of the Kubernetes Secret"
+											"secretRef": {
+												"type": "object",
+												"description": "Reference to a Kubernetes Secret holding the credential",
+												"properties": {
+													"name": {
+														"type": "string",
+														"description": "Name of the Kubernetes Secret"
+													},
+													"key": {
+														"type": "string",
+														"description": "Key within the secret (optional, provider-specific default)"
+													}
+												},
+												"required": [
+													"name"
+												]
 											},
-											"key": {
+											"value": {
 												"type": "string",
-												"description": "Key within the secret (optional, provider-specific default)"
+												"description": "Inline value (overrides secretRef; not recommended for secrets)"
 											}
-										},
-										"required": [
-											"name"
-										]
+										}
 									},
 									"username": {
 										"type": "string",
@@ -1618,7 +1903,7 @@
 											},
 											{
 												"type": "object",
-												"description": "Subject template from ConfigMap; omit for shipped default",
+										"description": "Subject template from ConfigMap. Required by the Go handler; when omitted, the chart renders the shipped email-subject.tmpl path.",
 												"properties": {
 													"value": {
 														"type": "string",
@@ -1650,7 +1935,7 @@
 											},
 											{
 												"type": "object",
-												"description": "Body template from ConfigMap; omit for shipped default",
+										"description": "Body template from ConfigMap. Required by the Go handler; when omitted, the chart renders the shipped email-default.tmpl path.",
 												"properties": {
 													"value": {
 														"type": "string",
@@ -1688,6 +1973,23 @@
 										"type": "string",
 										"description": "CEL expression filtering which events are emailed"
 									}
+								},
+								"if": {
+									"properties": {
+										"enabled": {
+											"const": true
+										}
+									},
+									"required": [
+										"enabled"
+									]
+								},
+								"then": {
+									"required": [
+										"host",
+										"from",
+										"to"
+									]
 								}
 							}
 						}
@@ -1864,11 +2166,15 @@
 											},
 											"token_url": {
 												"type": "string",
+												"minLength": 1,
 												"description": "OAuth2 token endpoint URL"
 											},
 											"grant_type": {
 												"type": "string",
-												"enum": ["client_credentials", "refresh_token"],
+												"enum": [
+													"client_credentials",
+													"refresh_token"
+												],
 												"description": "OAuth2 grant type: client_credentials (default) or refresh_token"
 											},
 											"refresh_token": {
@@ -1895,7 +2201,10 @@
 													}
 												}
 											}
-										}
+										},
+										"required": [
+											"token_url"
+										]
 									}
 								}
 							},
@@ -1932,11 +2241,11 @@
 											"oneOf": [
 												{
 													"type": "string",
-													"description": "Inline comment body template string"
+												"description": "Inline Jira comment body template. Comment actions require a template at runtime; when omitted, the chart renders the shipped jira-comment.tmpl path."
 												},
 												{
 													"type": "object",
-													"description": "Comment body template from ConfigMap; omit for the shipped default (jira-comment.tmpl)",
+											"description": "Comment body template from ConfigMap. Comment actions require a template at runtime; when omitted, the chart renders the shipped jira-comment.tmpl path.",
 													"properties": {
 														"value": {
 															"type": "string",
@@ -2434,80 +2743,8 @@
 		"affinity": {
 			"type": "object",
 			"title": "Pod Affinity Configuration",
-			"description": "Pod anti-affinity and node affinity configuration",
+			"description": "Kubernetes pod anti-affinity and node affinity scheduling configuration only",
 			"properties": {
-				"context_per_task": {
-					"type": "boolean",
-					"description": "commit_status only: TaskRun events post their status under <context>/<task>, yielding one independent check per task",
-					"default": false
-				},
-				"labels": {
-					"type": "object",
-					"description": "Declarative label effect for label actions: lists of labels to add and remove with optional colors. Supports both string format (backward compat) and object format {name, color}.",
-					"properties": {
-						"add": {
-							"type": "array",
-							"items": {
-								"oneOf": [
-									{
-										"type": "string",
-										"description": "Label name (string format for backward compatibility)"
-									},
-									{
-										"type": "object",
-										"description": "Label with optional color",
-										"properties": {
-											"name": {
-												"type": "string",
-												"minLength": 1,
-												"description": "Label name (supports Go templates)"
-											},
-											"color": {
-												"type": "string",
-												"pattern": "^([0-9a-fA-F]{6})?$",
-												"description": "Hex color without # (6 chars). Empty = provider default."
-											}
-										},
-										"required": [
-											"name"
-										]
-									}
-								]
-							},
-							"description": "Labels to add"
-						},
-						"remove": {
-							"type": "array",
-							"items": {
-								"oneOf": [
-									{
-										"type": "string",
-										"description": "Label name (string format for backward compatibility)"
-									},
-									{
-										"type": "object",
-										"description": "Label with optional color (color ignored for removal)",
-										"properties": {
-											"name": {
-												"type": "string",
-												"minLength": 1,
-												"description": "Label name (supports Go templates)"
-											},
-											"color": {
-												"type": "string",
-												"description": "Color field ignored on remove operations"
-											}
-										},
-										"required": [
-											"name"
-										]
-									}
-								]
-							},
-							"description": "Labels to remove (absent labels are ignored)"
-						}
-					}
-				},
 				"mode": {
 					"type": "string",
 					"description": "Affinity mode: 'soft' (preferred) or 'hard' (required)",
@@ -2866,11 +3103,11 @@
 					"oneOf": [
 						{
 							"type": "string",
-							"description": "Go template for the notification body"
+							"description": "Optional inline Go template for SCM comment/check bodies. Omit for the relay native fallback: Build <State> for <RunName>."
 						},
 						{
 							"type": "object",
-							"description": "Reference to a ConfigMap containing the template",
+							"description": "Optional ConfigMap template reference for SCM comment/check bodies. Omit for the relay native fallback: Build <State> for <RunName>.",
 							"properties": {
 								"configmapRef": {
 									"type": "object",
@@ -3451,11 +3688,15 @@
 								},
 								"token_url": {
 									"type": "string",
+									"minLength": 1,
 									"description": "OAuth2 token endpoint URL"
 								},
 								"grant_type": {
 									"type": "string",
-									"enum": ["client_credentials", "refresh_token"],
+									"enum": [
+										"client_credentials",
+										"refresh_token"
+									],
 									"description": "OAuth2 grant type: client_credentials (default) or refresh_token"
 								},
 								"refresh_token": {
@@ -3482,7 +3723,10 @@
 										}
 									}
 								}
-							}
+							},
+							"required": [
+								"token_url"
+							]
 						}
 					}
 				},
@@ -3689,12 +3933,16 @@
 								},
 								"token_url": {
 									"type": "string",
+									"minLength": 1,
 									"description": "OAuth2 token endpoint URL",
 									"default": "https://bitbucket.org/site/oauth2/access_token"
 								},
 								"grant_type": {
 									"type": "string",
-									"enum": ["client_credentials", "refresh_token"],
+									"enum": [
+										"client_credentials",
+										"refresh_token"
+									],
 									"description": "OAuth2 grant type: client_credentials (default) or refresh_token"
 								},
 								"refresh_token": {
@@ -3721,7 +3969,10 @@
 										}
 									}
 								}
-							}
+							},
+							"required": [
+								"token_url"
+							]
 						}
 					}
 				},
@@ -3988,11 +4239,15 @@
 								},
 								"token_url": {
 									"type": "string",
+									"minLength": 1,
 									"description": "OAuth2 token endpoint URL"
 								},
 								"grant_type": {
 									"type": "string",
-									"enum": ["client_credentials", "refresh_token"],
+									"enum": [
+										"client_credentials",
+										"refresh_token"
+									],
 									"description": "OAuth2 grant type: client_credentials (default) or refresh_token"
 								},
 								"refresh_token": {
@@ -4019,7 +4274,10 @@
 										}
 									}
 								}
-							}
+							},
+							"required": [
+								"token_url"
+							]
 						}
 					}
 				},

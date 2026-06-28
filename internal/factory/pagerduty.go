@@ -7,7 +7,6 @@ import (
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/middleware"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/pagerduty"
-	"github.com/fabioluciano/tekton-events-relay/internal/secrets"
 )
 
 // PagerDutyFactory builds ActionHandlers from PagerDuty instance configurations.
@@ -19,14 +18,13 @@ func (f *PagerDutyFactory) Build(inst config.PagerDutyInstance, log *zap.Logger)
 		return nil, nil
 	}
 
-	// Resolve integration key from volume mount
 	integrationKeyFile := ""
 	integrationKeyKey := ""
 	if inst.Auth != nil {
 		integrationKeyFile = inst.Auth.IntegrationKeyFile
 		integrationKeyKey = inst.Auth.IntegrationKeyKey
 	}
-	integrationKey, err := secrets.ResolveOrInfer(integrationKeyFile, "pagerduty", inst.Name, "integration_key", integrationKeyKey, log)
+	integrationKey, err := resolveFileRefresher(integrationKeyFile, integrationKeyKey, "pagerduty", inst.Name, log)
 	if err != nil {
 		return nil, err
 	}

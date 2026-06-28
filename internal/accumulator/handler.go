@@ -66,7 +66,7 @@ func (a *Handler) Handle(ctx context.Context, event domain.Event) error {
 
 	// Accumulate both TaskRun and PipelineRun events
 	if event.Resource == domain.ResourceTaskRun || event.Resource == domain.ResourcePipelineRun {
-		a.buffer.Add(uid, &event)
+		a.buffer.Add(ctx, uid, &event)
 	}
 
 	// Only flush on terminal PipelineRun
@@ -100,7 +100,7 @@ type TaskSummary struct {
 
 // flushAndPost retrieves accumulated state and posts aggregate comment.
 func (a *Handler) flushAndPost(ctx context.Context, uid string, finalEvent domain.Event) error {
-	state, exists := a.buffer.Flush(uid)
+	state, exists := a.buffer.Flush(ctx, uid)
 	if !exists || len(state.Tasks) == 0 {
 		return nil
 	}

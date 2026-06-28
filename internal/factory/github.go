@@ -22,7 +22,7 @@ func (f *GitHubFactory) Build(inst config.GitHubInstance, log *zap.Logger) ([]no
 	var client github.HTTPDoer
 	if inst.Auth != nil && inst.Auth.AppID != 0 && inst.Auth.InstallationID != 0 {
 		// GitHub App authentication with auto-refresh (reads private key from /etc/github-app/private-key.pem)
-		appClient, err := github.NewAppClient(inst.Auth.AppID, inst.Auth.InstallationID, inst.BaseURL, inst.InsecureSkipVerify, log, inst.Auth.PrivateKeyFile)
+		appClient, err := github.NewAppClient(inst.Auth.AppID, inst.Auth.InstallationID, inst.BaseURL, inst.InsecureSkipVerify, log, inst.Auth.PrivateKeyFile, nil)
 		if err != nil {
 			return nil, err
 		}

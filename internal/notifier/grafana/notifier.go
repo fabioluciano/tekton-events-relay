@@ -15,6 +15,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
+	"github.com/fabioluciano/tekton-events-relay/internal/httpx"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/scm"
 )
@@ -78,7 +79,7 @@ func New(cfg Config) (*Notifier, error) {
 	token := cfg.Token
 
 	n.base = &notifier.Base{
-		HTTP:      notifier.DefaultHTTPClient(),
+		HTTP:      httpx.NewClient(),
 		UserAgent: notifier.UserAgent,
 		Log:       cfg.Log,
 		BuildURL:  func(domain.Event) (string, error) { return url, nil },

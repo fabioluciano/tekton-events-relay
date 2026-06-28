@@ -3,11 +3,8 @@ package config
 import (
 	"errors"
 	"fmt"
-	"net"
-	"net/url"
 	"reflect"
 	"strings"
-	"time"
 
 	"github.com/go-playground/validator/v10"
 	"go.uber.org/zap"
@@ -143,6 +140,16 @@ func ValidateAll(cfg *Config) []ValidationError {
 		errs = append(errs, validateSentryInstance(prefix, inst)...)
 	}
 
+	for i, inst := range cfg.Notifiers.Email {
+		prefix := fmt.Sprintf("notifiers.email[%d]", i)
+		errs = append(errs, validateEmailInstance(prefix, inst)...)
+	}
+
+	for i, inst := range cfg.Jira {
+		prefix := fmt.Sprintf("jira[%d]", i)
+		errs = append(errs, validateJiraInstance(prefix, inst)...)
+	}
+
 	return errs
 }
 
@@ -176,6 +183,8 @@ func translateFieldMessage(fe validator.FieldError) string {
 		return ValidationMsgRequiredWhenEnabled
 	case "unsupported_auth_type":
 		return fmt.Sprintf("unsupported auth type '%s' (must be 'hmac-sha256' or 'bearer')", fe.Param())
+	case "hmac_requires_timestamp":
+		return ValidationMsgHMACReplayRequired
 	default:
 		return fmt.Sprintf("failed on '%s' validation", fe.Tag())
 	}
@@ -188,7 +197,7 @@ func validateServerAuthStruct(sl validator.StructLevel) {
 	auth := sl.Current().Interface().(AuthConfig)
 	if auth.Enabled {
 		switch auth.Type {
-		case "hmac-sha256", AuthTypeBearer:
+		case AuthTypeHMACSHA256, AuthTypeBearer:
 		case "":
 			sl.ReportError(auth.Type, "type", "type", "required_when_enabled", "")
 		default:
@@ -196,6 +205,9 @@ func validateServerAuthStruct(sl validator.StructLevel) {
 		}
 		if auth.SecretFile == "" {
 			sl.ReportError(auth.SecretFile, "secret_file", "secret_file", "required_when_enabled", "")
+		}
+		if auth.Type == AuthTypeHMACSHA256 && !auth.ValidateTimestamp {
+			sl.ReportError(auth.ValidateTimestamp, "validate_timestamp", "validate_timestamp", "hmac_requires_timestamp", "")
 		}
 	}
 }
@@ -233,94 +245,6 @@ func (c *Config) Validate() error {
 	}
 	if err := c.validateJira(names); err != nil {
 		return err
-	}
-	return nil
-}
-
-func (c *Config) validateLogging() error {
-	if (c.Logging.Verbose.Caller || c.Logging.Verbose.HTTPCalls || c.Logging.Verbose.Payloads) && c.Logging.Level != "debug" {
-		return fmt.Errorf("logging.verbose: verbose options (caller, http_calls, payloads) require logging.level to be 'debug', current level is '%s'", c.Logging.Level)
-	}
-	return nil
-}
-
-func (c *Config) validateServer() error {
-	if c.MaxConcurrency != 0 && (c.MaxConcurrency < 1 || c.MaxConcurrency > 500) {
-		return fmt.Errorf("max_concurrency: must be between 1 and 500 (or 0 for default), got %d", c.MaxConcurrency)
-	}
-	if c.Server.Auth.Enabled {
-		switch c.Server.Auth.Type {
-		case "hmac-sha256", AuthTypeBearer:
-		default:
-			return fmt.Errorf("server.auth.type: unsupported auth type '%s' (must be 'hmac-sha256' or 'bearer')", c.Server.Auth.Type)
-		}
-		if c.Server.Auth.SecretFile == "" {
-			return fmt.Errorf("server.auth: enabled but missing 'secret_file'")
-		}
-	}
-	return nil
-}
-
-func (c *Config) validateStore() error {
-	switch c.Store.Backend {
-	case "", "memory", "olric":
-	case "valkey":
-		if c.Store.Valkey.Address == "" {
-			return fmt.Errorf("store.valkey: backend selected but missing 'address'")
-		}
-	default:
-		return fmt.Errorf("store.backend: unsupported backend '%s' (must be 'memory', 'valkey' or 'olric')", c.Store.Backend)
-	}
-	for i, peer := range c.Store.Olric.Peers {
-		host, port, err := net.SplitHostPort(peer)
-		if err != nil || host == "" || port == "" {
-			return fmt.Errorf("store.olric.peers[%d]: '%s' must be in host:port format", i, peer)
-		}
-	}
-	return nil
-}
-
-func (c *Config) validateRetry() error {
-	if c.Retry.MaxAttempts < 0 {
-		return fmt.Errorf("retry.max_attempts: must be non-negative")
-	}
-	if c.Retry.InitialBackoff < 0 || c.Retry.MaxBackoff < 0 {
-		return fmt.Errorf("retry: backoff values must be non-negative")
-	}
-	if c.Retry.InitialBackoff > c.Retry.MaxBackoff && c.Retry.MaxBackoff > 0 {
-		return fmt.Errorf("retry: initial_backoff must be <= max_backoff")
-	}
-	return nil
-}
-
-func (c *Config) validateLimits() error {
-	if c.DedupeSize > 1000000 {
-		return fmt.Errorf("dedupe_size: maximum is 1000000")
-	}
-	if c.DLQ.Enabled && c.DLQ.MaxSizeBytes < 1024 {
-		return fmt.Errorf("dlq.max_size_bytes: minimum is 1024")
-	}
-	if c.HandlerTimeout > 0 && c.Server.WriteTimeoutSec > 0 && c.HandlerTimeout > time.Duration(c.Server.WriteTimeoutSec)*time.Second {
-		return fmt.Errorf("handler_timeout must be less than write_timeout")
-	}
-	return nil
-}
-
-func (c *Config) validateTracing() error {
-	if c.Tracing.Endpoint != "" {
-		if _, err := url.ParseRequestURI(c.Tracing.Endpoint); err != nil {
-			return fmt.Errorf("tracing.endpoint: invalid URL '%s': %w", c.Tracing.Endpoint, err)
-		}
-	}
-	return nil
-}
-
-func (c *Config) validateTLS() error {
-	if c.Server.TLS.CertFile != "" && c.Server.TLS.KeyFile == "" {
-		return fmt.Errorf("server.tls: cert_file set but missing key_file")
-	}
-	if c.Server.TLS.KeyFile != "" && c.Server.TLS.CertFile == "" {
-		return fmt.Errorf("server.tls: key_file set but missing cert_file")
 	}
 	return nil
 }

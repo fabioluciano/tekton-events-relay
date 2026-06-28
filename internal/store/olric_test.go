@@ -3,9 +3,14 @@ package store
 import (
 	"bytes"
 	"context"
+	"log"
+	"runtime"
+	"strings"
 	"testing"
 	"time"
 
+	olric "github.com/olric-data/olric"
+	olricconfig "github.com/olric-data/olric/config"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
@@ -146,5 +151,45 @@ func TestOlricStore_SingleNode(t *testing.T) {
 	}
 	if _, found, _ := rb.Flush(ctx, "uid-1"); found {
 		t.Error("second Flush should report not found")
+	}
+}
+
+func TestOlricStore_StartTimeout(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping embedded olric test in short mode")
+	}
+
+	oc := olricconfig.New("local")
+	oc.LogLevel = "WARN"
+	oc.Logger = log.New(&zapLogWriter{log: zap.NewNop()}, "", 0)
+	oc.BindAddr = "127.0.0.1"
+	oc.BindPort = 13340
+	oc.MemberlistConfig.BindAddr = "127.0.0.1"
+	oc.MemberlistConfig.BindPort = 13342
+
+	db, err := olric.New(oc)
+	if err != nil {
+		t.Fatalf("olric.New: %v", err)
+	}
+
+	started := make(chan struct{}) // never closed — forces timeout
+
+	before := runtime.NumGoroutine()
+
+	err = startOlric(db, started, 50*time.Millisecond)
+	if err == nil {
+		t.Fatal("expected timeout error, got nil")
+	}
+	if !strings.Contains(err.Error(), "timed out") {
+		t.Errorf("error = %q, want contains 'timed out'", err.Error())
+	}
+
+	// startOlric drains the goroutine before returning; give the runtime
+	// a moment to schedule the exit, then assert no leak.
+	time.Sleep(100 * time.Millisecond)
+
+	after := runtime.NumGoroutine()
+	if after > before+2 {
+		t.Errorf("goroutine leak: before=%d, after=%d", before, after)
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -169,19 +170,30 @@ func TestDoWithRetry_ReturnsRetryableAfterMaxAttempts(t *testing.T) {
 
 func TestDoWithRetry_ContextCancellation(t *testing.T) {
 	var attempts atomic.Int32
+	firstReq := make(chan struct{}, 1)
+	handlerGate := make(chan struct{})
+	var closeOnce sync.Once
+	closeGate := func() { closeOnce.Do(func() { close(handlerGate) }) }
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		attempts.Add(1)
-		time.Sleep(50 * time.Millisecond)
+		if attempts.Add(1) == 1 {
+			select {
+			case firstReq <- struct{}{}:
+			default:
+			}
+			<-handlerGate
+		}
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}))
 	defer server.Close()
+	defer closeGate()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	req, _ := http.NewRequestWithContext(ctx, "GET", server.URL, nil)
 
-	// Cancel context after first attempt completes
 	go func() {
-		time.Sleep(100 * time.Millisecond)
+		<-firstReq
+		closeGate()
 		cancel()
 	}()
 
@@ -202,18 +214,25 @@ func TestDoWithRetry_ContextCancellation(t *testing.T) {
 
 func TestDoWithRetry_ContextCancellationDuringSleep(t *testing.T) {
 	var attempts atomic.Int32
+	firstReqDone := make(chan struct{}, 1)
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		attempts.Add(1)
 		w.WriteHeader(http.StatusServiceUnavailable)
+		if attempts.Load() == 1 {
+			select {
+			case firstReqDone <- struct{}{}:
+			default:
+			}
+		}
 	}))
 	defer server.Close()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	req, _ := http.NewRequestWithContext(ctx, "GET", server.URL, nil)
 
-	// Cancel during the sleep between retries
 	go func() {
-		time.Sleep(150 * time.Millisecond)
+		<-firstReqDone
 		cancel()
 	}()
 

@@ -30,6 +30,9 @@ type CloudCommentConfig struct {
 	Mode               string // scm.ModeCreate (default) or scm.ModeUpsert
 	InsecureSkipVerify bool
 	Log                *zap.Logger
+	// Client, when non-nil, is used instead of building one from Username/AppPassword.
+	// Set this for OAuth2 auth where the client resolves tokens per-request.
+	Client *CloudClient
 }
 
 // NewCloudCommentHandler creates a new Bitbucket Cloud PR comment handler.
@@ -52,8 +55,13 @@ func NewCloudCommentHandler(cfg CloudCommentConfig) (notifier.ActionHandler, err
 		log = zap.NewNop()
 	}
 
+	client := cfg.Client
+	if client == nil {
+		client = NewCloudClient(cfg.Username, cfg.AppPassword, cfg.BaseURL, cfg.InsecureSkipVerify, false, cfg.Log)
+	}
+
 	return &CloudCommentHandler{
-		client:   NewCloudClient(cfg.Username, cfg.AppPassword, cfg.BaseURL, cfg.InsecureSkipVerify, false, cfg.Log),
+		client:   client,
 		template: tmpl,
 		mode:     mode,
 		log:      log,

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
@@ -100,7 +101,7 @@ notifiers: {}
 		_ = app.run(ctx)
 	}()
 
-	time.Sleep(50 * time.Millisecond)
+	waitForServerReady(t, "http://localhost:8081/healthz")
 
 	if err := app.shutdown(); err != nil {
 		t.Errorf("shutdown failed: %v", err)
@@ -111,5 +112,24 @@ func TestBuildDecoders(t *testing.T) {
 	reg := buildDecoders()
 	if reg == nil {
 		t.Fatal("buildDecoders returned nil")
+	}
+}
+
+func waitForServerReady(t *testing.T, url string) {
+	t.Helper()
+	deadline := time.After(2 * time.Second)
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-deadline:
+			t.Fatalf("server at %s did not start within deadline", url)
+		case <-ticker.C:
+			resp, err := http.Get(url) //nolint:gosec // test-only local URL
+			if err == nil {
+				_ = resp.Body.Close()
+				return
+			}
+		}
 	}
 }

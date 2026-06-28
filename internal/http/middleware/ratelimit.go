@@ -3,7 +3,6 @@ package middleware
 import (
 	"net"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -54,28 +53,27 @@ func (rl *RateLimiter) getLimiter(key string) *rate.Limiter {
 		key = "__fallback__"
 	}
 
-	rl.mu.RLock()
-	e, exists := rl.entries[key]
-	rl.mu.RUnlock()
-	if exists {
-		e.lastSeen = time.Now()
-		return e.limiter
-	}
-
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
-	// Double-check after acquiring write lock.
-	if e, exists = rl.entries[key]; exists {
+	if e, exists := rl.entries[key]; exists {
 		e.lastSeen = time.Now()
 		return e.limiter
 	}
 	if len(rl.entries) >= maxRateLimiterEntries {
 		return rate.NewLimiter(rate.Limit(rl.rps), rl.burst)
 	}
-	e = &entry{limiter: rate.NewLimiter(rate.Limit(rl.rps), rl.burst)}
+	e := &entry{limiter: rate.NewLimiter(rate.Limit(rl.rps), rl.burst)}
 	e.lastSeen = time.Now()
 	rl.entries[key] = e
 	return e.limiter
+}
+
+func rateLimitIdentity(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
 }
 
 func (rl *RateLimiter) cleanupLoop() {
@@ -116,14 +114,7 @@ func (rl *RateLimiter) evictStale() {
 func (rl *RateLimiter) Middleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			key := strings.TrimSpace(r.Header.Get("Ce-Source"))
-			if key == "" {
-				host, _, err := net.SplitHostPort(r.RemoteAddr)
-				if err != nil {
-					host = r.RemoteAddr
-				}
-				key = host
-			}
+			key := rateLimitIdentity(r)
 
 			if !rl.getLimiter(key).Allow() {
 				w.Header().Set("Retry-After", "1")

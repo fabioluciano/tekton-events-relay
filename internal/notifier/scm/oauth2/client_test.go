@@ -7,11 +7,13 @@ import (
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 const (
 	testClientSecret = "test-client-secret"
 	jsonAccessToken  = "access_token"
+	jsonExpiresIn    = "expires_in"
 )
 
 func newTokenServer(t *testing.T, handler http.HandlerFunc) *httptest.Server {
@@ -39,7 +41,7 @@ func TestClient_Token_success(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			jsonAccessToken: "my-token",
-			"expires_in":    3600,
+			jsonExpiresIn:   3600,
 		})
 	})
 
@@ -65,7 +67,7 @@ func TestClient_Token_cache_hit_no_second_request(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			jsonAccessToken: "cached-token",
-			"expires_in":    3600,
+			jsonExpiresIn:   3600,
 		})
 	})
 
@@ -105,7 +107,7 @@ func TestRefreshTokenClient_Token_success(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			jsonAccessToken: "rotated-access",
-			"expires_in":    3600,
+			jsonExpiresIn:   3600,
 		})
 	})
 
@@ -167,4 +169,113 @@ func TestClient_Token_non200_response(t *testing.T) {
 	if err == nil {
 		t.Error("expected error for 401, got nil")
 	}
+}
+
+func TestClient_usesCustomHTTPClient(t *testing.T) {
+	var transportUsed atomic.Bool
+	srv := newTokenServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			jsonAccessToken: "custom-client-token",
+			jsonExpiresIn:   3600,
+		})
+	})
+
+	customTransport := &recordingTransport{
+		inner:    http.DefaultTransport,
+		recorded: &transportUsed,
+	}
+	customClient := &http.Client{
+		Transport: customTransport,
+		Timeout:   10 * time.Second,
+	}
+
+	c := NewClient(ClientCredentials{
+		ClientID:     "id",
+		ClientSecret: testClientSecret,
+		TokenURL:     srv.URL,
+	}, customClient)
+
+	tok, err := c.Token(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if tok != "custom-client-token" {
+		t.Errorf("expected 'custom-client-token', got %q", tok)
+	}
+	if !transportUsed.Load() {
+		t.Error("expected custom transport to be used for token endpoint, but it was not")
+	}
+}
+
+func TestRefreshTokenClient_usesCustomHTTPClient(t *testing.T) {
+	var transportUsed atomic.Bool
+	srv := newTokenServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			jsonAccessToken: "custom-refresh-token",
+			jsonExpiresIn:   3600,
+		})
+	})
+
+	customTransport := &recordingTransport{
+		inner:    http.DefaultTransport,
+		recorded: &transportUsed,
+	}
+	customClient := &http.Client{
+		Transport: customTransport,
+		Timeout:   10 * time.Second,
+	}
+
+	c := NewRefreshTokenClient(RefreshTokenCredentials{
+		ClientID:     "id",
+		ClientSecret: testClientSecret,
+		TokenURL:     srv.URL,
+		RefreshToken: "seed",
+	}, customClient)
+
+	tok, err := c.Token(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if tok != "custom-refresh-token" {
+		t.Errorf("expected 'custom-refresh-token', got %q", tok)
+	}
+	if !transportUsed.Load() {
+		t.Error("expected custom transport to be used for token endpoint, but it was not")
+	}
+}
+
+func TestClient_nilHTTPClient_usesDefault(t *testing.T) {
+	srv := newTokenServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			jsonAccessToken: "default-client-token",
+			jsonExpiresIn:   3600,
+		})
+	})
+
+	c := NewClient(ClientCredentials{
+		ClientID:     "id",
+		ClientSecret: testClientSecret,
+		TokenURL:     srv.URL,
+	}, nil)
+
+	tok, err := c.Token(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if tok != "default-client-token" {
+		t.Errorf("expected 'default-client-token', got %q", tok)
+	}
+}
+
+type recordingTransport struct {
+	inner    http.RoundTripper
+	recorded *atomic.Bool
+}
+
+func (r *recordingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	r.recorded.Store(true)
+	return r.inner.RoundTrip(req)
 }

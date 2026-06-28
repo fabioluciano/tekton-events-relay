@@ -70,7 +70,7 @@ func TestCloudCommentHandler_UpsertEditsExistingComment(t *testing.T) {
 	pr := 7
 	event := domain.Event{
 		Provider: providerCloud,
-		Repo:     domain.Repo{Workspace: "ws", Name: "repo"},
+		Repo:     domain.Repo{Workspace: "ws", Name: testRepoName},
 		RunName:  "my-run",
 		RunID:    "uid-123",
 		PRNumber: &pr,

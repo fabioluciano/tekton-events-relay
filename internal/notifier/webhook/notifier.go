@@ -18,6 +18,7 @@ import (
 	"github.com/itchyny/gojq"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
+	"github.com/fabioluciano/tekton-events-relay/internal/httpx"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
 )
 
@@ -70,7 +71,7 @@ func New(cfg Config, log *zap.Logger) (*Notifier, error) {
 	}
 
 	n.base = &notifier.Base{
-		HTTP:         notifier.DefaultHTTPClient(),
+		HTTP:         httpx.NewClient(),
 		BuildURL:     func(_ domain.Event) (string, error) { return cfg.URL, validateURL(cfg.URL) },
 		BuildPayload: n.payload,
 		Auth:         n.auth,

@@ -15,6 +15,12 @@ import (
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
 )
 
+const (
+	testRepoName  = "repo"
+	testRunName   = "run-1"
+	testCIContext = "tekton/ci"
+)
+
 func statusCaptureServer(calls *atomic.Int32, lastPath *atomic.Value, lastBody *atomic.Value) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
@@ -29,11 +35,11 @@ func statusCaptureServer(calls *atomic.Int32, lastPath *atomic.Value, lastBody *
 func cloudStatusEvent() domain.Event {
 	return domain.Event{
 		Provider:    providerCloud,
-		Repo:        domain.Repo{Workspace: "ws", Name: "repo"},
+		Repo:        domain.Repo{Workspace: "ws", Name: testRepoName},
 		CommitSHA:   "abc123",
-		RunName:     "run-1",
+		RunName:     testRunName,
 		State:       domain.StateFailure,
-		Context:     "tekton/ci",
+		Context:     testCIContext,
 		Description: "failed",
 	}
 }

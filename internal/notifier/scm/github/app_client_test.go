@@ -33,7 +33,7 @@ func TestNewAppClient(t *testing.T) {
 	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	privateKeyPEM := pem.EncodeToMemory(&pem.Block{
-		Type:  "RSA PRIVATE KEY",
+		Type:  pemRSAPrivateKey,
 		Bytes: x509.MarshalPKCS1PrivateKey(privateKey),
 	})
 	_, _ = tmpFile.Write(privateKeyPEM)
@@ -61,7 +61,7 @@ func TestNewAppClient(t *testing.T) {
 	defer func() { generateAppJWT = originalGenJWT }()
 
 	// Create AppClient
-	client, err := NewAppClient(123456, 789012, server.URL, false, zap.NewNop(), "")
+	client, err := NewAppClient(123456, 789012, server.URL, false, zap.NewNop(), "", nil)
 	if err != nil {
 		t.Fatalf("NewAppClient failed: %v", err)
 	}
@@ -97,7 +97,7 @@ func TestAppClient_TokenRefresh(t *testing.T) {
 	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	privateKeyPEM := pem.EncodeToMemory(&pem.Block{
-		Type:  "RSA PRIVATE KEY",
+		Type:  pemRSAPrivateKey,
 		Bytes: x509.MarshalPKCS1PrivateKey(privateKey),
 	})
 	_, _ = tmpFile.Write(privateKeyPEM)
@@ -125,7 +125,7 @@ func TestAppClient_TokenRefresh(t *testing.T) {
 	defer func() { generateAppJWT = originalGenJWT }()
 
 	// Create AppClient
-	client, err := NewAppClient(123456, 789012, server.URL, false, zap.NewNop(), "")
+	client, err := NewAppClient(123456, 789012, server.URL, false, zap.NewNop(), "", nil)
 	if err != nil {
 		t.Fatalf("NewAppClient failed: %v", err)
 	}
@@ -134,8 +134,6 @@ func TestAppClient_TokenRefresh(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Token() first call: %v", err)
 	}
-
-	time.Sleep(2 * time.Second)
 
 	secondToken, err := client.Token(context.Background())
 	if err != nil {
@@ -165,7 +163,7 @@ func TestAppClient_Do(t *testing.T) {
 	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	privateKeyPEM := pem.EncodeToMemory(&pem.Block{
-		Type:  "RSA PRIVATE KEY",
+		Type:  pemRSAPrivateKey,
 		Bytes: x509.MarshalPKCS1PrivateKey(privateKey),
 	})
 	_, _ = tmpFile.Write(privateKeyPEM)
@@ -192,7 +190,7 @@ func TestAppClient_Do(t *testing.T) {
 	}
 	defer func() { generateAppJWT = originalGenJWT }()
 
-	client, err := NewAppClient(123456, 789012, server.URL, false, zap.NewNop(), "")
+	client, err := NewAppClient(123456, 789012, server.URL, false, zap.NewNop(), "", nil)
 	if err != nil {
 		t.Fatalf("NewAppClient failed: %v", err)
 	}
@@ -223,8 +221,113 @@ func TestNewAppClient_InvalidPrivateKey(t *testing.T) {
 	}
 	defer func() { generateAppJWT = originalGenJWT }()
 
-	_, err = NewAppClient(123456, 789012, "https://api.github.com", false, zap.NewNop(), "")
+	_, err = NewAppClient(123456, 789012, "https://api.github.com", false, zap.NewNop(), "", nil)
 	if err == nil {
 		t.Error("Expected error for invalid private key, got nil")
+	}
+}
+
+func TestAppClient_usesCustomHTTPClient(t *testing.T) {
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("Failed to generate RSA key: %v", err)
+	}
+
+	tmpFile, err := os.CreateTemp("", "github-app-key-*.pem")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
+
+	privateKeyPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  pemRSAPrivateKey,
+		Bytes: x509.MarshalPKCS1PrivateKey(privateKey),
+	})
+	_, _ = tmpFile.Write(privateKeyPEM)
+	_ = tmpFile.Close()
+
+	var transportUsed atomic.Bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		transportUsed.Store(true)
+		resp := map[string]any{ //nolint:gosec // test-only fake GitHub App token
+			"token":      "ghs_custom_client_token",
+			"expires_at": time.Now().Add(1 * time.Hour).Format(time.RFC3339),
+		}
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	originalGenJWT := generateAppJWT
+	generateAppJWT = func(appID int64, _ string) (string, error) {
+		return generateAppJWTFromPath(appID, tmpFile.Name())
+	}
+	defer func() { generateAppJWT = originalGenJWT }()
+
+	customClient := &http.Client{Timeout: 30 * time.Second}
+	client, err := NewAppClient(123456, 789012, server.URL, false, zap.NewNop(), "", customClient)
+	if err != nil {
+		t.Fatalf("NewAppClient failed: %v", err)
+	}
+
+	if !transportUsed.Load() {
+		t.Error("expected custom HTTP client to be used for initial token refresh, but it was not")
+	}
+
+	token, err := client.Token(context.Background())
+	if err != nil {
+		t.Fatalf("Token() failed: %v", err)
+	}
+	if token != "ghs_custom_client_token" { //nolint:gosec // test-only fake GitHub App token
+		t.Errorf("expected 'ghs_custom_client_token', got %q", token)
+	}
+}
+
+func TestAppClient_contextCancellation(t *testing.T) {
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("Failed to generate RSA key: %v", err)
+	}
+
+	tmpFile, err := os.CreateTemp("", "github-app-key-*.pem")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
+
+	privateKeyPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  pemRSAPrivateKey,
+		Bytes: x509.MarshalPKCS1PrivateKey(privateKey),
+	})
+	_, _ = tmpFile.Write(privateKeyPEM)
+	_ = tmpFile.Close()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		resp := map[string]any{ //nolint:gosec // test-only fake GitHub App token
+			"token":      "ghs_ctx_token",
+			"expires_at": time.Now().Add(1 * time.Second).Format(time.RFC3339),
+		}
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	originalGenJWT := generateAppJWT
+	generateAppJWT = func(appID int64, _ string) (string, error) {
+		return generateAppJWTFromPath(appID, tmpFile.Name())
+	}
+	defer func() { generateAppJWT = originalGenJWT }()
+
+	client, err := NewAppClient(123456, 789012, server.URL, false, zap.NewNop(), "", nil)
+	if err != nil {
+		t.Fatalf("NewAppClient failed: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err = client.Token(ctx)
+	if err == nil {
+		t.Error("expected error from cancelled context during refresh, got nil")
 	}
 }

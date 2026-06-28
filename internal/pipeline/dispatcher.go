@@ -173,7 +173,10 @@ func (d *Dispatcher) Handle(ctx context.Context, env *event.Envelope) error {
 		})
 	}
 
-	_ = g.Wait()
+	// g.Wait() returns context errors from goroutines that exited early
+	// (before calling the handler) because the context was already cancelled.
+	// Handler-level errors are collected in errs via the mutex above.
+	waitErr := g.Wait()
 
 	handledCount := len(matched) - len(errs)
 
@@ -186,8 +189,13 @@ func (d *Dispatcher) Handle(ctx context.Context, env *event.Envelope) error {
 			zap.Int("total_handlers", len(handlers)))
 	}
 
-	if len(errs) > 0 {
-		return errors.Join(errs...)
+	// Combine handler errors with errgroup errors (context cancellation).
+	allErrs := errs
+	if waitErr != nil {
+		allErrs = append(allErrs, waitErr)
+	}
+	if len(allErrs) > 0 {
+		return errors.Join(allErrs...)
 	}
 	return d.Next(ctx, env)
 }

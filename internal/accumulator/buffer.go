@@ -3,6 +3,7 @@
 package accumulator
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -20,9 +21,9 @@ type RunState struct {
 
 // Buffer is the interface for storing and retrieving accumulated run state.
 type Buffer interface {
-	Add(uid string, event *domain.Event)
+	Add(ctx context.Context, uid string, event *domain.Event)
 	Get(uid string) (*RunState, bool)
-	Flush(uid string) (*RunState, bool)
+	Flush(ctx context.Context, uid string) (*RunState, bool)
 	Close()
 }
 
@@ -47,7 +48,9 @@ func NewLRUBuffer(ttl time.Duration, maxSize int) *LRUBuffer {
 }
 
 // Add inserts or updates the event for the given pipeline run UID.
-func (b *LRUBuffer) Add(uid string, event *domain.Event) {
+// The context is accepted for interface conformance; the in-memory LRU
+// does not perform I/O so the context is unused.
+func (b *LRUBuffer) Add(_ context.Context, uid string, event *domain.Event) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -83,7 +86,7 @@ func (b *LRUBuffer) Get(uid string) (*RunState, bool) {
 }
 
 // Flush removes and returns the RunState for the given UID.
-func (b *LRUBuffer) Flush(uid string) (*RunState, bool) {
+func (b *LRUBuffer) Flush(_ context.Context, uid string) (*RunState, bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 

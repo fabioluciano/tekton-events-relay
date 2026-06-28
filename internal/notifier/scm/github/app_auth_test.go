@@ -12,6 +12,8 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+const pemRSAPrivateKey = "RSA PRIVATE KEY"
+
 func TestGenerateAppJWT(t *testing.T) {
 	// Generate test RSA key
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -27,7 +29,7 @@ func TestGenerateAppJWT(t *testing.T) {
 	defer func() { _ = os.Remove(tmpFile.Name()) }()
 
 	privateKeyPEM := pem.EncodeToMemory(&pem.Block{
-		Type:  "RSA PRIVATE KEY",
+		Type:  pemRSAPrivateKey,
 		Bytes: x509.MarshalPKCS1PrivateKey(privateKey),
 	})
 	if _, err := tmpFile.Write(privateKeyPEM); err != nil {

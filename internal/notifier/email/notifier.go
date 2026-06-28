@@ -19,6 +19,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
+	"github.com/fabioluciano/tekton-events-relay/internal/httpx"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/msgstore"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/scm"
@@ -254,11 +255,9 @@ func (n *Notifier) buildMessage(subject, body string, e domain.Event) (*mail.Msg
 
 // tlsConfig builds the TLS configuration shared by STARTTLS and implicit TLS.
 func (n *Notifier) tlsConfig() *tls.Config {
-	return &tls.Config{
-		ServerName:         n.cfg.Host,
-		MinVersion:         tls.VersionTLS12,
-		InsecureSkipVerify: n.cfg.InsecureSkipVerify, // #nosec G402 -- explicit opt-in from config
-	}
+	cfg := httpx.TLSConfig(n.cfg.InsecureSkipVerify)
+	cfg.ServerName = n.cfg.Host
+	return cfg
 }
 
 // clientOptions resolves the go-mail client options for the configured

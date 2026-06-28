@@ -4,7 +4,7 @@
 
 ### Your pipelines run. Your platforms get updated. You write zero notification code.
 
-A production-ready CloudEvents bridge that turns Tekton pipeline events into commit statuses, PR comments, labels, deployments and alerts — across **6 SCM platforms** and **8 notification channels** — driven by annotations and CEL expressions instead of pipeline plumbing.
+A production-ready CloudEvents bridge that turns Tekton pipeline events into commit statuses, PR comments, labels, deployments and alerts — across **6 SCM platforms** and **10 notification channels** — driven by annotations and CEL expressions instead of pipeline plumbing.
 
 [![Release](https://img.shields.io/github/actions/workflow/status/fabioluciano/tekton-events-relay/release.yaml?branch=main&style=flat-square&logo=githubactions&logoColor=white&label=release)](https://github.com/fabioluciano/tekton-events-relay/actions/workflows/release.yaml)
 [![CodeQL](https://img.shields.io/github/actions/workflow/status/fabioluciano/tekton-events-relay/security-codeql.yaml?style=flat-square&logo=github&label=codeql)](https://github.com/fabioluciano/tekton-events-relay/actions/workflows/security-codeql.yaml)
@@ -59,7 +59,10 @@ scm:
   github:
     - name: github
       enabled: true
-      auth: { secret_name: github-token }
+      auth:
+        secretRef:
+          name: github-token
+          key: token
       actions:
         - name: task-checks                # one required check per task
           type: commit_status
@@ -81,10 +84,15 @@ notifiers:
   slack:
     - name: prod-alerts                    # only what's worth waking up for
       enabled: true
-      secret_name: slack-webhook
+      webhook_url:
+        secretRef:
+          name: slack-webhook
+          key: webhook_url
       channel: "#prod-alerts"
       when: 'event.Namespace == "production" && stateIn("failure", "error")'
 ```
+
+> **Secret mounting pattern:** Helm values `secretRef` references are mounted as files at `/etc/secrets/{provider}/{instance}/{key}` and rendered into the relay config `*_file` fields automatically.
 
 ## What it speaks
 

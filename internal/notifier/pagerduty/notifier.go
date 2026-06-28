@@ -21,6 +21,7 @@ import (
 
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
+	"github.com/fabioluciano/tekton-events-relay/internal/notifier/scm"
 )
 
 const (
@@ -32,9 +33,9 @@ const (
 
 // Config contains PagerDuty integration settings.
 type Config struct {
-	IntegrationKey       string // PagerDuty service routing key
-	Severity             string // critical, error, warning, info — default: critical
-	AcknowledgeOnRunning bool   // when true, in-progress (running) events send an acknowledge
+	IntegrationKey       scm.TokenRefresher // PagerDuty service routing key
+	Severity             string             // critical, error, warning, info — default: critical
+	AcknowledgeOnRunning bool               // when true, in-progress (running) events send an acknowledge
 }
 
 // Notifier sends events to PagerDuty.
@@ -52,7 +53,7 @@ func New(cfg Config, log *zap.Logger) *Notifier {
 	n.base = &notifier.Base{
 		HTTP:         notifier.DefaultHTTPClient(),
 		BuildURL:     func(_ domain.Event) (string, error) { return eventsAPI, nil },
-		BuildPayload: n.payload,
+		BuildPayload: func(e domain.Event) (any, error) { return n.payload(e, "") },
 		Auth:         func(_ *http.Request) error { return nil }, // PagerDuty auth goes in payload
 		UserAgent:    notifier.UserAgent,
 		Log:          log,
@@ -72,7 +73,18 @@ func (n *Notifier) Handle(ctx context.Context, e domain.Event) error {
 	if action == "" {
 		return nil // irrelevant state, ignore
 	}
-	return n.base.Send(ctx, e)
+	if n.cfg.IntegrationKey == nil {
+		return fmt.Errorf("pagerduty: integration key refresher is required")
+	}
+	integrationKey, err := n.cfg.IntegrationKey.Token(ctx)
+	if err != nil {
+		return fmt.Errorf("pagerduty: resolve integration key: %w", err)
+	}
+	base := *n.base
+	base.BuildPayload = func(e domain.Event) (any, error) {
+		return n.payload(e, integrationKey)
+	}
+	return base.Send(ctx, e)
 }
 
 func actionFor(s domain.State, acknowledgeOnRunning bool) string {
@@ -89,14 +101,14 @@ func actionFor(s domain.State, acknowledgeOnRunning bool) string {
 	return ""
 }
 
-func (n *Notifier) payload(e domain.Event) (any, error) {
+func (n *Notifier) payload(e domain.Event, integrationKey string) (any, error) {
 	action := actionFor(e.State, n.cfg.AcknowledgeOnRunning)
 	if action == "" {
 		return nil, fmt.Errorf("unsupported state for pagerduty: %s", e.State)
 	}
 
 	p := map[string]any{
-		"routing_key":  n.cfg.IntegrationKey,
+		"routing_key":  integrationKey,
 		"event_action": action,
 		"dedup_key":    e.RunID, // ensures idempotency per run (UID is unique across time)
 		"payload": map[string]any{

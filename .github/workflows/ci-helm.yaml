@@ -1,3 +1,4 @@
+---
 name: PR Helm Validation
 
 on:
@@ -31,7 +32,7 @@ jobs:
       - name: Install Helm
         uses: azure/setup-helm@v5.0.1
         with:
-          version: "v3.16.3"
+          version: "v4.2.0"
 
       - name: Add Helm repos and build dependencies
         run: |
@@ -74,7 +75,7 @@ jobs:
       - name: Install Helm
         uses: azure/setup-helm@v5.0.1
         with:
-          version: "v3.16.3"
+          version: "v4.2.0"
 
       - name: Add Helm repos and build dependencies
         run: |
@@ -89,7 +90,8 @@ jobs:
       - name: Validate against Kubernetes schemas
         run: |
           echo "::group::Kubeconform validation"
-          helm template tekton-events-relay charts/tekton-events-relay | kubeconform -strict -summary -kubernetes-version 1.31.0
+          helm template tekton-events-relay charts/tekton-events-relay | \
+            kubeconform -strict -summary -kubernetes-version 1.31.0
           echo "::endgroup::"
 
   security-analysis:
@@ -104,7 +106,7 @@ jobs:
       - name: Install Helm
         uses: azure/setup-helm@v5.0.1
         with:
-          version: "v3.16.3"
+          version: "v4.2.0"
 
       - name: Add Helm repos and build dependencies
         run: |
@@ -113,7 +115,9 @@ jobs:
 
       - name: Install kubesec
         run: |
-          curl -sSL https://github.com/controlplaneio/kubesec/releases/download/v2.14.2/kubesec_linux_amd64.tar.gz | tar xz
+          curl -sSL \
+            https://github.com/controlplaneio/kubesec/releases/download/v2.14.2/kubesec_linux_amd64.tar.gz | \
+            tar xz
           sudo mv kubesec /usr/local/bin/
 
       - name: Kubesec security risk analysis
@@ -126,16 +130,18 @@ jobs:
       - name: Check Kubesec score
         run: |
           echo "::group::Security score check"
-          SCORE=$(helm template tekton-events-relay charts/tekton-events-relay | kubesec scan - 2>&1 | jq -r '.[] | select(.score != 0) | .score' | head -1)
+          SCORE=$(helm template tekton-events-relay charts/tekton-events-relay | \
+            kubesec scan - 2>&1 | \
+            jq -r '[.[] | select(.score != 0) | .score] | min // empty')
           echo "Kubesec Score: $SCORE"
 
-          if [ -n "$SCORE" ] && [ "$SCORE" -lt 10 ]; then
-            echo "::warning::Security score is $SCORE (recommended: 10+)"
-          elif [ -n "$SCORE" ] && [ "$SCORE" -lt 0 ]; then
+          if [ -n "$SCORE" ] && [ "$SCORE" -lt 0 ]; then
             echo "::error::Critical security issues detected (score < 0)"
             exit 1
+          elif [ -n "$SCORE" ] && [ "$SCORE" -lt 10 ]; then
+            echo "::warning::Security score is $SCORE (recommended: 10+)"
           else
-            echo "::notice::Security score: $SCORE ✅"
+            echo "::notice::Security score: ${SCORE:-none} ✅"
           fi
           echo "::endgroup::"
 
@@ -151,7 +157,7 @@ jobs:
       - name: Install Helm
         uses: azure/setup-helm@v5.0.1
         with:
-          version: "v3.16.3"
+          version: "v4.2.0"
 
       - name: Add Helm repos and build dependencies
         run: |
@@ -178,18 +184,17 @@ jobs:
 
       - name: Run Trivy on Helm chart
         uses: aquasecurity/trivy-action@v0.36.0
-        continue-on-error: true
         with:
           scan-type: "config"
           scan-ref: "charts/tekton-events-relay"
           format: "sarif"
           output: "trivy-helm-results.sarif"
           severity: "HIGH,CRITICAL"
-          exit-code: "0"
+          exit-code: "1"
 
       - name: Upload Trivy results to GitHub Security
         uses: github/codeql-action/upload-sarif@v4.36.2
-        if: hashFiles('trivy-helm-results.sarif') != ''
+        if: always() && hashFiles('trivy-helm-results.sarif') != ''
         with:
           sarif_file: "trivy-helm-results.sarif"
           category: trivy-helm-scan
@@ -230,9 +235,16 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Helm Lint | ${{ needs.helm-lint.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Schema Validation (Kubeconform) | ${{ needs.schema-validation.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Security Analysis (Kubesec) | ${{ needs.security-analysis.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Best Practices (KubeLinter) | ${{ needs.best-practices.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Vulnerability Scan (Trivy) | ${{ needs.vulnerability-scan.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| YAML Lint | ${{ needs.yaml-lint.result == 'success' && '✅ Passed' || '❌ Failed' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Helm Lint | ${HELM_LINT_STATUS} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Schema Validation (Kubeconform) | ${SCHEMA_STATUS} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Security Analysis (Kubesec) | ${KUBESEC_STATUS} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Best Practices (KubeLinter) | ${KUBELINTER_STATUS} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Vulnerability Scan (Trivy) | ${TRIVY_STATUS} |" >> $GITHUB_STEP_SUMMARY
+          echo "| YAML Lint | ${YAML_LINT_STATUS} |" >> $GITHUB_STEP_SUMMARY
+        env:
+          HELM_LINT_STATUS: ${{ needs.helm-lint.result == 'success' && '✅ Passed' || '❌ Failed' }}
+          SCHEMA_STATUS: ${{ needs.schema-validation.result == 'success' && '✅ Passed' || '❌ Failed' }}
+          KUBESEC_STATUS: ${{ needs.security-analysis.result == 'success' && '✅ Passed' || '❌ Failed' }}
+          KUBELINTER_STATUS: ${{ needs.best-practices.result == 'success' && '✅ Passed' || '❌ Failed' }}
+          TRIVY_STATUS: ${{ needs.vulnerability-scan.result == 'success' && '✅ Passed' || '❌ Failed' }}
+          YAML_LINT_STATUS: ${{ needs.yaml-lint.result == 'success' && '✅ Passed' || '❌ Failed' }}

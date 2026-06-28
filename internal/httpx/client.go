@@ -4,7 +4,6 @@ package httpx
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -63,15 +62,7 @@ func NewClient(opts ...Option) *http.Client {
 
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.MaxIdleConnsPerHost = SharedMaxIdleConnsPerHost
-
-	if cfg.insecureSkipVerify {
-		if transport.TLSClientConfig == nil {
-			transport.TLSClientConfig = &tls.Config{
-				MinVersion: tls.VersionTLS12,
-			}
-		}
-		transport.TLSClientConfig.InsecureSkipVerify = true
-	}
+	transport.TLSClientConfig = TLSConfig(cfg.insecureSkipVerify)
 
 	var finalTransport http.RoundTripper = transport
 

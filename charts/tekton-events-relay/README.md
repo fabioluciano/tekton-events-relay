@@ -1,10 +1,10 @@
 # tekton-events-relay
 
-![Version: 0.9.0](https://img.shields.io/badge/Version-0.9.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.9.0](https://img.shields.io/badge/AppVersion-0.9.0-informational?style=flat-square)
+![Version: 0.10.0](https://img.shields.io/badge/Version-0.10.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.10.0](https://img.shields.io/badge/AppVersion-0.10.0-informational?style=flat-square)
 
 **Your pipelines run. Your platforms get updated. You write zero notification code.**
 
-Tekton Events Relay turns the CloudEvents your Tekton pipelines already emit into commit statuses, PR comments, labels, deployments and alerts — across **6 SCM platforms** (GitHub, GitLab, Gitea, Bitbucket, Azure DevOps, SourceHut) and **10 notification channels** (Slack, Teams, Discord, PagerDuty, Datadog, Webhook, Grafana, Sentry, Jira, Email). Routing is declared with CEL expressions and a one-time set of annotations on your `PipelineRun`s — **your pipelines never change**.
+Tekton Events Relay turns the CloudEvents your Tekton pipelines already emit into commit statuses, PR comments, labels, deployments and alerts — across **6 SCM platforms** (GitHub, GitLab, Gitea, Bitbucket, Azure DevOps, SourceHut) and **8 notification channels** (Slack, Teams, Discord, PagerDuty, Datadog, Grafana, Sentry, webhooks). Routing is declared with CEL expressions and a one-time set of annotations on your `PipelineRun`s — **your pipelines never change**.
 
 **Homepage:** <https://github.com/fabioluciano/tekton-events-relay>
 
@@ -25,7 +25,7 @@ Tekton Events Relay turns the CloudEvents your Tekton pipelines already emit int
 ```bash
 helm install tekton-events-relay \
   oci://ghcr.io/fabioluciano/charts/tekton-events-relay \
-  --version 0.9.0 \
+  --version 0.10.0 \
   --namespace tekton-events-relay --create-namespace \
   -f values.yaml
 ```
@@ -42,9 +42,7 @@ config:
       - name: github                       # matched by the scm.provider annotation
         enabled: true
         auth:
-          secretRef:                      # mounted at /etc/secrets/github/{instance}/token
-            name: github-token
-            key: token
+          secret_name: github-token        # Secret with key "token"
         actions:
           - name: ci-status
             type: commit_status
@@ -59,15 +57,10 @@ config:
     slack:
       - name: prod-alerts
         enabled: true
-        webhook_url:
-          secretRef:                      # mounted at /etc/secrets/slack/{instance}/webhook_url
-            name: slack-webhook
-            key: webhook_url
+        secret_name: slack-webhook         # Secret with key "webhook_url"
         channel: "#prod-alerts"
         when: 'event.Namespace == "production" && stateIn("failure", "error")'
 ```
-
-The chart mounts referenced Kubernetes Secrets at `/etc/secrets/{provider}/{instance}/{key}` and renders those paths into the relay config `*_file` fields automatically.
 
 ```bash
 kubectl create secret generic github-token -n tekton-events-relay \
@@ -96,12 +89,12 @@ Images and charts are signed with [Cosign](https://github.com/sigstore/cosign) (
 cosign verify \
   --certificate-identity-regexp='https://github.com/fabioluciano/tekton-events-relay' \
   --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
-  ghcr.io/fabioluciano/tekton-events-relay:0.9.0
+  ghcr.io/fabioluciano/tekton-events-relay:0.10.0
 
 cosign verify \
   --certificate-identity-regexp='https://github.com/fabioluciano/tekton-events-relay' \
   --certificate-oidc-issuer='https://token.actions.githubusercontent.com' \
-  oci://ghcr.io/fabioluciano/charts/tekton-events-relay:0.9.0
+  oci://ghcr.io/fabioluciano/charts/tekton-events-relay:0.10.0
 ```
 
 ## Scaling note
@@ -155,19 +148,21 @@ The default in-memory state backend is per-pod: run **one replica**, or set `con
 | config.dlq.max_size_bytes | int | `10485760` | Maximum file size in bytes before oldest entries are dropped |
 | config.dlq.path | string | `"/var/lib/tekton-events-relay/dlq.jsonl"` | JSONL file path (mounted as a writable emptyDir by the chart) |
 | config.dlq.volumeSizeLimit | string | `"32Mi"` | Size limit of the emptyDir volume backing the DLQ |
-| config.filter | object | `{"allow_customrun":false,"allow_eventlistener":false,"allow_pipelinerun":true,"allow_taskrun":true,"ignore_unknown":true}` | Event filtering configuration |
+| config.filter | object | `{"allow_customrun":false,"allow_eventlistener":false,"allow_namespaces":[],"allow_pipelinerun":true,"allow_taskrun":true,"deny_namespaces":[],"ignore_unknown":true}` | Event filtering configuration |
 | config.filter.allow_customrun | bool | `false` | Process CustomRun events |
 | config.filter.allow_eventlistener | bool | `false` | Process EventListener events |
+| config.filter.allow_namespaces | list | `[]` | Namespace allow list (path.Match patterns). Empty = allow all. |
 | config.filter.allow_pipelinerun | bool | `true` | Process PipelineRun events |
 | config.filter.allow_taskrun | bool | `true` | Process TaskRun events |
+| config.filter.deny_namespaces | list | `[]` | Namespace deny list (path.Match patterns). Deny wins over allow. |
 | config.filter.ignore_unknown | bool | `true` | Ignore unknown event types |
 | config.handler_timeout | string | `"10s"` | Per-handler execution deadline; one slow provider cannot stall the whole event dispatch (Go duration format) |
-| config.jira | list | `[{"actions":[{"enabled":true,"name":"result-comment","type":"comment","when":"event.Resource == \"pipelinerun\" && stateIn(\"success\", \"failure\", \"error\")"},{"enabled":false,"name":"mark-done","transition":"Done","type":"transition","when":"event.Resource == \"pipelinerun\" && event.State == \"success\""}],"auth":{},"base_url":"https://yourorg.atlassian.net","enabled":false,"name":"default"}]` | Jira integration instances (Cloud or Data Center) |
-| config.jira[0] | object | `{"actions":[{"enabled":true,"name":"result-comment","type":"comment","when":"event.Resource == \"pipelinerun\" && stateIn(\"success\", \"failure\", \"error\")"},{"enabled":false,"name":"mark-done","transition":"Done","type":"transition","when":"event.Resource == \"pipelinerun\" && event.State == \"success\""}],"auth":{},"base_url":"https://yourorg.atlassian.net","enabled":false,"name":"default"}` | Unique identifier for this Jira instance |
+| config.jira | list | `[{"actions":[{"enabled":true,"name":"result-comment","type":"comment","when":"event.Resource == \"pipelinerun\" && stateIn(\"success\", \"failure\", \"error\")"},{"enabled":false,"name":"mark-done","transition":"Done","type":"transition","when":"event.Resource == \"pipelinerun\" && event.State == \"success\""}],"auth":{"email":"ci@example.com","token":{"secretRef":{"key":"token","name":"jira-default-token"}}},"base_url":"https://yourorg.atlassian.net","enabled":false,"name":"default"}]` | Jira integration instances (Cloud or Data Center) |
+| config.jira[0] | object | `{"actions":[{"enabled":true,"name":"result-comment","type":"comment","when":"event.Resource == \"pipelinerun\" && stateIn(\"success\", \"failure\", \"error\")"},{"enabled":false,"name":"mark-done","transition":"Done","type":"transition","when":"event.Resource == \"pipelinerun\" && event.State == \"success\""}],"auth":{"email":"ci@example.com","token":{"secretRef":{"key":"token","name":"jira-default-token"}}},"base_url":"https://yourorg.atlassian.net","enabled":false,"name":"default"}` | Unique identifier for this Jira instance |
 | config.jira[0].actions | list | `[{"enabled":true,"name":"result-comment","type":"comment","when":"event.Resource == \"pipelinerun\" && stateIn(\"success\", \"failure\", \"error\")"},{"enabled":false,"name":"mark-done","transition":"Done","type":"transition","when":"event.Resource == \"pipelinerun\" && event.State == \"success\""}]` | Skip TLS verification (self-hosted Data Center only) insecure_skip_verify: false |
 | config.jira[0].actions[0] | object | `{"enabled":true,"name":"result-comment","type":"comment","when":"event.Resource == \"pipelinerun\" && stateIn(\"success\", \"failure\", \"error\")"}` | Comment on the linked issue when the pipeline finishes |
 | config.jira[0].actions[1] | object | `{"enabled":false,"name":"mark-done","transition":"Done","type":"transition","when":"event.Resource == \"pipelinerun\" && event.State == \"success\""}` | Move the card when the pipeline succeeds (disabled by default) |
-| config.jira[0].auth | object | `{}` | Jira REST API version: "2" (default, plain-text bodies) or "3" (Atlassian Document Format). Omit for "2". api_version: "3" Credentials: token via secretRef (key "token"). With auth.email set, Cloud basic auth (email + API token); without it, Data Center bearer PAT. OAuth2 client_credentials (Data Center/gateway) is also supported and is not combinable with email or token. |
+| config.jira[0].auth | object | `{"email":"ci@example.com","token":{"secretRef":{"key":"token","name":"jira-default-token"}}}` | Jira REST API version: "2" (default, plain-text bodies) or "3" (Atlassian Document Format). Omit for "2". api_version: "3" Credentials: token via secretRef (key "token"). With auth.email set, Cloud basic auth (email + API token); without it, Data Center bearer PAT. OAuth2 client_credentials (Data Center/gateway) is also supported and is not combinable with email or token. |
 | config.jira[0].base_url | string | `"https://yourorg.atlassian.net"` | Jira base URL (Cloud: https://yourorg.atlassian.net) |
 | config.jira[0].enabled | bool | `false` | Enable or disable this Jira instance |
 | config.logging | object | `{"level":"info","verbose":{"caller":false,"http_calls":false,"payloads":false}}` | Logging configuration |
@@ -176,49 +171,72 @@ The default in-memory state backend is per-pod: run **one replica**, or set `con
 | config.logging.verbose.caller | bool | `false` | Include caller information in logs |
 | config.logging.verbose.http_calls | bool | `false` | Log HTTP calls |
 | config.logging.verbose.payloads | bool | `false` | Log event payloads |
-| config.notifiers.datadog | list | `[{"enabled":false,"name":"main-instance","site":"datadoghq.com","tags":["env:production","team:platform","service:tekton-events-relay"],"when":"event.State == \"success\" || event.State == \"failure\" || event.State == \"error\""}]` | Datadog event tracking configuration. Supports multiple instances with independent API keys and sites. |
-| config.notifiers.datadog[0] | object | `{"enabled":false,"name":"main-instance","site":"datadoghq.com","tags":["env:production","team:platform","service:tekton-events-relay"],"when":"event.State == \"success\" || event.State == \"failure\" || event.State == \"error\""}` | Unique identifier for this Datadog instance configuration |
+| config.notifiers.datadog | list | `[{"api_key":{"secretRef":{"key":"api_key","name":"datadog-api-key"}},"dedupe":false,"enabled":false,"name":"main-instance","retry_override":{"initial_backoff":"","max_attempts":0,"max_backoff":""},"site":"datadoghq.com","tags":["env:production","team:platform","service:tekton-events-relay"],"when":"event.State == \"success\" || event.State == \"failure\" || event.State == \"error\""}]` | Datadog event tracking configuration. Supports multiple instances with independent API keys and sites. |
+| config.notifiers.datadog[0] | object | `{"api_key":{"secretRef":{"key":"api_key","name":"datadog-api-key"}},"dedupe":false,"enabled":false,"name":"main-instance","retry_override":{"initial_backoff":"","max_attempts":0,"max_backoff":""},"site":"datadoghq.com","tags":["env:production","team:platform","service:tekton-events-relay"],"when":"event.State == \"success\" || event.State == \"failure\" || event.State == \"error\""}` | Unique identifier for this Datadog instance configuration |
+| config.notifiers.datadog[0].dedupe | bool | `false` | Enable notification deduplication (dedupe by handler_name + cloud_event_id) |
 | config.notifiers.datadog[0].enabled | bool | `false` | Enable or disable this Datadog notifier instance |
+| config.notifiers.datadog[0].retry_override | object | `{"initial_backoff":"","max_attempts":0,"max_backoff":""}` | Override global retry policy for this notifier instance |
 | config.notifiers.datadog[0].site | string | `"datadoghq.com"` | Datadog site (datadoghq.com, datadoghq.eu, us3.datadoghq.com, etc.) |
 | config.notifiers.datadog[0].tags | list | `["env:production","team:platform","service:tekton-events-relay"]` | Custom tags appended to auto-generated tags (state, context, namespace are added automatically) |
 | config.notifiers.datadog[0].when | string | `"event.State == \"success\" || event.State == \"failure\" || event.State == \"error\""` | CEL expression to filter which events are sent to Datadog |
-| config.notifiers.discord | list | `[{"enabled":false,"name":"main-channel","template":{"configmapRef":{"key":"discord-default.tmpl"}},"username":"Tekton CI","when":"event.Namespace == \"staging\" || event.Namespace == \"production\""}]` | Discord notification channels configuration. Supports multiple channels with independent webhook secrets and templates. |
-| config.notifiers.discord[0] | object | `{"enabled":false,"name":"main-channel","template":{"configmapRef":{"key":"discord-default.tmpl"}},"username":"Tekton CI","when":"event.Namespace == \"staging\" || event.Namespace == \"production\""}` | Unique identifier for this Discord channel configuration |
+| config.notifiers.discord | list | `[{"dedupe":false,"enabled":false,"name":"main-channel","retry_override":{"initial_backoff":"","max_attempts":0,"max_backoff":""},"template":{"configmapRef":{"key":"discord-default.tmpl"}},"username":"Tekton CI","webhook_url":{"secretRef":{"key":"webhook_url","name":"discord-webhook"}},"when":"event.Namespace == \"staging\" || event.Namespace == \"production\""}]` | Discord notification channels configuration. Supports multiple channels with independent webhook secrets and templates. |
+| config.notifiers.discord[0] | object | `{"dedupe":false,"enabled":false,"name":"main-channel","retry_override":{"initial_backoff":"","max_attempts":0,"max_backoff":""},"template":{"configmapRef":{"key":"discord-default.tmpl"}},"username":"Tekton CI","webhook_url":{"secretRef":{"key":"webhook_url","name":"discord-webhook"}},"when":"event.Namespace == \"staging\" || event.Namespace == \"production\""}` | Unique identifier for this Discord channel configuration |
+| config.notifiers.discord[0].dedupe | bool | `false` | Enable notification deduplication (dedupe by handler_name + cloud_event_id) |
 | config.notifiers.discord[0].enabled | bool | `false` | Enable or disable this Discord notifier instance |
+| config.notifiers.discord[0].retry_override | object | `{"initial_backoff":"","max_attempts":0,"max_backoff":""}` | Override global retry policy for this notifier instance |
 | config.notifiers.discord[0].username | string | `"Tekton CI"` | Display name for the bot posting messages |
 | config.notifiers.discord[0].when | string | `"event.Namespace == \"staging\" || event.Namespace == \"production\""` | CEL expression to filter which events trigger notifications |
-| config.notifiers.email | list | `[{"enabled":false,"encryption":"starttls","from":"tekton@example.com","host":"smtp.example.com","html":false,"name":"default","port":587,"to":["platform-team@example.com"],"when":"event.Resource == \"pipelinerun\" && stateIn(\"failure\", \"error\")"}]` | SMTP email notifier instances. The most universal channel: any relay (corporate SMTP, SES, Mailgun, in-cluster Postfix) works. |
-| config.notifiers.email[0] | object | `{"enabled":false,"encryption":"starttls","from":"tekton@example.com","host":"smtp.example.com","html":false,"name":"default","port":587,"to":["platform-team@example.com"],"when":"event.Resource == \"pipelinerun\" && stateIn(\"failure\", \"error\")"}` | Unique identifier for this email instance |
+| config.notifiers.email | list | `[{"enabled":false,"encryption":"starttls","from":"tekton@example.com","host":"smtp.example.com","html":false,"name":"default","password":{"secretRef":{"key":"password","name":"email-default-credentials"}},"port":587,"retry_override":{"initial_backoff":"","max_attempts":0,"max_backoff":""},"to":["platform-team@example.com"],"username":"ci@example.com","when":"event.Resource == \"pipelinerun\" && stateIn(\"failure\", \"error\")"}]` | SMTP email notifier instances. The most universal channel: any relay (corporate SMTP, SES, Mailgun, in-cluster Postfix) works. |
+| config.notifiers.email[0] | object | `{"enabled":false,"encryption":"starttls","from":"tekton@example.com","host":"smtp.example.com","html":false,"name":"default","password":{"secretRef":{"key":"password","name":"email-default-credentials"}},"port":587,"retry_override":{"initial_backoff":"","max_attempts":0,"max_backoff":""},"to":["platform-team@example.com"],"username":"ci@example.com","when":"event.Resource == \"pipelinerun\" && stateIn(\"failure\", \"error\")"}` | Unique identifier for this email instance |
 | config.notifiers.email[0].enabled | bool | `false` | Enable or disable this email notifier instance |
 | config.notifiers.email[0].encryption | string | `"starttls"` | Connection security: starttls (default), tls or none. NOTE: with "none", AUTH is only attempted against localhost relays. |
 | config.notifiers.email[0].from | string | `"tekton@example.com"` | Sender address |
 | config.notifiers.email[0].host | string | `"smtp.example.com"` | SMTP server hostname |
 | config.notifiers.email[0].html | bool | `false` | Send body as text/html instead of text/plain |
 | config.notifiers.email[0].port | int | `587` | SMTP port (587 STARTTLS, 465 implicit TLS, 25 plain relays) |
+| config.notifiers.email[0].retry_override | object | `{"initial_backoff":"","max_attempts":0,"max_backoff":""}` | Override global retry policy for this notifier instance |
 | config.notifiers.email[0].to | list | `["platform-team@example.com"]` | Recipient list |
 | config.notifiers.email[0].when | string | `"event.Resource == \"pipelinerun\" && stateIn(\"failure\", \"error\")"` | CEL expression to filter which events are emailed |
-| config.notifiers.grafana | list | `[]` | ----------------------------------------------------------------------- |
-| config.notifiers.pagerduty | list | `[{"enabled":false,"name":"main-service","severity":"critical","when":"event.State == \"failure\" || event.State == \"error\""}]` | PagerDuty incident services configuration. Supports multiple services with independent integration keys. |
-| config.notifiers.pagerduty[0] | object | `{"enabled":false,"name":"main-service","severity":"critical","when":"event.State == \"failure\" || event.State == \"error\""}` | Unique identifier for this PagerDuty service configuration |
+| config.notifiers.grafana | list | `[{"enabled":false,"name":"deploy-markers","retry_override":{"initial_backoff":"","max_attempts":0,"max_backoff":""},"token":{"secretRef":{"key":"token","name":"grafana-token"}},"url":"https://grafana.company.example.com"}]` | ----------------------------------------------------------------------- |
+| config.notifiers.grafana[0].retry_override | object | `{"initial_backoff":"","max_attempts":0,"max_backoff":""}` | Override global retry policy for this notifier instance |
+| config.notifiers.mattermost | list | `[{"channel":"#ci-notifications","dedupe":false,"enabled":false,"name":"main-channel","retry_override":{"initial_backoff":"","max_attempts":0,"max_backoff":""},"username":"Tekton CI","webhook_url":{"secretRef":{"key":"webhook_url","name":"mattermost-webhook"}},"when":"event.State == \"failure\" || event.State == \"error\""}]` | Mattermost notification channels configuration. Supports webhook and bot token modes. |
+| config.notifiers.mattermost[0] | object | `{"channel":"#ci-notifications","dedupe":false,"enabled":false,"name":"main-channel","retry_override":{"initial_backoff":"","max_attempts":0,"max_backoff":""},"username":"Tekton CI","webhook_url":{"secretRef":{"key":"webhook_url","name":"mattermost-webhook"}},"when":"event.State == \"failure\" || event.State == \"error\""}` | Unique identifier for this Mattermost channel configuration |
+| config.notifiers.mattermost[0].channel | string | `"#ci-notifications"` | Mattermost channel override (e.g. #alerts) |
+| config.notifiers.mattermost[0].dedupe | bool | `false` | Enable notification deduplication (dedupe by handler_name + cloud_event_id) |
+| config.notifiers.mattermost[0].enabled | bool | `false` | Enable or disable this Mattermost notifier instance |
+| config.notifiers.mattermost[0].retry_override | object | `{"initial_backoff":"","max_attempts":0,"max_backoff":""}` | Override global retry policy for this notifier instance |
+| config.notifiers.mattermost[0].username | string | `"Tekton CI"` | Display name for the bot posting messages |
+| config.notifiers.mattermost[0].when | string | `"event.State == \"failure\" || event.State == \"error\""` | CEL expression to filter which events trigger notifications |
+| config.notifiers.pagerduty | list | `[{"dedupe":false,"enabled":false,"integration_key":{"secretRef":{"key":"integration_key","name":"pagerduty-integration-key"}},"name":"main-service","retry_override":{"initial_backoff":"","max_attempts":0,"max_backoff":""},"severity":"critical","when":"event.State == \"failure\" || event.State == \"error\""}]` | PagerDuty incident services configuration. Supports multiple services with independent integration keys. |
+| config.notifiers.pagerduty[0] | object | `{"dedupe":false,"enabled":false,"integration_key":{"secretRef":{"key":"integration_key","name":"pagerduty-integration-key"}},"name":"main-service","retry_override":{"initial_backoff":"","max_attempts":0,"max_backoff":""},"severity":"critical","when":"event.State == \"failure\" || event.State == \"error\""}` | Unique identifier for this PagerDuty service configuration |
+| config.notifiers.pagerduty[0].dedupe | bool | `false` | Enable notification deduplication (dedupe by handler_name + cloud_event_id) |
 | config.notifiers.pagerduty[0].enabled | bool | `false` | Enable or disable this PagerDuty notifier instance |
+| config.notifiers.pagerduty[0].retry_override | object | `{"initial_backoff":"","max_attempts":0,"max_backoff":""}` | Override global retry policy for this notifier instance |
 | config.notifiers.pagerduty[0].severity | string | `"critical"` | Incident severity level (critical, error, warning, info) |
 | config.notifiers.pagerduty[0].when | string | `"event.State == \"failure\" || event.State == \"error\""` | CEL expression to filter which events trigger incidents |
-| config.notifiers.sentry | list | `[]` | ----------------------------------------------------------------------- |
-| config.notifiers.slack | list | `[{"channel":"#ci-notifications","enabled":false,"icon_emoji":":robot_face:","name":"main-channel","template":{"configmapRef":{"key":"slack-default.tmpl"}},"username":"Tekton CI","when":"event.State == \"failure\" || event.State == \"error\""}]` | Slack notification channels configuration. Supports multiple channels with independent webhook secrets and templates. |
-| config.notifiers.slack[0] | object | `{"channel":"#ci-notifications","enabled":false,"icon_emoji":":robot_face:","name":"main-channel","template":{"configmapRef":{"key":"slack-default.tmpl"}},"username":"Tekton CI","when":"event.State == \"failure\" || event.State == \"error\""}` | Unique identifier for this Slack channel configuration |
+| config.notifiers.sentry | list | `[{"enabled":false,"name":"main","org":"acme","retry_override":{"initial_backoff":"","max_attempts":0,"max_backoff":""},"token":{"secretRef":{"key":"token","name":"sentry-token"}}}]` | ----------------------------------------------------------------------- |
+| config.notifiers.sentry[0].retry_override | object | `{"initial_backoff":"","max_attempts":0,"max_backoff":""}` | Override global retry policy for this notifier instance |
+| config.notifiers.slack | list | `[{"channel":"#ci-notifications","dedupe":false,"enabled":false,"icon_emoji":":robot_face:","name":"main-channel","retry_override":{"initial_backoff":"","max_attempts":0,"max_backoff":""},"template":{"configmapRef":{"key":"slack-default.tmpl"}},"username":"Tekton CI","webhook_url":{"secretRef":{"key":"webhook_url","name":"slack-webhook"}},"when":"event.State == \"failure\" || event.State == \"error\""}]` | Slack notification channels configuration. Supports multiple channels with independent webhook secrets and templates. |
+| config.notifiers.slack[0] | object | `{"channel":"#ci-notifications","dedupe":false,"enabled":false,"icon_emoji":":robot_face:","name":"main-channel","retry_override":{"initial_backoff":"","max_attempts":0,"max_backoff":""},"template":{"configmapRef":{"key":"slack-default.tmpl"}},"username":"Tekton CI","webhook_url":{"secretRef":{"key":"webhook_url","name":"slack-webhook"}},"when":"event.State == \"failure\" || event.State == \"error\""}` | Unique identifier for this Slack channel configuration |
 | config.notifiers.slack[0].channel | string | `"#ci-notifications"` | Slack channel to post notifications (e.g., #ci-notifications, @username) |
+| config.notifiers.slack[0].dedupe | bool | `false` | Enable notification deduplication (dedupe by handler_name + cloud_event_id) |
 | config.notifiers.slack[0].enabled | bool | `false` | Enable or disable this Slack notifier instance |
 | config.notifiers.slack[0].icon_emoji | string | `":robot_face:"` | Emoji icon for the bot (e.g., :robot_face:, :warning:) |
+| config.notifiers.slack[0].retry_override | object | `{"initial_backoff":"","max_attempts":0,"max_backoff":""}` | Override global retry policy for this notifier instance |
 | config.notifiers.slack[0].username | string | `"Tekton CI"` | Display name for the bot posting messages |
 | config.notifiers.slack[0].when | string | `"event.State == \"failure\" || event.State == \"error\""` | CEL expression to filter which events trigger notifications |
-| config.notifiers.teams | list | `[{"enabled":false,"name":"main-channel","template":{"configmapRef":{"key":"teams-default.tmpl"}},"when":"event.State == \"success\" || event.State == \"failure\" || event.State == \"error\""}]` | Microsoft Teams notification channels configuration. Supports multiple channels with independent webhook secrets and templates. |
-| config.notifiers.teams[0] | object | `{"enabled":false,"name":"main-channel","template":{"configmapRef":{"key":"teams-default.tmpl"}},"when":"event.State == \"success\" || event.State == \"failure\" || event.State == \"error\""}` | Unique identifier for this Teams channel configuration |
+| config.notifiers.teams | list | `[{"dedupe":false,"enabled":false,"name":"main-channel","retry_override":{"initial_backoff":"","max_attempts":0,"max_backoff":""},"template":{"configmapRef":{"key":"teams-default.tmpl"}},"webhook_url":{"secretRef":{"key":"webhook_url","name":"teams-webhook"}},"when":"event.State == \"success\" || event.State == \"failure\" || event.State == \"error\""}]` | Microsoft Teams notification channels configuration. Supports multiple channels with independent webhook secrets and templates. |
+| config.notifiers.teams[0] | object | `{"dedupe":false,"enabled":false,"name":"main-channel","retry_override":{"initial_backoff":"","max_attempts":0,"max_backoff":""},"template":{"configmapRef":{"key":"teams-default.tmpl"}},"webhook_url":{"secretRef":{"key":"webhook_url","name":"teams-webhook"}},"when":"event.State == \"success\" || event.State == \"failure\" || event.State == \"error\""}` | Unique identifier for this Teams channel configuration |
+| config.notifiers.teams[0].dedupe | bool | `false` | Enable notification deduplication (dedupe by handler_name + cloud_event_id) |
 | config.notifiers.teams[0].enabled | bool | `false` | Enable or disable this Teams notifier instance |
+| config.notifiers.teams[0].retry_override | object | `{"initial_backoff":"","max_attempts":0,"max_backoff":""}` | Override global retry policy for this notifier instance |
 | config.notifiers.teams[0].when | string | `"event.State == \"success\" || event.State == \"failure\" || event.State == \"error\""` | CEL expression to filter which events trigger notifications |
-| config.notifiers.webhook | list | `[{"enabled":false,"headers":{"X-Source":"tekton-events-relay"},"name":"main-webhook","when":"event.State == \"success\" || event.State == \"failure\" || event.State == \"error\""}]` | Generic webhook endpoints configuration. Supports multiple webhooks with custom headers and payloads. |
-| config.notifiers.webhook[0] | object | `{"enabled":false,"headers":{"X-Source":"tekton-events-relay"},"name":"main-webhook","when":"event.State == \"success\" || event.State == \"failure\" || event.State == \"error\""}` | Unique identifier for this webhook configuration |
+| config.notifiers.webhook | list | `[{"auth":{"token":{"secretRef":{"key":"token","name":"webhook-token"}},"type":"bearer"},"dedupe":false,"enabled":false,"headers":{"X-Source":"tekton-events-relay"},"name":"main-webhook","retry_override":{"initial_backoff":"","max_attempts":0,"max_backoff":""},"url":{"secretRef":{"key":"url","name":"custom-webhook"}},"when":"event.State == \"success\" || event.State == \"failure\" || event.State == \"error\""}]` | Generic webhook endpoints configuration. Supports multiple webhooks with custom headers and payloads. |
+| config.notifiers.webhook[0] | object | `{"auth":{"token":{"secretRef":{"key":"token","name":"webhook-token"}},"type":"bearer"},"dedupe":false,"enabled":false,"headers":{"X-Source":"tekton-events-relay"},"name":"main-webhook","retry_override":{"initial_backoff":"","max_attempts":0,"max_backoff":""},"url":{"secretRef":{"key":"url","name":"custom-webhook"}},"when":"event.State == \"success\" || event.State == \"failure\" || event.State == \"error\""}` | Unique identifier for this webhook configuration |
+| config.notifiers.webhook[0].dedupe | bool | `false` | Enable notification deduplication (dedupe by handler_name + cloud_event_id) |
 | config.notifiers.webhook[0].enabled | bool | `false` | Enable or disable this webhook notifier instance |
 | config.notifiers.webhook[0].headers | object | `{"X-Source":"tekton-events-relay"}` | Custom HTTP headers sent with the webhook request (e.g., authentication tokens, routing keys) |
+| config.notifiers.webhook[0].retry_override | object | `{"initial_backoff":"","max_attempts":0,"max_backoff":""}` | Override global retry policy for this notifier instance |
 | config.notifiers.webhook[0].when | string | `"event.State == \"success\" || event.State == \"failure\" || event.State == \"error\""` | CEL expression to filter which events trigger webhook calls |
 | config.retry | object | `{"initial_backoff":"250ms","max_attempts":4,"max_backoff":"30s"}` | Outbound HTTP retry configuration |
 | config.retry.initial_backoff | string | `"250ms"` | First backoff delay (Go duration format) |

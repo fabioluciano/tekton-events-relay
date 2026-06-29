@@ -57,6 +57,9 @@ func (h *LabelHandler) Name() string { return providerGitHub }
 // Type returns the action type.
 func (h *LabelHandler) Type() notifier.ActionType { return notifier.ActionLabel }
 
+// Close is a no-op; this handler holds no resources requiring cleanup.
+func (h *LabelHandler) Close() error { return nil }
+
 // Handle applies a label to a GitHub issue or PR based on state.
 func (h *LabelHandler) Handle(ctx context.Context, e domain.Event) error {
 	if e.Provider != providerGitHub {

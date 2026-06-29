@@ -44,6 +44,11 @@ const (
 	// stored (fail-open).
 	ModeUpsert = "upsert"
 
+	// ThreadModeGrouped posts the first event of a RunID as a top-level
+	// message and replies in a thread for subsequent events. Mutually
+	// exclusive with ModeUpsert.
+	ThreadModeGrouped = "grouped"
+
 	httpTimeout = 10 * time.Second
 )
 
@@ -57,14 +62,19 @@ type Config struct {
 	BotToken  scm.TokenRefresher
 	ChannelID string // Discord channel snowflake ID
 	// Common
-	Username string // displayed name (webhook only); default: tekton-events-relay
-	Template string // optional Go template; if empty, uses the default embed
+	Username     string   // displayed name (webhook only); default: tekton-events-relay
+	Template     string   // optional Go template; if empty, uses the default embed
+	MentionRoles []string // Discord role IDs to mention in the message content
 
 	// Mode is "create" (default) or "upsert". Upsert edits the original message
 	// per RunID; requires a MessageStore (degrades to create otherwise).
 	Mode string
-	// MessageStore persists the message ID per RunID for upsert mode. When nil,
-	// upsert degrades to posting a new message (fail-open).
+	// ThreadMode is "grouped" (or empty). Grouped posts the first event per
+	// RunID as a top-level message and replies in a thread for subsequent
+	// events. Mutually exclusive with Mode "upsert". Requires MessageStore.
+	ThreadMode string
+	// MessageStore persists the message ID per RunID for upsert/thread mode.
+	// When nil, upsert/thread degrades to posting a new message (fail-open).
 	MessageStore msgstore.Store
 
 	// httpClient overrides the base RoundTripper of the discordgo session.
@@ -210,6 +220,41 @@ func (n *Notifier) Name() string { return "discord" }
 // Type returns the action type.
 func (n *Notifier) Type() notifier.ActionType { return notifier.ActionNotify }
 
+// Close releases resources held by the notifier. Idempotent.
+func (n *Notifier) Close() error { return nil }
+
+// Flush sends multiple events as a single Discord message with multiple embeds.
+// Each event becomes one embed in the message.
+func (n *Notifier) Flush(ctx context.Context, events []domain.Event) error {
+	if len(events) == 0 {
+		return nil
+	}
+
+	embeds := make([]*discordgo.MessageEmbed, 0, len(events))
+	for _, e := range events {
+		embeds = append(embeds, n.embed(e))
+	}
+
+	if n.botMode {
+		_, err := n.session.ChannelMessageSendComplex(n.cfg.ChannelID, &discordgo.MessageSend{
+			Embeds: embeds,
+		}, discordgo.WithContext(ctx))
+		if err != nil {
+			return fmt.Errorf("discord batch send: %w", err)
+		}
+		return nil
+	}
+
+	_, err := n.session.WebhookExecute(n.webhookID, n.webhookToken, true, &discordgo.WebhookParams{
+		Username: n.cfg.Username,
+		Embeds:   embeds,
+	}, discordgo.WithContext(ctx))
+	if err != nil {
+		return fmt.Errorf("discord batch webhook: %w", err)
+	}
+	return nil
+}
+
 // Handle sends the event to Discord via the configured transport.
 func (n *Notifier) Handle(ctx context.Context, e domain.Event) error {
 	if n.botMode {
@@ -221,6 +266,11 @@ func (n *Notifier) Handle(ctx context.Context, e domain.Event) error {
 // canUpsert reports whether upsert is active and backed by a store.
 func (n *Notifier) canUpsert() bool {
 	return n.cfg.Mode == ModeUpsert && n.cfg.MessageStore != nil
+}
+
+// canThreadGroup reports whether thread-grouped mode is active and backed by a store.
+func (n *Notifier) canThreadGroup() bool {
+	return n.cfg.ThreadMode == ThreadModeGrouped && n.cfg.MessageStore != nil
 }
 
 // sendWebhook posts (or, in upsert mode, edits) a message via the webhook API.
@@ -267,6 +317,28 @@ func (n *Notifier) sendBot(ctx context.Context, e domain.Event) error {
 		return err
 	}
 
+	// Thread grouped: first event posts top-level, subsequent events reply
+	// in the thread. Runs before upsert — the two modes are mutually exclusive.
+	if n.canThreadGroup() {
+		msgSend := &discordgo.MessageSend{
+			Content: content,
+			Embeds:  embeds,
+		}
+		if id, ok := n.cfg.MessageStore.Load(e.RunID); ok && id != "" {
+			msgSend.Reference = &discordgo.MessageReference{
+				MessageID: id,
+			}
+		}
+		msg, perr := n.session.ChannelMessageSendComplex(n.cfg.ChannelID, msgSend, discordgo.WithContext(ctx))
+		if perr != nil {
+			return fmt.Errorf("discord send message: %w", perr)
+		}
+		if e.RunID != "" && msg != nil && msg.ID != "" {
+			n.cfg.MessageStore.Save(e.RunID, msg.ID)
+		}
+		return nil
+	}
+
 	if n.canUpsert() {
 		if id, ok := n.cfg.MessageStore.Load(e.RunID); ok && id != "" {
 			edit := discordgo.NewMessageEdit(n.cfg.ChannelID, id)
@@ -303,14 +375,40 @@ func (n *Notifier) rememberMessage(e domain.Event, msg *discordgo.Message) {
 
 // render produces either template-driven content or a default embed.
 func (n *Notifier) render(e domain.Event) (string, []*discordgo.MessageEmbed, error) {
+	var content string
 	if n.tmpl != nil {
 		var buf bytes.Buffer
 		if err := n.tmpl.Execute(&buf, e); err != nil {
 			return "", nil, fmt.Errorf("template execution failed: %w", err)
 		}
-		return buf.String(), nil, nil
+		content = buf.String()
 	}
-	return "", []*discordgo.MessageEmbed{n.embed(e)}, nil
+
+	mentions := n.roleMentions()
+	if mentions != "" {
+		if content != "" {
+			content = mentions + " " + content
+		} else {
+			content = mentions
+		}
+	}
+
+	if n.tmpl != nil {
+		return content, nil, nil
+	}
+	return content, []*discordgo.MessageEmbed{n.embed(e)}, nil
+}
+
+// roleMentions formats MentionRoles as "<@&ROLE_ID>" separated by spaces.
+func (n *Notifier) roleMentions() string {
+	if len(n.cfg.MentionRoles) == 0 {
+		return ""
+	}
+	parts := make([]string, len(n.cfg.MentionRoles))
+	for i, id := range n.cfg.MentionRoles {
+		parts[i] = "<@&" + id + ">"
+	}
+	return strings.Join(parts, " ")
 }
 
 // embed builds the default-format Discord embed for an event.

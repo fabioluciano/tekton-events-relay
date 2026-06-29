@@ -34,6 +34,9 @@ func (d *DedupeHandler) Name() string { return d.inner.Name() }
 // Type returns the inner handler's action type.
 func (d *DedupeHandler) Type() ActionType { return d.inner.Type() }
 
+// Close delegates to the inner handler's Close method.
+func (d *DedupeHandler) Close() error { return d.inner.Close() }
+
 // Handle checks the dedupe store before delegating. If the same
 // (handler_name, cloud_event_id) pair was already seen, the event is
 // silently skipped. Without a CloudEventID in context the handler

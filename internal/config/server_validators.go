@@ -82,6 +82,9 @@ func (c *Config) validateTracing() error {
 			return fmt.Errorf("tracing.endpoint: invalid URL '%s': %w", c.Tracing.Endpoint, err)
 		}
 	}
+	if c.Tracing.SampleRate < 0.0 || c.Tracing.SampleRate > 1.0 {
+		return fmt.Errorf("tracing.sample_rate: must be between 0.0 and 1.0, got %g", c.Tracing.SampleRate)
+	}
 	return nil
 }
 

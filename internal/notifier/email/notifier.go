@@ -356,3 +356,6 @@ func (n *Notifier) send(ctx context.Context, msg *mail.Msg) error {
 	}
 	return nil
 }
+
+// Close is a no-op; this handler holds no resources requiring cleanup.
+func (n *Notifier) Close() error { return nil }

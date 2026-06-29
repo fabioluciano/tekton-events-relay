@@ -79,3 +79,6 @@ func (h *ServerCommentHandler) Handle(ctx context.Context, e domain.Event) error
 
 	return h.client.Do(ctx, "POST", url, payload)
 }
+
+// Close is a no-op; this handler holds no resources requiring cleanup.
+func (h *ServerCommentHandler) Close() error { return nil }

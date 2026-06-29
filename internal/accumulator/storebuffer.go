@@ -78,7 +78,19 @@ func (b *StoreBuffer) Flush(ctx context.Context, uid string) (*RunState, bool) {
 }
 
 // Close is a no-op; the underlying store lifecycle belongs to its owner.
-func (b *StoreBuffer) Close() {}
+func (b *StoreBuffer) Close() error { return nil }
+
+// AddWithGroup is unsupported on remote backends; events are dropped.
+// Group-based accumulation requires the in-memory LRUBuffer.
+func (b *StoreBuffer) AddWithGroup(_ context.Context, _, _ string, _ *domain.Event) {}
+
+// IsGroupComplete always returns false for remote backends.
+func (b *StoreBuffer) IsGroupComplete(_ string) bool { return false }
+
+// FlushGroup is unsupported on remote backends.
+func (b *StoreBuffer) FlushGroup(_ context.Context, _ string) (*RunState, bool) {
+	return nil, false
+}
 
 func (b *StoreBuffer) observeError(op string) {
 	if b.collectors != nil {

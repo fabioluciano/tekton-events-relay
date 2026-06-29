@@ -157,3 +157,6 @@ func (h *CheckRunHandler) generateSummary(e *domain.Event) string {
 	}
 	return buf.String()
 }
+
+// Close is a no-op; this handler holds no resources requiring cleanup.
+func (h *CheckRunHandler) Close() error { return nil }

@@ -35,6 +35,7 @@ func (f *DatadogFactory) Build(inst config.DatadogInstance, log *zap.Logger) ([]
 		APIKey:      apiKey,
 		Site:        inst.Site,
 		Tags:        inst.Tags,
+		ExtraTags:   inst.ExtraTags,
 		HTTPClient:  httpClient,
 		RetryPolicy: retryPolicy,
 	}, log)

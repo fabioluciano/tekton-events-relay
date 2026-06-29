@@ -1269,6 +1269,53 @@ config:
           initial_backoff: "" # "" = use global default
           max_backoff: ""     # "" = use global default
 
+    # -------------------------------------------------------------------------
+    # Mattermost
+    # -------------------------------------------------------------------------
+    # -- Mattermost notification channels configuration. Supports webhook and bot token modes.
+    mattermost:
+      # -- Unique identifier for this Mattermost channel configuration
+      - name: main-channel
+        # -- Enable or disable this Mattermost notifier instance
+        enabled: false
+        # -- Enable notification deduplication (dedupe by handler_name + cloud_event_id)
+        dedupe: false
+        # -- Override global retry policy for this notifier instance
+        retry_override:
+          max_attempts: 0     # 0 = use global default
+          initial_backoff: "" # "" = use global default
+          max_backoff: ""     # "" = use global default
+        # Webhook URL mode (simpler):
+        webhook_url:
+          secretRef:
+            name: mattermost-webhook
+            key: webhook_url
+        # Bot token mode (alternative — uses /api/v4/posts API):
+        # bot_token:
+        #   token:
+        #     secretRef:
+        #       name: mattermost-bot-token
+        #       key: token
+        #   channel_id: "channel-id-123"
+        # base_url: "https://mattermost.example.com"
+        # Create the referenced Secret:
+        # kubectl create secret generic mattermost-webhook -n tekton-events-relay \
+        #   --from-literal=webhook_url=https://mattermost.example.com/hooks/...
+        # -- Mattermost channel override (e.g. #alerts)
+        channel: "#ci-notifications"
+        # -- Display name for the bot posting messages
+        username: "Tekton CI"
+        # -- Icon URL for the bot avatar (optional)
+        # icon_url: "https://example.com/icon.png"
+        # -- CEL expression to filter which events trigger notifications
+        when: 'event.State == "failure" || event.State == "error"'
+        # -- Go template for message formatting (optional)
+        # template: |
+        #   :warning: *Pipeline {{.State}}*
+        #   *Run:* `{{.RunName}}`
+        #   *Commit:* `{{.CommitSHA}}`
+        #   {{if .TargetURL}}[View in Dashboard]({{.TargetURL}}){{end}}
+
   # ---------------------------------------------------------------------------
   # Jira (issue tracking) — top-level integration, sibling of notifiers.
   # ---------------------------------------------------------------------------

@@ -775,6 +775,30 @@ data:
         {{- end }}
       {{- end }}
 
+      {{- if .Values.config.notifiers.opsgenie }}
+      opsgenie:
+        {{- range .Values.config.notifiers.opsgenie }}
+        - name: {{ .name }}
+          enabled: {{ .enabled }}
+          {{- if .api_key }}
+          auth:
+            api_key_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .api_key "provider" "opsgenie" "instance" .name "key" (default "api_key" .api_key.secretRef.key)) }}
+          {{- end }}
+          {{- if .team_name }}
+          team_name: {{ .team_name | quote }}
+          {{- end }}
+          {{- if .priority }}
+          priority: {{ .priority | quote }}
+          {{- end }}
+          {{- if .when }}
+          when: {{ .when | quote }}
+          {{- end }}
+          {{- if .dedupe }}
+          dedupe: true
+          {{- end }}
+        {{- end }}
+      {{- end }}
+
       {{- if .Values.config.notifiers.email }}
       email:
         {{- range .Values.config.notifiers.email }}

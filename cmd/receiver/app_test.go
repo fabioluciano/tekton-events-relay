@@ -7,6 +7,10 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"go.uber.org/zap"
+
+	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
 )
 
 func TestNewApp(t *testing.T) {
@@ -103,9 +107,7 @@ notifiers: {}
 
 	waitForServerReady(t, "http://localhost:8081/healthz")
 
-	if err := app.shutdown(); err != nil {
-		t.Errorf("shutdown failed: %v", err)
-	}
+	app.shutdown()
 }
 
 func TestBuildDecoders(t *testing.T) {
@@ -131,5 +133,48 @@ func waitForServerReady(t *testing.T, url string) {
 				return
 			}
 		}
+	}
+}
+
+func TestShutdownClosesHandlers(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfgPath := filepath.Join(tmpDir, "config.yaml")
+	writeReloadConfig(t, cfgPath, `
+server:
+  addr: "127.0.0.1:0"
+  shutdown_timeout_sec: 1
+  auth:
+    enabled: false
+filter:
+  ignore_unknown: true
+logging:
+  level: "info"
+scm: {}
+notifiers: {}
+`)
+
+	a, err := newApp(cfgPath)
+	if err != nil {
+		t.Fatalf("newApp: %v", err)
+	}
+
+	spy := &closeSpy{name: "shutdown-spy"}
+	wrapped := notifier.NewConditionalHandler(spy, nil, zap.NewNop())
+
+	reg := notifier.NewRegistry()
+	reg.Register(wrapped)
+	a.regHolder.p.Store(reg)
+
+	a.shutdown()
+
+	if spy.closeCount != 1 {
+		t.Errorf("expected closeCount=1, got %d", spy.closeCount)
+	}
+
+	spy.closeCount = 0
+	a.shutdown()
+
+	if spy.closeCount != 0 {
+		t.Errorf("double-close detected: expected closeCount=0, got %d", spy.closeCount)
 	}
 }

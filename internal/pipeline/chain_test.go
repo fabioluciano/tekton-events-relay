@@ -12,14 +12,17 @@ import (
 )
 
 const (
-	testEventID1      = "event-1"
-	testEventID2      = "event-2"
-	testEventID3      = "event-3"
-	testUnexpectedErr = "unexpected error: %v"
-	testFilteredMsg   = "expected filtered (count=0), got count=%d"
-	testPassedMsg     = "expected passed (count=1), got count=%d"
-	testTektonURL     = "https://tekton.example.com"
-	testCustomURL     = "https://custom.example.com"
+	testEventID1        = "event-1"
+	testEventID2        = "event-2"
+	testEventID3        = "event-3"
+	testUnexpectedErr   = "unexpected error: %v"
+	testFilteredMsg     = "expected filtered (count=0), got count=%d"
+	testPassedMsg       = "expected passed (count=1), got count=%d"
+	testTektonURL       = "https://tekton.example.com"
+	testCustomURL       = "https://custom.example.com"
+	testHandlerPrimary  = "primary"
+	testHandlerFallback = "fallback"
+	testHandlerFBOnly   = "fb-only"
 )
 
 // terminal counts how many times Handle was called - terminal handler for tests.
@@ -38,7 +41,7 @@ func sample(id string) *event.Envelope {
 		CloudEventID:   id,
 		CloudEventType: "dev.tekton.event.pipelinerun.successful.v1",
 		Report: domain.Event{
-			Provider:  "github",
+			Provider:  testProviderGitHub,
 			Resource:  domain.ResourcePipelineRun,
 			CommitSHA: "abc",
 			RunName:   "run-1",

@@ -47,6 +47,7 @@ type mockActionHandler struct {
 
 func (m *mockActionHandler) Name() string              { return m.name }
 func (m *mockActionHandler) Type() notifier.ActionType { return m.actionType }
+func (m *mockActionHandler) Close() error              { return nil }
 func (m *mockActionHandler) Handle(_ context.Context, e domain.Event) error {
 	m.calls = append(m.calls, e)
 	if m.shouldFail {

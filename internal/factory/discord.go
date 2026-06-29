@@ -1,10 +1,13 @@
 package factory
 
 import (
+	"time"
+
 	"go.uber.org/zap"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/config"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
+	"github.com/fabioluciano/tekton-events-relay/internal/notifier/batch"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/discord"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/middleware"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/msgstore"
@@ -22,7 +25,6 @@ func (f *DiscordFactory) Build(inst config.DiscordInstance, log *zap.Logger) ([]
 
 	var discordCfg discord.Config
 	if inst.Auth != nil && inst.Auth.BotToken != nil {
-		// Bot token mode — per-request token (rotation-safe), never a static string.
 		refresher, err := resolveFileRefresher(inst.Auth.BotToken.TokenFile, inst.Auth.BotToken.TokenKey, "discord", inst.Name, log)
 		if err != nil {
 			return nil, err
@@ -33,10 +35,11 @@ func (f *DiscordFactory) Build(inst config.DiscordInstance, log *zap.Logger) ([]
 			Username:     inst.Username,
 			Template:     inst.Template,
 			Mode:         inst.Mode,
+			ThreadMode:   inst.ThreadMode,
+			MentionRoles: inst.MentionRoles,
 			MessageStore: msgstore.NewMemoryStore(0, 0),
 		}
 	} else {
-		// Webhook mode
 		webhookURLFile := ""
 		webhookURLKey := ""
 		if inst.Auth != nil {
@@ -52,6 +55,8 @@ func (f *DiscordFactory) Build(inst config.DiscordInstance, log *zap.Logger) ([]
 			Username:     inst.Username,
 			Template:     inst.Template,
 			Mode:         inst.Mode,
+			ThreadMode:   inst.ThreadMode,
+			MentionRoles: inst.MentionRoles,
 			MessageStore: msgstore.NewMemoryStore(0, 0),
 		}
 	}
@@ -61,7 +66,20 @@ func (f *DiscordFactory) Build(inst config.DiscordInstance, log *zap.Logger) ([]
 		return nil, err
 	}
 
-	wrapped, err := middleware.WrapWithCEL(handler, inst.When, log)
+	var h notifier.ActionHandler = handler
+	if inst.Batch != nil && inst.Batch.Enabled {
+		batchCfg := batch.Config{
+			Enabled:       true,
+			MaxSize:       inst.Batch.MaxSize,
+			FlushInterval: inst.Batch.FlushInterval,
+		}
+		if batchCfg.FlushInterval == 0 {
+			batchCfg.FlushInterval = 5 * time.Second
+		}
+		h = batch.New(handler, "discord", batchCfg, log, nil)
+	}
+
+	wrapped, err := middleware.WrapWithCEL(h, inst.When, log)
 	if err != nil {
 		return nil, err
 	}

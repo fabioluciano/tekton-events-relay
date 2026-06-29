@@ -145,6 +145,9 @@ Available in `when` expressions (`internal/cel/cel.go`):
 - `isFinallyTask()` — true if `IsFinallyTask == true`
 - `isIssueEvent()` / `isPREvent()` / `isCommentEvent()` / `isPushEvent()` — check `SCMEventType`
 - `stateIn("a", "b", ...)` — vararg state membership check
+- `buildTimeExceeds(ms int)` — true if build duration > ms milliseconds, false if zero time
+- `hasResult(name string)` — true if `Results[name]` exists and is non-empty
+- `resultValue(name string)` — returns `Results[name]` value, empty string if absent
 
 Expression must return `bool`. Example: `'isPipelineRun() && stateIn("running", "success", "failure")'`
 

@@ -87,9 +87,19 @@ func (a *app) reload() {
 
 	chain := buildChain(cfg, a.regHolder, a.log, a.collectors, a.store, a.status)
 
+	// Close old handlers before swapping to the new registry.
+	oldHandlers := a.regHolder.All()
 	a.regHolder.p.Store(reg)
 	a.chainHolder.p.Store(&chain)
 	a.collectors.HandlersRegistered.Set(float64(len(reg.Names())))
+
+	for _, h := range oldHandlers {
+		if err := h.Close(); err != nil {
+			a.log.Error("config reload: close old handler",
+				zap.String("handler", h.Name()),
+				zap.Error(err))
+		}
+	}
 
 	a.observeReload("success", start)
 	a.log.Info("configuration reloaded",

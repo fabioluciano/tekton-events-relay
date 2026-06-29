@@ -78,3 +78,6 @@ func (h *PRCommentHandler) Handle(ctx context.Context, e domain.Event) error {
 	// GitHub PRs use the issues API for comments.
 	return postIssueComment(ctx, h.client, h.template, h.mode, h.log, e, *e.PRNumber, "pr_comment")
 }
+
+// Close is a no-op; this handler holds no resources requiring cleanup.
+func (h *PRCommentHandler) Close() error { return nil }

@@ -18,8 +18,9 @@ import (
 // emptyHandlerSource implements pipeline.HandlerSource with zero handlers.
 type emptyHandlerSource struct{}
 
-func (e *emptyHandlerSource) All() []notifier.ActionHandler { return nil }
-func (e *emptyHandlerSource) Names() []string               { return nil }
+func (e *emptyHandlerSource) All() []notifier.ActionHandler          { return nil }
+func (e *emptyHandlerSource) Names() []string                        { return nil }
+func (e *emptyHandlerSource) Lookup(_ string) notifier.ActionHandler { return nil }
 
 func TestBuildChain_EmptyRegistryWarnsButContinues(t *testing.T) {
 	core, logs := observer.New(zapcore.WarnLevel)
@@ -70,7 +71,7 @@ func TestTracingInit_EmptyEndpointContinuesWithNoopTracer(t *testing.T) {
 
 	// InitGlobal with empty endpoint should not panic and return a noop cleanup
 	log := zap.NewNop()
-	tp, cleanup, err := tracing.InitGlobal(context.Background(), "", "test-svc", true, log)
+	tp, cleanup, err := tracing.InitGlobal(context.Background(), "", "test-svc", true, 1.0, log)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -89,7 +90,7 @@ func TestTracingInit_EmptyEndpointContinuesWithNoopTracer(t *testing.T) {
 
 func TestTracingInit_InvalidEndpointDoesNotPanic(t *testing.T) {
 	// Init with a non-routable endpoint: provider is created lazily, no connection error
-	tp, err := tracing.Init(context.Background(), "invalid-host:99999", "test-svc", true)
+	tp, err := tracing.Init(context.Background(), "invalid-host:99999", "test-svc", true, 1.0)
 	if err != nil {
 		t.Fatalf("unexpected error for invalid endpoint: %v", err)
 	}

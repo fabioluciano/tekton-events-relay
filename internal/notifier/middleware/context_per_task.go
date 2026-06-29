@@ -43,3 +43,6 @@ func (c *contextPerTaskHandler) Handle(ctx context.Context, e domain.Event) erro
 	}
 	return c.inner.Handle(ctx, e)
 }
+
+// Close is a no-op; this handler holds no resources requiring cleanup.
+func (c *contextPerTaskHandler) Close() error { return nil }

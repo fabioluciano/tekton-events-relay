@@ -5,10 +5,13 @@ import (
 	"fmt"
 	"net/http"
 
+	"golang.org/x/time/rate"
+
 	"go.uber.org/zap"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/config"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
+	"github.com/fabioluciano/tekton-events-relay/internal/notifier/middleware"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/scm/bitbucket"
 	"github.com/fabioluciano/tekton-events-relay/internal/secrets"
 )
@@ -22,23 +25,36 @@ func (f *BitbucketFactory) Build(inst config.BitbucketInstance, log *zap.Logger)
 		return nil, nil
 	}
 
+	var handlers []notifier.ActionHandler
+	var err error
+
 	if inst.Variant == config.BitbucketVariantCloud {
-		client, username, appPassword, err := resolveCloudAuth(inst, log)
-		if err != nil {
-			return nil, err
+		client, username, appPassword, cErr := resolveCloudAuth(inst, log)
+		if cErr != nil {
+			return nil, cErr
 		}
-		return buildActionsWithMiddleware(inst.Actions, log, func(action config.Action) (notifier.ActionHandler, error) {
+		handlers, err = buildActionsWithMiddleware(inst.Actions, log, func(action config.Action) (notifier.ActionHandler, error) {
 			return f.buildCloudHandler(inst, action, client, username, appPassword, log)
 		})
+	} else {
+		token, tErr := resolveServerAuth(inst, log)
+		if tErr != nil {
+			return nil, tErr
+		}
+		handlers, err = buildActionsWithMiddleware(inst.Actions, log, func(action config.Action) (notifier.ActionHandler, error) {
+			return f.buildServerHandler(inst, action, token, log)
+		})
 	}
-
-	token, err := resolveServerAuth(inst, log)
 	if err != nil {
 		return nil, err
 	}
-	return buildActionsWithMiddleware(inst.Actions, log, func(action config.Action) (notifier.ActionHandler, error) {
-		return f.buildServerHandler(inst, action, token, log)
-	})
+	if inst.RateLimit != nil {
+		limiter := rate.NewLimiter(rate.Limit(inst.RateLimit.RequestsPerSecond), inst.RateLimit.Burst)
+		for i, h := range handlers {
+			handlers[i] = middleware.WrapWithRateLimit(h, limiter)
+		}
+	}
+	return handlers, nil
 }
 
 // resolveCloudAuth resolves authentication for Bitbucket Cloud.

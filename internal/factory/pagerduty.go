@@ -3,6 +3,7 @@ package factory //nolint:dupl // Factory structs are structurally similar by des
 import (
 	"go.uber.org/zap"
 
+	"github.com/fabioluciano/tekton-events-relay/internal/cel"
 	"github.com/fabioluciano/tekton-events-relay/internal/config"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/middleware"
@@ -31,13 +32,23 @@ func (f *PagerDutyFactory) Build(inst config.PagerDutyInstance, log *zap.Logger)
 
 	httpClient, retryPolicy := buildNotifierClient(inst.RetryOverride)
 
-	handler := pagerduty.New(pagerduty.Config{
+	pdCfg := pagerduty.Config{
 		IntegrationKey:       integrationKey,
 		Severity:             inst.Severity,
 		AcknowledgeOnRunning: inst.AcknowledgeOnRunning,
 		HTTPClient:           httpClient,
 		RetryPolicy:          retryPolicy,
-	}, log)
+	}
+
+	if inst.SeverityExpr != "" {
+		prog, err := cel.CompileString(inst.SeverityExpr)
+		if err != nil {
+			return nil, err
+		}
+		pdCfg.SeverityExpr = prog
+	}
+
+	handler := pagerduty.New(pdCfg, log)
 
 	wrapped, err := middleware.WrapWithCEL(handler, inst.When, log)
 	if err != nil {

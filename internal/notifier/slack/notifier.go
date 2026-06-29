@@ -15,7 +15,9 @@ package slack
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"text/template"
@@ -24,6 +26,7 @@ import (
 	slackgo "github.com/slack-go/slack"
 	"go.uber.org/zap"
 
+	"github.com/fabioluciano/tekton-events-relay/internal/cel"
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
 	"github.com/fabioluciano/tekton-events-relay/internal/httpx"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
@@ -41,12 +44,18 @@ const (
 	colorUnknown       = "#aaaaaa"
 	emojiFailure       = ":x:"
 	emojiUnknown       = ":grey_question:"
+	payloadKeyText     = "text"
 
 	// ModeCreate always posts a new message (default).
 	ModeCreate = "create"
 	// ModeUpsert edits the original message for a RunID (chat.update), keyed
 	// by the ts captured on the first post. Bot token transport only.
 	ModeUpsert = "upsert"
+
+	// ThreadModeGrouped posts the first event of a RunID as a top-level
+	// message and replies in a thread for subsequent events. Mutually
+	// exclusive with ModeUpsert. Bot token transport only.
+	ThreadModeGrouped = "grouped"
 
 	botHTTPTimeout = 10 * time.Second
 )
@@ -60,14 +69,19 @@ type Config struct {
 	Token     scm.TokenRefresher
 	ChannelID string
 	// Common
-	Channel   string // optional — override of the channel configured in webhook
-	Username  string // displayed name; default: tekton-events-relay
-	IconEmoji string // default: :rocket:
-	Template  string // optional Go template; if empty, uses default format
+	Channel     string             // optional — override of the channel configured in webhook
+	ChannelExpr *cel.StringProgram // optional CEL expression for dynamic channel routing
+	Username    string             // displayed name; default: tekton-events-relay
+	IconEmoji   string             // default: :rocket:
+	Template    string             // optional Go template; if empty, uses default format
 
 	// Mode is "create" (default) or "upsert". Upsert requires bot token mode
 	// and a MessageStore; it edits the original message per RunID.
 	Mode string
+	// ThreadMode is "grouped" (or empty). Grouped posts the first event per
+	// RunID as a top-level message and replies in a thread for subsequent
+	// events. Mutually exclusive with Mode "upsert". Requires MessageStore.
+	ThreadMode string
 	// ThreadTS, when set, posts/updates the message as a reply in that thread.
 	ThreadTS string
 	// MessageStore persists the message ts per RunID for upsert mode. When nil,
@@ -166,6 +180,102 @@ func (n *Notifier) Name() string { return "slack" }
 // Type returns the action type.
 func (n *Notifier) Type() notifier.ActionType { return notifier.ActionNotify }
 
+// Close releases resources held by the handler.
+func (n *Notifier) Close() error { return nil }
+
+// Flush sends multiple events as a single combined Slack message.
+// For webhook mode, all events are merged into one payload with multiple
+// attachments. For bot token mode, all events become attachments in one
+// PostMessage call.
+func (n *Notifier) Flush(ctx context.Context, events []domain.Event) error {
+	if len(events) == 0 {
+		return nil
+	}
+	if n.api != nil {
+		return n.flushBot(ctx, events)
+	}
+	return n.flushWebhook(ctx, events)
+}
+
+func (n *Notifier) flushBot(ctx context.Context, events []domain.Event) error {
+	attachments := make([]slackgo.Attachment, 0, len(events))
+	for _, e := range events {
+		attachments = append(attachments, n.attachment(e))
+	}
+
+	opts := []slackgo.MsgOption{
+		slackgo.MsgOptionAttachments(attachments...),
+	}
+	if n.cfg.Username != "" {
+		opts = append(opts, slackgo.MsgOptionUsername(n.cfg.Username))
+	}
+	if n.cfg.IconEmoji != "" {
+		opts = append(opts, slackgo.MsgOptionIconEmoji(n.cfg.IconEmoji))
+	}
+
+	channel := n.resolveChannel(events[0])
+	if _, _, err := n.api.PostMessageContext(ctx, channel, opts...); err != nil {
+		return fmt.Errorf("slack batch post: %w", err)
+	}
+	return nil
+}
+
+func (n *Notifier) flushWebhook(ctx context.Context, events []domain.Event) error {
+	attachments := make([]map[string]any, 0, len(events))
+	for _, e := range events {
+		attachments = append(attachments, map[string]any{
+			"color":        colorFor(e.State),
+			payloadKeyText: defaultText(e),
+			"footer":       fmt.Sprintf("%s/%s", e.Namespace, e.RunName),
+			"mrkdwn_in":    []string{"text"},
+			"fields":       fields(e),
+		})
+	}
+
+	msg := map[string]any{
+		"username":    n.cfg.Username,
+		"icon_emoji":  n.cfg.IconEmoji,
+		"attachments": attachments,
+	}
+	if ch := n.resolveChannel(events[0]); ch != "" {
+		msg["channel"] = ch
+	}
+
+	url, err := n.base.BuildURL(events[0])
+	if err != nil {
+		return fmt.Errorf("build url: %w", err)
+	}
+
+	body, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("marshal batch payload: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", notifier.UserAgent)
+
+	rp := httpx.DefaultRetryPolicy()
+	if n.base.RetryPolicy != nil {
+		rp = *n.base.RetryPolicy
+	}
+	resp, err := httpx.DoWithRetryPolicy(n.base.HTTP, req, rp)
+	if err != nil {
+		return fmt.Errorf("slack batch webhook: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode >= 300 {
+		buf, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("slack batch webhook responded %d: %s", resp.StatusCode, string(buf))
+	}
+	return nil
+}
+
 // Handle sends the event to Slack via the configured transport.
 func (n *Notifier) Handle(ctx context.Context, e domain.Event) error {
 	if n.api != nil {
@@ -174,15 +284,42 @@ func (n *Notifier) Handle(ctx context.Context, e domain.Event) error {
 	return n.base.Send(ctx, e)
 }
 
+// resolveChannel determines the target channel: CEL expression (dynamic),
+// static Channel field, or ChannelID (bot mode fallback).
+func (n *Notifier) resolveChannel(e domain.Event) string {
+	if n.cfg.ChannelExpr != nil {
+		if ch, err := n.cfg.ChannelExpr.EvalString(e); err == nil && ch != "" {
+			return ch
+		}
+	}
+	if n.cfg.Channel != "" {
+		return n.cfg.Channel
+	}
+	return n.cfg.ChannelID
+}
+
 // sendBot posts (or, in upsert mode, edits) a message via the bot token API.
 func (n *Notifier) sendBot(ctx context.Context, e domain.Event) error {
 	opts, err := n.messageOptions(e)
 	if err != nil {
 		return err
 	}
-	channel := n.cfg.Channel
-	if channel == "" {
-		channel = n.cfg.ChannelID
+	channel := n.resolveChannel(e)
+
+	// Thread grouped: first event posts top-level, subsequent events reply
+	// in the thread. Runs before upsert — the two modes are mutually exclusive.
+	if n.canThreadGroup() {
+		if ts, ok := n.cfg.MessageStore.Load(e.RunID); ok && ts != "" {
+			opts = append(opts, slackgo.MsgOptionTS(ts))
+		}
+		_, ts, perr := n.api.PostMessageContext(ctx, channel, opts...)
+		if perr != nil {
+			return fmt.Errorf("slack post message: %w", perr)
+		}
+		if e.RunID != "" && ts != "" {
+			n.cfg.MessageStore.Save(e.RunID, ts)
+		}
+		return nil
 	}
 
 	// Upsert: edit the original message if we have a stored ts for this run.
@@ -208,6 +345,11 @@ func (n *Notifier) sendBot(ctx context.Context, e domain.Event) error {
 // canUpsert reports whether upsert is active and backed by a store.
 func (n *Notifier) canUpsert() bool {
 	return n.cfg.Mode == ModeUpsert && n.cfg.MessageStore != nil
+}
+
+// canThreadGroup reports whether thread-grouped mode is active and backed by a store.
+func (n *Notifier) canThreadGroup() bool {
+	return n.cfg.ThreadMode == ThreadModeGrouped && n.cfg.MessageStore != nil
 }
 
 // messageOptions builds the slack-go MsgOptions for the bot token transport.
@@ -254,12 +396,12 @@ func (n *Notifier) payload(e domain.Event) (any, error) {
 		}
 
 		msg := map[string]any{
-			"username":   n.cfg.Username,
-			"icon_emoji": n.cfg.IconEmoji,
-			"text":       buf.String(),
+			"username":     n.cfg.Username,
+			"icon_emoji":   n.cfg.IconEmoji,
+			payloadKeyText: buf.String(),
 		}
-		if n.cfg.Channel != "" {
-			msg["channel"] = n.cfg.Channel
+		if ch := n.resolveChannel(e); ch != "" {
+			msg["channel"] = ch
 		}
 		return msg, nil
 	}
@@ -270,16 +412,16 @@ func (n *Notifier) payload(e domain.Event) (any, error) {
 		"icon_emoji": n.cfg.IconEmoji,
 		"attachments": []map[string]any{
 			{
-				"color":     colorFor(e.State),
-				"text":      defaultText(e),
-				"footer":    fmt.Sprintf("%s/%s", e.Namespace, e.RunName),
-				"mrkdwn_in": []string{"text"},
-				"fields":    fields(e),
+				"color":        colorFor(e.State),
+				payloadKeyText: defaultText(e),
+				"footer":       fmt.Sprintf("%s/%s", e.Namespace, e.RunName),
+				"mrkdwn_in":    []string{"text"},
+				"fields":       fields(e),
 			},
 		},
 	}
-	if n.cfg.Channel != "" {
-		msg["channel"] = n.cfg.Channel
+	if ch := n.resolveChannel(e); ch != "" {
+		msg["channel"] = ch
 	}
 	return msg, nil
 }

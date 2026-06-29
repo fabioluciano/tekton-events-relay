@@ -132,3 +132,6 @@ func (h *IssueCommentHandler) upsertNote(ctx context.Context, projectID string, 
 		&gl.CreateIssueNoteOptions{Body: &body}, gl.WithContext(ctx))
 	return err
 }
+
+// Close is a no-op; this handler holds no resources requiring cleanup.
+func (h *IssueCommentHandler) Close() error { return nil }

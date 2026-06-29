@@ -559,3 +559,57 @@ func TestSanitizeTag(t *testing.T) {
 		})
 	}
 }
+
+func TestExtraTags(t *testing.T) {
+	n := New(Config{
+		APIKey:    scm.NewStaticToken(testAPIKeyValue),
+		Tags:      []string{testEnvProd},
+		ExtraTags: []string{"region:us-east-1", "team:platform"},
+	}, nil)
+
+	event := domain.Event{
+		State:       domain.StateSuccess,
+		Context:     testContext,
+		Description: "Build succeeded",
+		Namespace:   testNamespace,
+		RunName:     "build-123",
+		Resource:    domain.ResourcePipelineRun,
+	}
+
+	payload, err := n.payload(event)
+	if err != nil {
+		t.Fatalf("payload() error = %v", err)
+	}
+
+	p := payload.(map[string]any)
+	tags := p["tags"].([]string)
+
+	for _, want := range []string{testEnvProd, "region:us-east-1", "team:platform"} {
+		verifyDDTagPresent(t, tags, want)
+	}
+}
+
+func TestExtraTags_EmptyExtraTags(t *testing.T) {
+	n := New(Config{
+		APIKey: scm.NewStaticToken(testAPIKeyValue),
+		Tags:   []string{testEnvProd},
+	}, nil)
+
+	event := domain.Event{
+		State:     domain.StateSuccess,
+		Context:   testContext,
+		Namespace: testNamespace,
+		RunName:   "build-456",
+		Resource:  domain.ResourcePipelineRun,
+	}
+
+	payload, err := n.payload(event)
+	if err != nil {
+		t.Fatalf("payload() error = %v", err)
+	}
+
+	p := payload.(map[string]any)
+	tags := p["tags"].([]string)
+
+	verifyDDTagPresent(t, tags, testEnvProd)
+}

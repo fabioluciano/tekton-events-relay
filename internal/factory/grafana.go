@@ -34,16 +34,17 @@ func (f *GrafanaFactory) Build(inst config.GrafanaInstance, log *zap.Logger) ([]
 	httpClient, retryPolicy := buildNotifierClient(inst.RetryOverride)
 
 	handler, err := grafana.New(grafana.Config{
-		Name:         inst.Name,
-		URL:          inst.URL,
-		Token:        token,
-		Tags:         inst.Tags,
-		Template:     inst.Template,
-		DashboardUID: inst.DashboardUID,
-		PanelID:      inst.PanelID,
-		Log:          log,
-		HTTPClient:   httpClient,
-		RetryPolicy:  retryPolicy,
+		Name:          inst.Name,
+		URL:           inst.URL,
+		Token:         token,
+		Tags:          inst.Tags,
+		Template:      inst.Template,
+		DashboardUID:  inst.DashboardUID,
+		DashboardUIDs: inst.DashboardUIDs,
+		PanelID:       inst.PanelID,
+		Log:           log,
+		HTTPClient:    httpClient,
+		RetryPolicy:   retryPolicy,
 	})
 	if err != nil {
 		return nil, err

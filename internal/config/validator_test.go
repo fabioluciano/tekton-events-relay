@@ -551,6 +551,34 @@ func TestValidateAll_Teams(t *testing.T) {
 	}
 }
 
+func TestValidateAll_TeamsMentionUsersEmptyID(t *testing.T) {
+	cfg := &Config{
+		Server: Server{Addr: DefaultServerAddr},
+		Notifiers: NotifiersConfig{
+			Teams: []TeamsInstance{
+				{
+					Name:    "team",
+					Enabled: false,
+					MentionUsers: []MentionUser{
+						{Name: "Alice", ID: ""},
+					},
+				},
+			},
+		},
+	}
+
+	errs := ValidateAll(cfg)
+	found := false
+	for _, e := range errs {
+		if e.Path == "notifiers.teams[0].mention_users[0].id" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected error for notifiers.teams[0].mention_users[0].id")
+	}
+}
+
 func TestValidateAll_Discord(t *testing.T) {
 	cfg := &Config{
 		Server: Server{Addr: DefaultServerAddr},
@@ -620,6 +648,34 @@ func TestValidateAll_Discord_bot_token_missing_fields(t *testing.T) {
 		if !found {
 			t.Errorf("Expected error for %s, all errors: %v", path, errs)
 		}
+	}
+}
+
+func TestValidateAll_Discord_empty_mention_role(t *testing.T) {
+	cfg := &Config{
+		Server: Server{Addr: DefaultServerAddr},
+		Notifiers: NotifiersConfig{
+			Discord: []DiscordInstance{
+				{
+					Name:         "discord-with-empty-role",
+					Enabled:      true,
+					Auth:         &DiscordAuth{WebhookURLFile: "/tmp/webhook"},
+					MentionRoles: []string{"111", "", "333"},
+				},
+			},
+		},
+	}
+
+	errs := ValidateAll(cfg)
+	found := false
+	for _, e := range errs {
+		if e.Path == "notifiers.discord[0].mention_roles[1]" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("Expected error for empty role ID at mention_roles[1], errors: %v", errs)
 	}
 }
 

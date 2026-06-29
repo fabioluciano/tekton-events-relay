@@ -3,10 +3,13 @@ package factory
 import (
 	"fmt"
 
+	"golang.org/x/time/rate"
+
 	"go.uber.org/zap"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/config"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
+	"github.com/fabioluciano/tekton-events-relay/internal/notifier/middleware"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/scm"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/scm/gitlab"
 	scmoauth2 "github.com/fabioluciano/tekton-events-relay/internal/notifier/scm/oauth2"
@@ -27,9 +30,19 @@ func (f *GitLabFactory) Build(inst config.GitLabInstance, log *zap.Logger) ([]no
 		return nil, err
 	}
 
-	return buildActionsWithMiddleware(inst.Actions, log, func(action config.Action) (notifier.ActionHandler, error) {
+	handlers, err := buildActionsWithMiddleware(inst.Actions, log, func(action config.Action) (notifier.ActionHandler, error) {
 		return f.buildHandler(inst, action, client, log)
 	})
+	if err != nil {
+		return nil, err
+	}
+	if inst.RateLimit != nil {
+		limiter := rate.NewLimiter(rate.Limit(inst.RateLimit.RequestsPerSecond), inst.RateLimit.Burst)
+		for i, h := range handlers {
+			handlers[i] = middleware.WrapWithRateLimit(h, limiter)
+		}
+	}
+	return handlers, nil
 }
 
 // resolveGitLabClient creates a GitLab API client with appropriate authentication.
@@ -143,6 +156,13 @@ func (f *GitLabFactory) buildHandler(inst config.GitLabInstance, action config.A
 			Name:   inst.Name,
 			Labels: labelSet(action),
 			Log:    log,
+		})
+	case notifier.ActionIncidentCreate:
+		return gitlab.NewIncidentCreateHandler(gitlab.IncidentCreateConfig{
+			Client:   client,
+			Name:     inst.Name,
+			Template: action.Template,
+			Log:      log,
 		})
 	default:
 		return nil, ErrUnsupportedActionType

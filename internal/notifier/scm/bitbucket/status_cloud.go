@@ -89,3 +89,6 @@ var bitbucketCloudStateMap = scm.StateMap{
 	domain.StateError:    stateFailed,
 	domain.StateCanceled: stateStopped,
 }
+
+// Close is a no-op; this handler holds no resources requiring cleanup.
+func (r *CloudStatusReporter) Close() error { return nil }

@@ -74,3 +74,6 @@ func (h *CommitCommentHandler) Handle(ctx context.Context, e domain.Event) error
 	_, _, err = h.client.GH().Repositories.CreateComment(ctx, e.Repo.Owner, e.Repo.Name, e.CommitSHA, comment)
 	return err
 }
+
+// Close is a no-op; this handler holds no resources requiring cleanup.
+func (h *CommitCommentHandler) Close() error { return nil }

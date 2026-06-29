@@ -27,6 +27,17 @@ type AccumulatorConfig struct {
 	Provider *AccumulatorProviderConfig `yaml:"provider,omitempty" json:"provider,omitempty"`
 }
 
+// BatchConfig controls message batching for channel notifiers (Slack, Teams,
+// Discord, Webhook). When enabled, events are accumulated in a buffer and
+// flushed as a single combined message either when MaxSize is reached or
+// FlushInterval elapses, whichever comes first. Close() performs a final
+// flush of any remaining buffered events.
+type BatchConfig struct {
+	Enabled       bool          `yaml:"enabled" json:"enabled"`
+	MaxSize       int           `yaml:"max_size" json:"max_size"`             // flush when buffer reaches this size (default: 10)
+	FlushInterval time.Duration `yaml:"flush_interval" json:"flush_interval"` // max time between flushes (default: 5s)
+}
+
 // RetryConfig controls outbound HTTP retry behavior for all notifiers
 // and SCM clients (exponential backoff with jitter, Retry-After aware).
 type RetryConfig struct {
@@ -79,9 +90,10 @@ type OlricConfig struct {
 // preserved in a JSONL file and can be inspected and replayed via
 // GET /api/v1/dlq and POST /api/v1/dlq/replay.
 type DLQConfig struct {
-	Enabled      bool   `yaml:"enabled" json:"enabled"`
-	Path         string `yaml:"path,omitempty" json:"path,omitempty"`
-	MaxSizeBytes int64  `yaml:"max_size_bytes,omitempty" json:"max_size_bytes,omitempty"`
+	Enabled       bool   `yaml:"enabled" json:"enabled"`
+	Path          string `yaml:"path,omitempty" json:"path,omitempty"`
+	MaxSizeBytes  int64  `yaml:"max_size_bytes,omitempty" json:"max_size_bytes,omitempty"`
+	RetentionDays int    `yaml:"retention_days,omitempty" json:"retention_days,omitempty"`
 }
 
 // Config represents the application configuration loaded from YAML.
@@ -201,15 +213,25 @@ type SCMConfig struct {
 
 // NotifiersConfig contains all generic notifier configurations.
 type NotifiersConfig struct {
-	Slack     []SlackInstance     `yaml:"slack,omitempty" validate:"omitempty,dive"`
-	Teams     []TeamsInstance     `yaml:"teams,omitempty" validate:"omitempty,dive"`
-	Discord   []DiscordInstance   `yaml:"discord,omitempty" validate:"omitempty,dive"`
-	PagerDuty []PagerDutyInstance `yaml:"pagerduty,omitempty" validate:"omitempty,dive"`
-	Datadog   []DatadogInstance   `yaml:"datadog,omitempty" validate:"omitempty,dive"`
-	Webhook   []WebhookInstance   `yaml:"webhook,omitempty" validate:"omitempty,dive"`
-	Grafana   []GrafanaInstance   `yaml:"grafana,omitempty" validate:"omitempty,dive"`
-	Sentry    []SentryInstance    `yaml:"sentry,omitempty" validate:"omitempty,dive"`
-	Email     []EmailInstance     `yaml:"email,omitempty" validate:"omitempty,dive"`
+	Slack       []SlackInstance       `yaml:"slack,omitempty" validate:"omitempty,dive"`
+	Teams       []TeamsInstance       `yaml:"teams,omitempty" validate:"omitempty,dive"`
+	Discord     []DiscordInstance     `yaml:"discord,omitempty" validate:"omitempty,dive"`
+	PagerDuty   []PagerDutyInstance   `yaml:"pagerduty,omitempty" validate:"omitempty,dive"`
+	Datadog     []DatadogInstance     `yaml:"datadog,omitempty" validate:"omitempty,dive"`
+	Webhook     []WebhookInstance     `yaml:"webhook,omitempty" validate:"omitempty,dive"`
+	Grafana     []GrafanaInstance     `yaml:"grafana,omitempty" validate:"omitempty,dive"`
+	Sentry      []SentryInstance      `yaml:"sentry,omitempty" validate:"omitempty,dive"`
+	Email       []EmailInstance       `yaml:"email,omitempty" validate:"omitempty,dive"`
+	Mattermost  []MattermostInstance  `yaml:"mattermost,omitempty" validate:"omitempty,dive"`
+	IncidentIO  []IncidentIOInstance  `yaml:"incidentio,omitempty" validate:"omitempty,dive"`
+	Telegram    []TelegramInstance    `yaml:"telegram,omitempty" validate:"omitempty,dive"`
+	Opsgenie    []OpsgenieInstance    `yaml:"opsgenie,omitempty" validate:"omitempty,dive"`
+	NewRelic    []NewRelicInstance    `yaml:"newrelic,omitempty" validate:"omitempty,dive"`
+	Honeycomb   []HoneycombInstance   `yaml:"honeycomb,omitempty" validate:"omitempty,dive"`
+	Kafka       []KafkaInstance       `yaml:"kafka,omitempty" validate:"omitempty,dive"`
+	NATS        []NATSInstance        `yaml:"nats,omitempty" validate:"omitempty,dive"`
+	RabbitMQ    []RabbitMQInstance    `yaml:"rabbitmq,omitempty" validate:"omitempty,dive"`
+	RedisPubSub []RedisPubSubInstance `yaml:"redispubsub,omitempty" validate:"omitempty,dive"`
 }
 
 // ActionType is a type alias for notifier.ActionType to avoid duplication.
@@ -249,6 +271,17 @@ type Action struct {
 
 	// Filter
 	Filter *ActionFilterConfig `yaml:"filter,omitempty"`
+
+	// FallbackAction is the name of another action to invoke when this action
+	// fails with a permanent error (not RetryableError). The fallback handler
+	// is looked up from the handler registry at dispatch time. If the fallback
+	// also fails, both errors are joined (no recursion).
+	FallbackAction string `yaml:"fallback_action,omitempty"`
+
+	// FallbackOnly marks this action as a fallback target only. It is excluded
+	// from the normal matched handler set during fan-out and is only invoked
+	// when another action references it via FallbackAction.
+	FallbackOnly bool `yaml:"fallback_only,omitempty"`
 }
 
 // ActionLabels declares labels to add and remove when a label action fires.
@@ -288,6 +321,14 @@ func (l *LabelEntry) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	l.Name = str
 	l.Color = ""
 	return nil
+}
+
+// OutboundRateLimit configures per-instance outbound rate limiting for SCM
+// providers. When configured, a single rate.Limiter is shared by all actions
+// of that instance, throttling outbound API calls to the provider.
+type OutboundRateLimit struct {
+	RequestsPerSecond float64 `yaml:"requests_per_second" validate:"required,gt=0"`
+	Burst             int     `yaml:"burst" validate:"required,gt=0"`
 }
 
 // ActionFilterConfig configures action-level filtering with allow/deny lists.
@@ -339,6 +380,18 @@ type PagerDutyAuth struct {
 
 // DatadogAuth holds authentication configuration for Datadog notifiers.
 type DatadogAuth struct {
+	APIKeyFile string `yaml:"api_key_file"`
+	APIKeyKey  string `yaml:"api_key_key,omitempty"`
+}
+
+// HoneycombAuth holds authentication configuration for Honeycomb notifiers.
+type HoneycombAuth struct {
+	APIKeyFile string `yaml:"api_key_file"`
+	APIKeyKey  string `yaml:"api_key_key,omitempty"`
+}
+
+// OpsgenieAuth holds authentication configuration for Opsgenie notifiers.
+type OpsgenieAuth struct {
 	APIKeyFile string `yaml:"api_key_file"`
 	APIKeyKey  string `yaml:"api_key_key,omitempty"`
 }
@@ -412,12 +465,13 @@ type BitbucketAuth struct {
 
 // GitHubInstance represents a single GitHub instance configuration.
 type GitHubInstance struct {
-	Name               string      `yaml:"name" validate:"required"`
-	Enabled            bool        `yaml:"enabled"`
-	BaseURL            string      `yaml:"base_url"`
-	InsecureSkipVerify bool        `yaml:"insecure_skip_verify"`
-	Auth               *GitHubAuth `yaml:"auth,omitempty"`
-	Actions            []Action    `yaml:"actions,omitempty" validate:"omitempty,dive"`
+	Name               string             `yaml:"name" validate:"required"`
+	Enabled            bool               `yaml:"enabled"`
+	BaseURL            string             `yaml:"base_url"`
+	InsecureSkipVerify bool               `yaml:"insecure_skip_verify"`
+	Auth               *GitHubAuth        `yaml:"auth,omitempty"`
+	RateLimit          *OutboundRateLimit `yaml:"rate_limit,omitempty"`
+	Actions            []Action           `yaml:"actions,omitempty" validate:"omitempty,dive"`
 }
 
 func (g GitHubInstance) isEnabled() bool { return g.Enabled }
@@ -443,13 +497,14 @@ func (g GitHubInstance) SecretFile() string {
 
 // GitLabInstance represents a single GitLab instance configuration.
 type GitLabInstance struct {
-	Name               string      `yaml:"name" validate:"required"`
-	Variant            string      `yaml:"variant"` // "saas" or "self-managed"
-	Enabled            bool        `yaml:"enabled"`
-	Auth               *GitLabAuth `yaml:"auth,omitempty"`
-	BaseURL            string      `yaml:"base_url"`
-	InsecureSkipVerify bool        `yaml:"insecure_skip_verify"`
-	Actions            []Action    `yaml:"actions,omitempty" validate:"omitempty,dive"`
+	Name               string             `yaml:"name" validate:"required"`
+	Variant            string             `yaml:"variant"` // "saas" or "self-managed"
+	Enabled            bool               `yaml:"enabled"`
+	Auth               *GitLabAuth        `yaml:"auth,omitempty"`
+	BaseURL            string             `yaml:"base_url"`
+	InsecureSkipVerify bool               `yaml:"insecure_skip_verify"`
+	RateLimit          *OutboundRateLimit `yaml:"rate_limit,omitempty"`
+	Actions            []Action           `yaml:"actions,omitempty" validate:"omitempty,dive"`
 }
 
 func (g GitLabInstance) isEnabled() bool { return g.Enabled }
@@ -470,13 +525,14 @@ func (g GitLabInstance) SecretFile() string {
 
 // BitbucketInstance represents a single Bitbucket instance configuration.
 type BitbucketInstance struct {
-	Name               string         `yaml:"name" validate:"required"`
-	Variant            string         `yaml:"variant"` // "cloud" or "server"
-	Enabled            bool           `yaml:"enabled"`
-	Auth               *BitbucketAuth `yaml:"auth,omitempty"`
-	BaseURL            string         `yaml:"base_url"`
-	InsecureSkipVerify bool           `yaml:"insecure_skip_verify"`
-	Actions            []Action       `yaml:"actions,omitempty" validate:"omitempty,dive"`
+	Name               string             `yaml:"name" validate:"required"`
+	Variant            string             `yaml:"variant"` // "cloud" or "server"
+	Enabled            bool               `yaml:"enabled"`
+	Auth               *BitbucketAuth     `yaml:"auth,omitempty"`
+	BaseURL            string             `yaml:"base_url"`
+	InsecureSkipVerify bool               `yaml:"insecure_skip_verify"`
+	RateLimit          *OutboundRateLimit `yaml:"rate_limit,omitempty"`
+	Actions            []Action           `yaml:"actions,omitempty" validate:"omitempty,dive"`
 }
 
 func (b BitbucketInstance) isEnabled() bool { return b.Enabled }
@@ -489,14 +545,15 @@ func (b BitbucketInstance) GetActions() []Action { return b.Actions }
 
 // AzureInstance represents a single Azure DevOps instance configuration.
 type AzureInstance struct {
-	Name               string   `yaml:"name" validate:"required"`
-	Enabled            bool     `yaml:"enabled"`
-	SecretFile         string   `yaml:"secret_file"`
-	SecretKey          string   `yaml:"secret_key,omitempty"` // Optional: override default "token"
-	BaseURL            string   `yaml:"base_url"`
-	Genre              string   `yaml:"genre"`
-	InsecureSkipVerify bool     `yaml:"insecure_skip_verify"`
-	Actions            []Action `yaml:"actions,omitempty" validate:"omitempty,dive"`
+	Name               string             `yaml:"name" validate:"required"`
+	Enabled            bool               `yaml:"enabled"`
+	SecretFile         string             `yaml:"secret_file"`
+	SecretKey          string             `yaml:"secret_key,omitempty"` // Optional: override default "token"
+	BaseURL            string             `yaml:"base_url"`
+	Genre              string             `yaml:"genre"`
+	InsecureSkipVerify bool               `yaml:"insecure_skip_verify"`
+	RateLimit          *OutboundRateLimit `yaml:"rate_limit,omitempty"`
+	Actions            []Action           `yaml:"actions,omitempty" validate:"omitempty,dive"`
 }
 
 func (a AzureInstance) isEnabled() bool { return a.Enabled }
@@ -509,12 +566,13 @@ func (a AzureInstance) GetActions() []Action { return a.Actions }
 
 // GiteaInstance represents a single Gitea instance configuration.
 type GiteaInstance struct {
-	Name               string     `yaml:"name" validate:"required"`
-	Enabled            bool       `yaml:"enabled"`
-	Auth               *GiteaAuth `yaml:"auth,omitempty"`
-	BaseURL            string     `yaml:"base_url"`
-	InsecureSkipVerify bool       `yaml:"insecure_skip_verify"`
-	Actions            []Action   `yaml:"actions,omitempty" validate:"omitempty,dive"`
+	Name               string             `yaml:"name" validate:"required"`
+	Enabled            bool               `yaml:"enabled"`
+	Auth               *GiteaAuth         `yaml:"auth,omitempty"`
+	BaseURL            string             `yaml:"base_url"`
+	InsecureSkipVerify bool               `yaml:"insecure_skip_verify"`
+	RateLimit          *OutboundRateLimit `yaml:"rate_limit,omitempty"`
+	Actions            []Action           `yaml:"actions,omitempty" validate:"omitempty,dive"`
 }
 
 func (g GiteaInstance) isEnabled() bool { return g.Enabled }
@@ -535,12 +593,13 @@ func (g GiteaInstance) SecretFile() string {
 
 // SourceHutInstance represents a single SourceHut instance configuration.
 type SourceHutInstance struct {
-	Name               string         `yaml:"name" validate:"required"`
-	Enabled            bool           `yaml:"enabled"`
-	Auth               *SourceHutAuth `yaml:"auth,omitempty"`
-	BaseURL            string         `yaml:"base_url"`
-	InsecureSkipVerify bool           `yaml:"insecure_skip_verify"`
-	Actions            []Action       `yaml:"actions,omitempty" validate:"omitempty,dive"`
+	Name               string             `yaml:"name" validate:"required"`
+	Enabled            bool               `yaml:"enabled"`
+	Auth               *SourceHutAuth     `yaml:"auth,omitempty"`
+	BaseURL            string             `yaml:"base_url"`
+	InsecureSkipVerify bool               `yaml:"insecure_skip_verify"`
+	RateLimit          *OutboundRateLimit `yaml:"rate_limit,omitempty"`
+	Actions            []Action           `yaml:"actions,omitempty" validate:"omitempty,dive"`
 }
 
 func (s SourceHutInstance) isEnabled() bool { return s.Enabled }
@@ -576,9 +635,16 @@ type SlackInstance struct {
 	// Mode is "create" (default) or "upsert". Upsert requires bot token auth
 	// and edits the original message per RunID (chat.update).
 	Mode string `yaml:"mode,omitempty"`
+	// ThreadMode enables automatic thread grouping. "grouped" posts the first
+	// event of a RunID as a top-level message and replies to it for subsequent
+	// events. Mutually exclusive with Mode "upsert". Bot token auth only.
+	ThreadMode string `yaml:"thread_mode,omitempty"`
 	// ThreadTS, when set, posts/updates the message as a reply in that thread.
 	ThreadTS string `yaml:"thread_ts,omitempty"`
-	// RetryOverride overrides the global retry policy for this notifier instance.
+	// ChannelExpr is a CEL expression evaluated per event to determine the
+	// target channel. When empty, the static Channel field is used.
+	ChannelExpr   string         `yaml:"channel_expr,omitempty"`
+	Batch         *BatchConfig   `yaml:"batch,omitempty"`
 	RetryOverride *RetryOverride `yaml:"retry_override,omitempty"`
 }
 
@@ -598,6 +664,52 @@ func (s SlackInstance) WebhookURL() string {
 	return ""
 }
 
+// MattermostAuth holds authentication configuration for Mattermost notifiers.
+type MattermostAuth struct {
+	WebhookURLFile string        `yaml:"webhook_url_file,omitempty"`
+	WebhookURLKey  string        `yaml:"webhook_url_key,omitempty"`
+	BotToken       *BotTokenAuth `yaml:"bot_token,omitempty"`
+}
+
+// MattermostInstance represents a single Mattermost notifier configuration.
+type MattermostInstance struct {
+	Name          string          `yaml:"name" validate:"required"`
+	Enabled       bool            `yaml:"enabled"`
+	Auth          *MattermostAuth `yaml:"auth,omitempty"`
+	BaseURL       string          `yaml:"base_url,omitempty"` // Mattermost server URL for bot token mode
+	Channel       string          `yaml:"channel"`            // channel override for webhook mode
+	Username      string          `yaml:"username"`
+	IconURL       string          `yaml:"icon_url"`
+	When          string          `yaml:"when"`
+	Template      string          `yaml:"template,omitempty"`
+	Dedupe        bool            `yaml:"dedupe,omitempty"`
+	RetryOverride *RetryOverride  `yaml:"retry_override,omitempty"`
+}
+
+func (m MattermostInstance) isEnabled() bool { return m.Enabled }
+
+// GetWhen returns the CEL when expression for the Mattermost instance.
+func (m MattermostInstance) GetWhen() string { return m.When }
+
+// GetTemplate returns the Go template for the Mattermost instance.
+func (m MattermostInstance) GetTemplate() string { return m.Template }
+
+// WebhookURL returns the path to the webhook URL file.
+func (m MattermostInstance) WebhookURL() string {
+	if m.Auth != nil {
+		return m.Auth.WebhookURLFile
+	}
+	return ""
+}
+
+// MentionUser represents a user to @-mention in a Teams message.
+type MentionUser struct {
+	// Name is the display name shown in the mention (e.g. "John Doe").
+	Name string `yaml:"name" validate:"required"`
+	// ID is the Azure AD object ID (GUID) of the user to mention.
+	ID string `yaml:"id" validate:"required"`
+}
+
 // TeamsInstance represents a single Microsoft Teams notifier configuration.
 type TeamsInstance struct {
 	Name     string     `yaml:"name" validate:"required"`
@@ -606,6 +718,10 @@ type TeamsInstance struct {
 	When     string     `yaml:"when"`
 	Template string     `yaml:"template,omitempty"`
 	Dedupe   bool       `yaml:"dedupe,omitempty"`
+	// MentionUsers lists users to @-mention in the Adaptive Card.
+	// Each entry requires a display name and an Azure AD object ID.
+	MentionUsers []MentionUser `yaml:"mention_users,omitempty"`
+	Batch        *BatchConfig  `yaml:"batch,omitempty"`
 	// RetryOverride overrides the global retry policy for this notifier instance.
 	RetryOverride *RetryOverride `yaml:"retry_override,omitempty"`
 }
@@ -639,6 +755,15 @@ type DiscordInstance struct {
 	// per RunID (WebhookMessageEdit in webhook mode, channel message edit in bot
 	// token mode).
 	Mode string `yaml:"mode,omitempty"`
+	// ThreadMode is "grouped" (or empty). Grouped posts the first event per
+	// RunID as a top-level message and replies in a thread for subsequent
+	// events. Mutually exclusive with Mode "upsert". Requires MessageStore.
+	ThreadMode string `yaml:"thread_mode,omitempty"`
+	// MentionRoles lists Discord role IDs (snowflakes) to mention in the message
+	// content. When non-empty, the role mentions are prepended to the content
+	// field as "<@&ROLE_ID>" separated by spaces.
+	MentionRoles []string     `yaml:"mention_roles,omitempty"`
+	Batch        *BatchConfig `yaml:"batch,omitempty"`
 	// RetryOverride overrides the global retry policy for this notifier instance.
 	RetryOverride *RetryOverride `yaml:"retry_override,omitempty"`
 }
@@ -758,6 +883,12 @@ type JiraAction struct {
 	Template string `yaml:"template,omitempty"`
 	// Transition is the target transition name or numeric id (transition actions).
 	Transition string `yaml:"transition,omitempty"`
+	// IssueKey is the target Jira issue key (link_commit actions, e.g. PROJ-123).
+	IssueKey string `yaml:"issue_key,omitempty"`
+	// ProjectKey is the Jira project key for new issues (create_issue actions, e.g. PROJ).
+	ProjectKey string `yaml:"project_key,omitempty"`
+	// IssueType is the Jira issue type name for new issues (create_issue actions, e.g. "Bug").
+	IssueType string `yaml:"issue_type,omitempty"`
 }
 
 // JiraActionType identifies the Jira action kind.
@@ -765,19 +896,26 @@ type JiraActionType string
 
 // Jira action types.
 const (
-	JiraActionComment    JiraActionType = "comment"
-	JiraActionTransition JiraActionType = "transition"
+	JiraActionComment     JiraActionType = "comment"
+	JiraActionTransition  JiraActionType = "transition"
+	JiraActionCreateIssue JiraActionType = "create_issue"
+	JiraActionLinkCommit  JiraActionType = "link_commit"
 )
 
 // PagerDutyInstance represents a single PagerDuty notifier configuration.
 type PagerDutyInstance struct {
-	Name                 string         `yaml:"name" validate:"required"`
-	Enabled              bool           `yaml:"enabled"`
-	Auth                 *PagerDutyAuth `yaml:"auth,omitempty"`
-	Severity             string         `yaml:"severity"`
-	AcknowledgeOnRunning bool           `yaml:"acknowledge_on_running"`
-	When                 string         `yaml:"when"`
-	Dedupe               bool           `yaml:"dedupe,omitempty"`
+	Name     string         `yaml:"name" validate:"required"`
+	Enabled  bool           `yaml:"enabled"`
+	Auth     *PagerDutyAuth `yaml:"auth,omitempty"`
+	Severity string         `yaml:"severity"`
+	// SeverityExpr is a CEL expression that returns the severity string
+	// (critical, error, warning, info) evaluated per event. When set it
+	// overrides the static Severity field. Example:
+	// 'event.State == "failure" ? "critical" : "warning"'
+	SeverityExpr         string `yaml:"severity_expr,omitempty"`
+	AcknowledgeOnRunning bool   `yaml:"acknowledge_on_running"`
+	When                 string `yaml:"when"`
+	Dedupe               bool   `yaml:"dedupe,omitempty"`
 	// RetryOverride overrides the global retry policy for this notifier instance.
 	RetryOverride *RetryOverride `yaml:"retry_override,omitempty"`
 }
@@ -794,8 +932,11 @@ type DatadogInstance struct {
 	Auth    *DatadogAuth `yaml:"auth,omitempty"`
 	Site    string       `yaml:"site"`
 	Tags    []string     `yaml:"tags"`
-	When    string       `yaml:"when"`
-	Dedupe  bool         `yaml:"dedupe,omitempty"`
+	// ExtraTags are appended after the auto-generated tags and the static Tags
+	// list, allowing dynamic or per-deployment tags without replacing the base set.
+	ExtraTags []string `yaml:"extra_tags,omitempty"`
+	When      string   `yaml:"when"`
+	Dedupe    bool     `yaml:"dedupe,omitempty"`
 	// RetryOverride overrides the global retry policy for this notifier instance.
 	RetryOverride *RetryOverride `yaml:"retry_override,omitempty"`
 }
@@ -804,6 +945,23 @@ func (d DatadogInstance) isEnabled() bool { return d.Enabled }
 
 // GetWhen returns the CEL when expression for the Datadog instance.
 func (d DatadogInstance) GetWhen() string { return d.When }
+
+// OpsgenieInstance represents a single Opsgenie notifier configuration.
+type OpsgenieInstance struct {
+	Name          string         `yaml:"name" validate:"required"`
+	Enabled       bool           `yaml:"enabled"`
+	Auth          *OpsgenieAuth  `yaml:"auth,omitempty"`
+	TeamName      string         `yaml:"team_name,omitempty"`
+	Priority      string         `yaml:"priority,omitempty"` // P1-P5, default P3
+	When          string         `yaml:"when"`
+	Dedupe        bool           `yaml:"dedupe,omitempty"`
+	RetryOverride *RetryOverride `yaml:"retry_override,omitempty"`
+}
+
+func (o OpsgenieInstance) isEnabled() bool { return o.Enabled }
+
+// GetWhen returns the CEL when expression for the Opsgenie instance.
+func (o OpsgenieInstance) GetWhen() string { return o.When }
 
 // WebhookInstance represents a single generic webhook notifier configuration.
 type WebhookInstance struct {
@@ -816,6 +974,7 @@ type WebhookInstance struct {
 	Headers   map[string]string  `yaml:"headers"`
 	When      string             `yaml:"when"`
 	Dedupe    bool               `yaml:"dedupe,omitempty"`
+	Batch     *BatchConfig       `yaml:"batch,omitempty"`
 	// RetryOverride overrides the global retry policy for this notifier instance.
 	RetryOverride *RetryOverride `yaml:"retry_override,omitempty"`
 }
@@ -857,6 +1016,9 @@ type GrafanaInstance struct {
 	// DashboardUID scopes the annotation to a specific dashboard (optional).
 	// When empty an organization-wide annotation is created.
 	DashboardUID string `yaml:"dashboard_uid,omitempty"`
+	// DashboardUIDs creates one annotation per UID in parallel. When set it
+	// overrides the singular DashboardUID field.
+	DashboardUIDs []string `yaml:"dashboard_uids,omitempty"`
 	// PanelID scopes the annotation to a specific panel (optional, requires DashboardUID).
 	PanelID int `yaml:"panel_id,omitempty"`
 	// RetryOverride overrides the global retry policy for this notifier instance.
@@ -880,13 +1042,205 @@ type SentryInstance struct {
 	Org      string      `yaml:"org"`
 	Projects []string    `yaml:"projects,omitempty"`
 	Auth     *SentryAuth `yaml:"auth,omitempty"`
-	When     string      `yaml:"when"`
-	Dedupe   bool        `yaml:"dedupe,omitempty"`
+	// EnvironmentExpr is a CEL expression that returns the environment name
+	// evaluated per event. When empty, event.Namespace is used.
+	EnvironmentExpr string `yaml:"environment_expr,omitempty"`
+	When            string `yaml:"when"`
+	Dedupe          bool   `yaml:"dedupe,omitempty"`
 	// RetryOverride overrides the global retry policy for this notifier instance.
 	RetryOverride *RetryOverride `yaml:"retry_override,omitempty"`
 }
 
 func (s SentryInstance) isEnabled() bool { return s.Enabled }
+
+// TelegramAuth holds authentication configuration for Telegram notifiers.
+type TelegramAuth struct {
+	TokenFile string `yaml:"token_file"`
+	TokenKey  string `yaml:"token_key,omitempty"`
+}
+
+// TelegramInstance sends messages to a Telegram chat or channel via the Bot API.
+type TelegramInstance struct {
+	Name    string        `yaml:"name" validate:"required"`
+	Enabled bool          `yaml:"enabled"`
+	Auth    *TelegramAuth `yaml:"auth,omitempty"`
+	ChatID  string        `yaml:"chat_id"`
+	When    string        `yaml:"when"`
+	// Template is an optional Go template for the message body. When empty,
+	// a default template is used (Category 2: optional with native fallback).
+	Template string `yaml:"template,omitempty"`
+	Dedupe   bool   `yaml:"dedupe,omitempty"`
+	// RetryOverride overrides the global retry policy for this notifier instance.
+	RetryOverride *RetryOverride `yaml:"retry_override,omitempty"`
+}
+
+func (t TelegramInstance) isEnabled() bool { return t.Enabled }
+
+// GetWhen returns the CEL when expression for the Telegram instance.
+func (t TelegramInstance) GetWhen() string { return t.When }
+
+// IncidentIOAuth holds authentication configuration for Incident.io notifiers.
+type IncidentIOAuth struct {
+	APIKeyFile string `yaml:"api_key_file"`
+	APIKeyKey  string `yaml:"api_key_key,omitempty"`
+}
+
+// IncidentIOInstance creates Incident.io incidents for failed pipeline runs.
+type IncidentIOInstance struct {
+	Name           string          `yaml:"name" validate:"required"`
+	Enabled        bool            `yaml:"enabled"`
+	Auth           *IncidentIOAuth `yaml:"auth,omitempty"`
+	SeverityID     string          `yaml:"severity_id,omitempty"`
+	IncidentTypeID string          `yaml:"incident_type_id,omitempty"`
+	Visibility     string          `yaml:"visibility,omitempty"` // public (default) or private
+	When           string          `yaml:"when"`
+	Dedupe         bool            `yaml:"dedupe,omitempty"`
+	// RetryOverride overrides the global retry policy for this notifier instance.
+	RetryOverride *RetryOverride `yaml:"retry_override,omitempty"`
+}
+
+func (i IncidentIOInstance) isEnabled() bool { return i.Enabled }
+
+// GetWhen returns the CEL when expression for the Incident.io instance.
+func (i IncidentIOInstance) GetWhen() string { return i.When }
+
+// NewRelicAuth holds authentication configuration for New Relic notifiers.
+type NewRelicAuth struct {
+	APIKeyFile string `yaml:"api_key_file"`
+	APIKeyKey  string `yaml:"api_key_key,omitempty"`
+}
+
+// NewRelicInstance sends custom events to New Relic via the Event API.
+type NewRelicInstance struct {
+	Name      string        `yaml:"name" validate:"required"`
+	Enabled   bool          `yaml:"enabled"`
+	Auth      *NewRelicAuth `yaml:"auth,omitempty"`
+	AccountID string        `yaml:"account_id"` // New Relic account ID (required when enabled)
+	When      string        `yaml:"when"`
+	Dedupe    bool          `yaml:"dedupe,omitempty"`
+	// RetryOverride overrides the global retry policy for this notifier instance.
+	RetryOverride *RetryOverride `yaml:"retry_override,omitempty"`
+}
+
+func (n NewRelicInstance) isEnabled() bool { return n.Enabled }
+
+// GetWhen returns the CEL when expression for the New Relic instance.
+func (n NewRelicInstance) GetWhen() string { return n.When }
+
+// HoneycombInstance sends events to Honeycomb via the Events API.
+type HoneycombInstance struct {
+	Name          string         `yaml:"name" validate:"required"`
+	Enabled       bool           `yaml:"enabled"`
+	Auth          *HoneycombAuth `yaml:"auth,omitempty"`
+	Dataset       string         `yaml:"dataset"`
+	When          string         `yaml:"when"`
+	Dedupe        bool           `yaml:"dedupe,omitempty"`
+	RetryOverride *RetryOverride `yaml:"retry_override,omitempty"`
+}
+
+func (h HoneycombInstance) isEnabled() bool { return h.Enabled }
+
+// GetWhen returns the CEL when expression for the Honeycomb instance.
+func (h HoneycombInstance) GetWhen() string { return h.When }
+
+// KafkaInstance configures publishing pipeline events to Apache Kafka.
+type KafkaInstance struct {
+	Name          string         `yaml:"name" validate:"required"`
+	Enabled       bool           `yaml:"enabled"`
+	Brokers       []string       `yaml:"brokers" validate:"required,gt=0,dive,required"`
+	Topic         string         `yaml:"topic"`
+	TopicFunc     string         `yaml:"topic_func,omitempty"`    // CEL expression for dynamic topic selection
+	RequiredAcks  int            `yaml:"required_acks,omitempty"` // -1=all, 0=default(all), 1=leader
+	Auth          *KafkaAuth     `yaml:"auth,omitempty"`
+	When          string         `yaml:"when"`
+	Dedupe        bool           `yaml:"dedupe,omitempty"`
+	RetryOverride *RetryOverride `yaml:"retry_override,omitempty"`
+}
+
+func (k KafkaInstance) isEnabled() bool { return k.Enabled }
+
+// GetWhen returns the CEL when expression for the Kafka instance.
+func (k KafkaInstance) GetWhen() string { return k.When }
+
+// KafkaAuth holds authentication configuration for Kafka notifiers.
+type KafkaAuth struct {
+	SASLMechanism string `yaml:"sasl_mechanism,omitempty"` // plain, scram-sha-256, scram-sha-512
+	UsernameFile  string `yaml:"username_file,omitempty"`
+	PasswordFile  string `yaml:"password_file,omitempty"`
+	TLSEnabled    bool   `yaml:"tls_enabled,omitempty"`
+}
+
+// NATSInstance configures publishing pipeline events to NATS.
+type NATSInstance struct {
+	Name    string    `yaml:"name" validate:"required"`
+	Enabled bool      `yaml:"enabled"`
+	Servers []string  `yaml:"servers"` // NATS server URLs
+	Subject string    `yaml:"subject"` // target subject
+	Auth    *NATSAuth `yaml:"auth,omitempty"`
+	When    string    `yaml:"when"`
+	Dedupe  bool      `yaml:"dedupe,omitempty"`
+	// RetryOverride overrides the global retry policy for this notifier instance.
+	RetryOverride *RetryOverride `yaml:"retry_override,omitempty"`
+}
+
+func (n NATSInstance) isEnabled() bool { return n.Enabled }
+
+// GetWhen returns the CEL when expression for the NATS instance.
+func (n NATSInstance) GetWhen() string { return n.When }
+
+// NATSAuth holds authentication configuration for NATS notifiers.
+type NATSAuth struct {
+	CredentialsFile string `yaml:"credentials_file,omitempty"` // path to NATS credentials file (NKEY/JWT)
+	TLSEnabled      bool   `yaml:"tls_enabled,omitempty"`
+}
+
+// RabbitMQInstance configures publishing pipeline events to RabbitMQ.
+type RabbitMQInstance struct {
+	Name       string        `yaml:"name" validate:"required"`
+	Enabled    bool          `yaml:"enabled"`
+	URLFile    string        `yaml:"url_file"`              // connection string from mounted secret
+	Exchange   string        `yaml:"exchange,omitempty"`    // target exchange (default: amq.default)
+	RoutingKey string        `yaml:"routing_key,omitempty"` // routing key (default: empty)
+	Auth       *RabbitMQAuth `yaml:"auth,omitempty"`
+	When       string        `yaml:"when"`
+	Dedupe     bool          `yaml:"dedupe,omitempty"`
+	// RetryOverride overrides the global retry policy for this notifier instance.
+	RetryOverride *RetryOverride `yaml:"retry_override,omitempty"`
+}
+
+func (r RabbitMQInstance) isEnabled() bool { return r.Enabled }
+
+// GetWhen returns the CEL when expression for the RabbitMQ instance.
+func (r RabbitMQInstance) GetWhen() string { return r.When }
+
+// RabbitMQAuth holds authentication configuration for RabbitMQ notifiers.
+// Currently reserved for future use; auth is embedded in the URL string.
+type RabbitMQAuth struct{}
+
+// RedisPubSubInstance configures publishing pipeline events to Redis Pub/Sub.
+type RedisPubSubInstance struct {
+	Name         string           `yaml:"name" validate:"required"`
+	Enabled      bool             `yaml:"enabled"`
+	Address      string           `yaml:"address"`                 // Redis address (host:port)
+	Channel      string           `yaml:"channel"`                 // target channel
+	PasswordFile string           `yaml:"password_file,omitempty"` // optional password file
+	DB           int              `yaml:"db,omitempty"`            // Redis DB number (default: 0)
+	Auth         *RedisPubSubAuth `yaml:"auth,omitempty"`
+	When         string           `yaml:"when"`
+	Dedupe       bool             `yaml:"dedupe,omitempty"`
+	// RetryOverride overrides the global retry policy for this notifier instance.
+	RetryOverride *RetryOverride `yaml:"retry_override,omitempty"`
+}
+
+func (r RedisPubSubInstance) isEnabled() bool { return r.Enabled }
+
+// GetWhen returns the CEL when expression for the Redis Pub/Sub instance.
+func (r RedisPubSubInstance) GetWhen() string { return r.When }
+
+// RedisPubSubAuth holds authentication configuration for Redis Pub/Sub notifiers.
+type RedisPubSubAuth struct {
+	PasswordFile string `yaml:"password_file,omitempty"`
+}
 
 // LoggingConfig contains logging configuration.
 type LoggingConfig struct {
@@ -902,10 +1256,12 @@ type VerboseConfig struct {
 }
 
 // TracingConfig contains OpenTelemetry tracing configuration.
+// The tracing section is immutable — changes require a restart.
 type TracingConfig struct {
-	Endpoint    string `yaml:"endpoint"`
-	ServiceName string `yaml:"service_name"`
-	Insecure    bool   `yaml:"insecure,omitempty"` // true = plaintext HTTP (default); false = HTTPS with TLS
+	Endpoint    string  `yaml:"endpoint"`
+	ServiceName string  `yaml:"service_name"`
+	Insecure    bool    `yaml:"insecure,omitempty"` // true = plaintext HTTP (default); false = HTTPS with TLS
+	SampleRate  float64 `yaml:"sample_rate"`        // trace sampling ratio 0.0–1.0 (default 1.0 = sample all)
 }
 
 // Load reads and parses the configuration file at the given path.
@@ -973,6 +1329,9 @@ func applyDefaults(c *Config) {
 	if c.DLQ.MaxSizeBytes == 0 {
 		c.DLQ.MaxSizeBytes = 10 * 1024 * 1024
 	}
+	if c.DLQ.RetentionDays == 0 {
+		c.DLQ.RetentionDays = 7
+	}
 	if !c.Filter.AllowTaskRun && !c.Filter.AllowPipelineRun {
 		c.Filter.AllowPipelineRun = true
 		c.Filter.IgnoreUnknown = true
@@ -982,5 +1341,8 @@ func applyDefaults(c *Config) {
 	}
 	if c.Tracing.Endpoint != "" && c.Tracing.ServiceName == "" {
 		c.Tracing.ServiceName = "tekton-events-relay"
+	}
+	if c.Tracing.SampleRate == 0 {
+		c.Tracing.SampleRate = 1.0
 	}
 }

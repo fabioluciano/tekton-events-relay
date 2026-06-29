@@ -1,10 +1,13 @@
 package factory
 
 import (
+	"golang.org/x/time/rate"
+
 	"go.uber.org/zap"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/config"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
+	"github.com/fabioluciano/tekton-events-relay/internal/notifier/middleware"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/scm/github"
 	"github.com/fabioluciano/tekton-events-relay/internal/secrets"
 )
@@ -44,12 +47,20 @@ func (f *GitHubFactory) Build(inst config.GitHubInstance, log *zap.Logger) ([]no
 		client = github.NewClient(token, inst.BaseURL, inst.InsecureSkipVerify, log, false)
 	}
 
-	return buildActionsWithMiddleware(inst.Actions, log, func(action config.Action) (notifier.ActionHandler, error) {
+	handlers, err := buildActionsWithMiddleware(inst.Actions, log, func(action config.Action) (notifier.ActionHandler, error) {
 		return f.buildHandler(inst, action, client, log)
 	})
+	if err != nil {
+		return nil, err
+	}
+	if inst.RateLimit != nil {
+		limiter := rate.NewLimiter(rate.Limit(inst.RateLimit.RequestsPerSecond), inst.RateLimit.Burst)
+		for i, h := range handlers {
+			handlers[i] = middleware.WrapWithRateLimit(h, limiter)
+		}
+	}
+	return handlers, nil
 }
-
-// buildHandler creates the appropriate handler based on action type.
 func (f *GitHubFactory) buildHandler(_ config.GitHubInstance, action config.Action, client github.HTTPDoer, log *zap.Logger) (notifier.ActionHandler, error) {
 	switch action.Type {
 	case notifier.ActionCommitStatus:

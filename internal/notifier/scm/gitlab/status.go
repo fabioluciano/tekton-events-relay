@@ -95,3 +95,6 @@ func mapStateToGitLab(state domain.State) gl.BuildStateValue {
 		return gl.Pending
 	}
 }
+
+// Close is a no-op; this handler holds no resources requiring cleanup.
+func (r *StatusReporter) Close() error { return nil }

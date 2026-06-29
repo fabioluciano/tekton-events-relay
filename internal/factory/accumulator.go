@@ -95,3 +95,6 @@ func (l *logOnlyProvider) Handle(_ context.Context, event domain.Event) error {
 	)
 	return nil
 }
+
+// Close is a no-op; this handler holds no resources requiring cleanup.
+func (l *logOnlyProvider) Close() error { return nil }

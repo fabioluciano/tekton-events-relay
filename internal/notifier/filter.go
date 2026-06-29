@@ -84,6 +84,11 @@ func (f *FilteredHandler) Type() ActionType {
 	return f.inner.Type()
 }
 
+// Close delegates to the inner handler's Close method.
+func (f *FilteredHandler) Close() error {
+	return f.inner.Close()
+}
+
 // Handle applies filtering logic before delegating to the inner handler.
 // Returns nil (drops event) if the filter rejects it.
 // Delegates to inner.Handle if the event passes the filter.

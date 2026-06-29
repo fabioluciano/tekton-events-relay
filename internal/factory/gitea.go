@@ -1,10 +1,13 @@
 package factory
 
 import (
+	"golang.org/x/time/rate"
+
 	"go.uber.org/zap"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/config"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
+	"github.com/fabioluciano/tekton-events-relay/internal/notifier/middleware"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/scm/gitea"
 	"github.com/fabioluciano/tekton-events-relay/internal/secrets"
 )
@@ -23,9 +26,19 @@ func (f *GiteaFactory) Build(inst config.GiteaInstance, log *zap.Logger) ([]noti
 		return nil, err
 	}
 
-	return buildActionsWithMiddleware(inst.Actions, log, func(action config.Action) (notifier.ActionHandler, error) {
+	handlers, err := buildActionsWithMiddleware(inst.Actions, log, func(action config.Action) (notifier.ActionHandler, error) {
 		return f.buildHandler(inst, action, client, log)
 	})
+	if err != nil {
+		return nil, err
+	}
+	if inst.RateLimit != nil {
+		limiter := rate.NewLimiter(rate.Limit(inst.RateLimit.RequestsPerSecond), inst.RateLimit.Burst)
+		for i, h := range handlers {
+			handlers[i] = middleware.WrapWithRateLimit(h, limiter)
+		}
+	}
+	return handlers, nil
 }
 
 // resolveGiteaClient creates a Gitea API client with appropriate authentication.

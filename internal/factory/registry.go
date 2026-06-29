@@ -231,5 +231,65 @@ func buildNotifierHandlers(cfg *config.Config, log *zap.Logger, reg *notifier.Re
 		return err
 	}
 
+	// Mattermost
+	if err := buildAndRegisterWithDedupe(cfg.Notifiers.Mattermost, &MattermostFactory{}, log, reg,
+		func(inst config.MattermostInstance) bool { return inst.Dedupe }); err != nil {
+		return err
+	}
+
+	// Telegram
+	if err := buildAndRegisterWithDedupe(cfg.Notifiers.Telegram, &TelegramFactory{}, log, reg,
+		func(inst config.TelegramInstance) bool { return inst.Dedupe }); err != nil {
+		return err
+	}
+
+	// Incident.io
+	if err := buildAndRegisterWithDedupe(cfg.Notifiers.IncidentIO, &IncidentIOFactory{}, log, reg,
+		func(inst config.IncidentIOInstance) bool { return inst.Dedupe }); err != nil {
+		return err
+	}
+
+	// New Relic
+	if err := buildAndRegisterWithDedupe(cfg.Notifiers.NewRelic, &NewRelicFactory{}, log, reg,
+		func(inst config.NewRelicInstance) bool { return inst.Dedupe }); err != nil {
+		return err
+	}
+
+	// Opsgenie
+	if err := buildAndRegisterWithDedupe(cfg.Notifiers.Opsgenie, &OpsgenieFactory{}, log, reg,
+		func(inst config.OpsgenieInstance) bool { return inst.Dedupe }); err != nil {
+		return err
+	}
+
+	// Honeycomb
+	if err := buildAndRegisterWithDedupe(cfg.Notifiers.Honeycomb, &HoneycombFactory{}, log, reg,
+		func(inst config.HoneycombInstance) bool { return inst.Dedupe }); err != nil {
+		return err
+	}
+
+	// Kafka
+	if err := buildAndRegisterWithDedupe(cfg.Notifiers.Kafka, &KafkaFactory{}, log, reg,
+		func(inst config.KafkaInstance) bool { return inst.Dedupe }); err != nil {
+		return err
+	}
+
+	// NATS
+	if err := buildAndRegisterWithDedupe(cfg.Notifiers.NATS, &NATSFactory{}, log, reg,
+		func(inst config.NATSInstance) bool { return inst.Dedupe }); err != nil {
+		return err
+	}
+
+	// RabbitMQ
+	if err := buildAndRegisterWithDedupe(cfg.Notifiers.RabbitMQ, &RabbitMQFactory{}, log, reg,
+		func(inst config.RabbitMQInstance) bool { return inst.Dedupe }); err != nil {
+		return err
+	}
+
+	// Redis Pub/Sub
+	if err := buildAndRegisterWithDedupe(cfg.Notifiers.RedisPubSub, &RedisPubSubFactory{}, log, reg,
+		func(inst config.RedisPubSubInstance) bool { return inst.Dedupe }); err != nil {
+		return err
+	}
+
 	return nil
 }

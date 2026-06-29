@@ -36,6 +36,11 @@ func validateCELExpression(expr string) error {
 	return compile(expr)
 }
 
+func validateCELStringExpression(expr string) error {
+	_, err := policycel.CompileString(expr)
+	return err
+}
+
 // baseURLProvider is implemented by config instances that have a base URL.
 type baseURLProvider interface {
 	GetBaseURL() string
@@ -104,11 +109,12 @@ func validateAction(prefix string, action Action) []ValidationError {
 			notifier.ActionDiscussionComment: true,
 			notifier.ActionCheckRun:          true,
 			notifier.ActionDeploymentStatus:  true,
+			notifier.ActionIncidentCreate:    true,
 		}
 		if !validTypes[action.Type] {
 			errs = append(errs, ValidationError{
 				Path:    prefix + ".type",
-				Message: fmt.Sprintf("invalid action type '%s' (must be one of: commit_status, commit_comment, pr_comment, issue_comment, label, discussion_comment, check_run, deployment_status)", action.Type),
+				Message: fmt.Sprintf("invalid action type '%s' (must be one of: commit_status, commit_comment, pr_comment, issue_comment, label, discussion_comment, check_run, deployment_status, incident_create)", action.Type),
 			})
 		}
 	}
@@ -145,6 +151,13 @@ func validateAction(prefix string, action Action) []ValidationError {
 				Message: fmt.Sprintf("invalid template: %v", err),
 			})
 		}
+	}
+
+	if action.FallbackAction != "" && action.FallbackAction == action.Name {
+		errs = append(errs, ValidationError{
+			Path:    prefix + ".fallback_action",
+			Message: "fallback_action cannot reference itself (anti-loop)",
+		})
 	}
 
 	return errs

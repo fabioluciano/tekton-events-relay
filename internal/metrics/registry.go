@@ -66,6 +66,11 @@ type Collectors struct {
 	HTTPRequestDuration  *prometheus.HistogramVec // {method, code}
 	HTTPRequestsTotal    *prometheus.CounterVec   // {method, code}
 	HTTPRequestsInFlight prometheus.Gauge
+
+	// Business metrics — event dimension counters
+	EventsByStateTotal    *prometheus.CounterVec // {state}
+	EventsByProviderTotal *prometheus.CounterVec // {provider}
+	EventsByResourceTotal *prometheus.CounterVec // {resource}
 }
 
 // NewCollectors creates and registers all collectors with the given registerer.
@@ -273,6 +278,27 @@ func NewCollectors(reg prometheus.Registerer) *Collectors {
 			Name: "http_requests_in_flight",
 			Help: "Current number of HTTP requests being served.",
 		}),
+		EventsByStateTotal: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "tekton_events_relay_events_by_state_total",
+				Help: "Total events observed by pipeline state",
+			},
+			[]string{"state"},
+		),
+		EventsByProviderTotal: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "tekton_events_relay_events_by_provider_total",
+				Help: "Total events observed by SCM provider",
+			},
+			[]string{"provider"},
+		),
+		EventsByResourceTotal: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "tekton_events_relay_events_by_resource_total",
+				Help: "Total events observed by Tekton resource type",
+			},
+			[]string{"resource"},
+		),
 	}
 
 	reg.MustRegister(
@@ -306,6 +332,9 @@ func NewCollectors(reg prometheus.Registerer) *Collectors {
 		c.HTTPRequestDuration,
 		c.HTTPRequestsTotal,
 		c.HTTPRequestsInFlight,
+		c.EventsByStateTotal,
+		c.EventsByProviderTotal,
+		c.EventsByResourceTotal,
 	)
 
 	return c

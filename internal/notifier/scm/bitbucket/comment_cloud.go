@@ -152,3 +152,6 @@ func (h *CloudCommentHandler) findMarkedComment(ctx context.Context, listURL, ma
 	}
 	return 0, false
 }
+
+// Close is a no-op; this handler holds no resources requiring cleanup.
+func (h *CloudCommentHandler) Close() error { return nil }

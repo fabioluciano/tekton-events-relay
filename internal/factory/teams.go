@@ -1,10 +1,13 @@
 package factory
 
 import (
+	"time"
+
 	"go.uber.org/zap"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/config"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
+	"github.com/fabioluciano/tekton-events-relay/internal/notifier/batch"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/middleware"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/teams"
 	"github.com/fabioluciano/tekton-events-relay/internal/secrets"
@@ -19,7 +22,6 @@ func (f *TeamsFactory) Build(inst config.TeamsInstance, log *zap.Logger) ([]noti
 		return nil, nil
 	}
 
-	// Resolve webhook URL from volume mount
 	webhookURLFile := ""
 	webhookURLKey := ""
 	if inst.Auth != nil {
@@ -33,17 +35,36 @@ func (f *TeamsFactory) Build(inst config.TeamsInstance, log *zap.Logger) ([]noti
 
 	httpClient, retryPolicy := buildNotifierClient(inst.RetryOverride)
 
+	mentionUsers := make([]teams.MentionEntry, 0, len(inst.MentionUsers))
+	for _, mu := range inst.MentionUsers {
+		mentionUsers = append(mentionUsers, teams.MentionEntry{Name: mu.Name, ID: mu.ID})
+	}
+
 	handler, err := teams.New(teams.Config{
-		WebhookURL:  webhookURL,
-		Template:    inst.Template,
-		HTTPClient:  httpClient,
-		RetryPolicy: retryPolicy,
+		WebhookURL:   webhookURL,
+		Template:     inst.Template,
+		MentionUsers: mentionUsers,
+		HTTPClient:   httpClient,
+		RetryPolicy:  retryPolicy,
 	}, log)
 	if err != nil {
 		return nil, err
 	}
 
-	wrapped, err := middleware.WrapWithCEL(handler, inst.When, log)
+	var h notifier.ActionHandler = handler
+	if inst.Batch != nil && inst.Batch.Enabled {
+		batchCfg := batch.Config{
+			Enabled:       true,
+			MaxSize:       inst.Batch.MaxSize,
+			FlushInterval: inst.Batch.FlushInterval,
+		}
+		if batchCfg.FlushInterval == 0 {
+			batchCfg.FlushInterval = 5 * time.Second
+		}
+		h = batch.New(handler, "teams", batchCfg, log, nil)
+	}
+
+	wrapped, err := middleware.WrapWithCEL(h, inst.When, log)
 	if err != nil {
 		return nil, err
 	}

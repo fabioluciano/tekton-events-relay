@@ -545,3 +545,219 @@ func TestTemplateFile_InvalidSyntax(t *testing.T) {
 		t.Errorf("error = %v, want 'invalid template'", err)
 	}
 }
+
+func TestMentionUsers_PayloadContainsEntities(t *testing.T) {
+	cfg := Config{
+		WebhookURL: testWebhookURL,
+		MentionUsers: []MentionEntry{
+			{Name: "John Doe", ID: "11111111-1111-1111-1111-111111111111"},
+			{Name: "Jane Smith", ID: "22222222-2222-2222-2222-222222222222"},
+		},
+	}
+	n, err := New(cfg, nil)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	event := domain.Event{
+		State:       domain.StateSuccess,
+		RunID:       "run-mention-1",
+		RunName:     "run-mention-1",
+		Namespace:   "default",
+		Context:     "Build",
+		Description: "Build passed",
+	}
+
+	payload, err := n.payload(event)
+	if err != nil {
+		t.Fatalf("payload() error = %v", err)
+	}
+
+	card, ok := payload.(map[string]any)
+	if !ok {
+		t.Fatal("payload is not a map")
+	}
+
+	attachments, ok := card["attachments"].([]map[string]any)
+	if !ok || len(attachments) == 0 {
+		t.Fatal("attachments missing")
+	}
+
+	content, ok := attachments[0]["content"].(map[string]any)
+	if !ok {
+		t.Fatal("content missing")
+	}
+
+	msteams, ok := content["msteams"].(map[string]any)
+	if !ok {
+		t.Fatal("msteams block missing in content")
+	}
+
+	entities, ok := msteams["entities"].([]map[string]any)
+	if !ok {
+		t.Fatal("entities missing in msteams block")
+	}
+
+	if len(entities) != 2 {
+		t.Fatalf("entities count = %d, want 2", len(entities))
+	}
+
+	if entities[0]["type"] != "mention" {
+		t.Errorf("entities[0].type = %v, want mention", entities[0]["type"])
+	}
+	if entities[0]["text"] != "<at>John Doe</at>" {
+		t.Errorf("entities[0].text = %v, want <at>John Doe</at>", entities[0]["text"])
+	}
+	mentioned0, ok := entities[0]["mentioned"].(map[string]any)
+	if !ok {
+		t.Fatal("entities[0].mentioned missing")
+	}
+	if mentioned0["id"] != "11111111-1111-1111-1111-111111111111" {
+		t.Errorf("entities[0].mentioned.id = %v, want 11111111-1111-1111-1111-111111111111", mentioned0["id"])
+	}
+	if mentioned0["name"] != "John Doe" {
+		t.Errorf("entities[0].mentioned.name = %v, want John Doe", mentioned0["name"])
+	}
+
+	if entities[1]["type"] != "mention" {
+		t.Errorf("entities[1].type = %v, want mention", entities[1]["type"])
+	}
+	if entities[1]["text"] != "<at>Jane Smith</at>" {
+		t.Errorf("entities[1].text = %v, want <at>Jane Smith</at>", entities[1]["text"])
+	}
+	mentioned1, ok := entities[1]["mentioned"].(map[string]any)
+	if !ok {
+		t.Fatal("entities[1].mentioned missing")
+	}
+	if mentioned1["id"] != "22222222-2222-2222-2222-222222222222" {
+		t.Errorf("entities[1].mentioned.id = %v, want 22222222-2222-2222-2222-222222222222", mentioned1["id"])
+	}
+	if mentioned1["name"] != "Jane Smith" {
+		t.Errorf("entities[1].mentioned.name = %v, want Jane Smith", mentioned1["name"])
+	}
+}
+
+func TestMentionUsers_EmptyNoEntities(t *testing.T) {
+	cfg := Config{
+		WebhookURL:   testWebhookURL,
+		MentionUsers: nil,
+	}
+	n, err := New(cfg, nil)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	event := domain.Event{
+		State:       domain.StateSuccess,
+		RunID:       "run-no-mention",
+		RunName:     "run-no-mention",
+		Namespace:   "default",
+		Context:     "Build",
+		Description: "Build passed",
+	}
+
+	payload, err := n.payload(event)
+	if err != nil {
+		t.Fatalf("payload() error = %v", err)
+	}
+
+	card, ok := payload.(map[string]any)
+	if !ok {
+		t.Fatal("payload is not a map")
+	}
+
+	attachments, ok := card["attachments"].([]map[string]any)
+	if !ok || len(attachments) == 0 {
+		t.Fatal("attachments missing")
+	}
+
+	content, ok := attachments[0]["content"].(map[string]any)
+	if !ok {
+		t.Fatal("content missing")
+	}
+
+	if _, hasMsteams := content["msteams"]; hasMsteams {
+		t.Error("msteams block should not be present when MentionUsers is empty")
+	}
+}
+
+func TestMentionUsers_HandleIntegration(t *testing.T) {
+	var receivedBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("failed to read body: %v", err)
+		}
+		if err := json.Unmarshal(body, &receivedBody); err != nil {
+			t.Fatalf("failed to unmarshal payload: %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	cfg := Config{
+		WebhookURL: server.URL,
+		MentionUsers: []MentionEntry{
+			{Name: "Alice", ID: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"},
+		},
+	}
+	n, err := New(cfg, nil)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	event := domain.Event{
+		State:       domain.StateFailure,
+		RunID:       "run-integration-mention",
+		RunName:     "run-integration-mention",
+		Namespace:   "prod",
+		Context:     "Deploy",
+		Description: "Deployment failed",
+	}
+
+	err = n.Handle(context.Background(), event)
+	if err != nil {
+		t.Fatalf("Handle() error = %v", err)
+	}
+
+	if receivedBody == nil {
+		t.Fatal("no payload received")
+	}
+
+	attachments, ok := receivedBody["attachments"].([]any)
+	if !ok || len(attachments) == 0 {
+		t.Fatal("attachments missing in received payload")
+	}
+
+	attachment := attachments[0].(map[string]any)
+	content := attachment["content"].(map[string]any)
+
+	msteams, ok := content["msteams"].(map[string]any)
+	if !ok {
+		t.Fatal("msteams block missing in received payload")
+	}
+
+	entities, ok := msteams["entities"].([]any)
+	if !ok {
+		t.Fatal("entities missing in received msteams block")
+	}
+
+	if len(entities) != 1 {
+		t.Fatalf("entities count = %d, want 1", len(entities))
+	}
+
+	entity := entities[0].(map[string]any)
+	if entity["type"] != "mention" {
+		t.Errorf("entity.type = %v, want mention", entity["type"])
+	}
+	if entity["text"] != "<at>Alice</at>" {
+		t.Errorf("entity.text = %v, want <at>Alice</at>", entity["text"])
+	}
+	mentioned := entity["mentioned"].(map[string]any)
+	if mentioned["id"] != "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" {
+		t.Errorf("mentioned.id = %v, want aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", mentioned["id"])
+	}
+	if mentioned["name"] != "Alice" {
+		t.Errorf("mentioned.name = %v, want Alice", mentioned["name"])
+	}
+}

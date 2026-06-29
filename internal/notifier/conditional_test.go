@@ -33,6 +33,19 @@ func (m *mockActionHandler) Handle(_ context.Context, _ domain.Event) error {
 	m.called = true
 	return m.err
 }
+func (m *mockActionHandler) Close() error { return nil }
+
+// closeSpy tracks Close() calls for verification.
+type closeSpy struct {
+	mockActionHandler
+	closeCount int
+	closeErr   error
+}
+
+func (s *closeSpy) Close() error {
+	s.closeCount++
+	return s.closeErr
+}
 
 func TestConditionalHandler_NilProgram(t *testing.T) {
 	core, logs := observer.New(zap.DebugLevel)
@@ -303,5 +316,73 @@ func TestConditionalHandler_ComplexCELExpression(t *testing.T) {
 				t.Errorf("expected called=%v, got %v", tt.wantCalls, inner.called)
 			}
 		})
+	}
+}
+
+func TestWrapperForwardsClose(t *testing.T) {
+	tests := []struct {
+		name string
+		wrap func(inner ActionHandler) ActionHandler
+	}{
+		{
+			name: "ConditionalHandler",
+			wrap: func(inner ActionHandler) ActionHandler {
+				return NewConditionalHandler(inner, nil, zap.NewNop())
+			},
+		},
+		{
+			name: "FilteredHandler",
+			wrap: func(inner ActionHandler) ActionHandler {
+				return NewFilteredHandler(inner, nil)
+			},
+		},
+		{
+			name: "ConditionalHandler_withCEL",
+			wrap: func(inner ActionHandler) ActionHandler {
+				program, _ := cel.Compile(`event.State == "success"`)
+				return NewConditionalHandler(inner, program, zap.NewNop())
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			spy := &closeSpy{
+				mockActionHandler: mockActionHandler{name: testHandler, typ: ActionCommitStatus},
+			}
+			wrapper := tt.wrap(spy)
+
+			if err := wrapper.Close(); err != nil {
+				t.Fatalf("Close() returned error: %v", err)
+			}
+			if spy.closeCount != 1 {
+				t.Errorf("expected closeCount=1, got %d", spy.closeCount)
+			}
+
+			// Verify idempotency
+			if err := wrapper.Close(); err != nil {
+				t.Fatalf("second Close() returned error: %v", err)
+			}
+			if spy.closeCount != 2 {
+				t.Errorf("expected closeCount=2 after second call, got %d", spy.closeCount)
+			}
+		})
+	}
+}
+
+func TestWrapperForwardsCloseError(t *testing.T) {
+	closeErr := errors.New("close failed")
+	spy := &closeSpy{
+		mockActionHandler: mockActionHandler{name: testHandler, typ: ActionCommitStatus},
+		closeErr:          closeErr,
+	}
+
+	wrapper := NewConditionalHandler(spy, nil, zap.NewNop())
+	err := wrapper.Close()
+	if !errors.Is(err, closeErr) {
+		t.Fatalf("expected close error, got %v", err)
+	}
+	if spy.closeCount != 1 {
+		t.Errorf("expected closeCount=1, got %d", spy.closeCount)
 	}
 }

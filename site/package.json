@@ -25,6 +25,7 @@
   },
   "overrides": {
     "esbuild": "0.28.1",
-    "yaml": "2.8.3"
+    "yaml": "2.8.3",
+    "dompurify": ">=3.4.11"
   }
 }

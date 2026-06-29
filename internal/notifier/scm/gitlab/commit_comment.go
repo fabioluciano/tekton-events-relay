@@ -133,3 +133,6 @@ func (h *CommitCommentHandler) upsertCommitNote(ctx context.Context, projectID, 
 		&gl.CreateCommitDiscussionOptions{Body: &body}, gl.WithContext(ctx))
 	return err
 }
+
+// Close is a no-op; this handler holds no resources requiring cleanup.
+func (h *CommitCommentHandler) Close() error { return nil }

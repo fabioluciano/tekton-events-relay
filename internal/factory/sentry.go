@@ -3,6 +3,7 @@ package factory
 import (
 	"go.uber.org/zap"
 
+	"github.com/fabioluciano/tekton-events-relay/internal/cel"
 	"github.com/fabioluciano/tekton-events-relay/internal/config"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/middleware"
@@ -33,7 +34,7 @@ func (f *SentryFactory) Build(inst config.SentryInstance, log *zap.Logger) ([]no
 
 	httpClient, retryPolicy := buildNotifierClient(inst.RetryOverride)
 
-	handler := sentry.New(sentry.Config{
+	sentryCfg := sentry.Config{
 		Name:        inst.Name,
 		BaseURL:     inst.BaseURL,
 		Token:       token,
@@ -42,7 +43,17 @@ func (f *SentryFactory) Build(inst config.SentryInstance, log *zap.Logger) ([]no
 		Log:         log,
 		HTTPClient:  httpClient,
 		RetryPolicy: retryPolicy,
-	})
+	}
+
+	if inst.EnvironmentExpr != "" {
+		prog, err := cel.CompileString(inst.EnvironmentExpr)
+		if err != nil {
+			return nil, err
+		}
+		sentryCfg.EnvironmentExpr = prog
+	}
+
+	handler := sentry.New(sentryCfg)
 
 	wrapped, err := middleware.WrapWithCEL(handler, inst.When, log)
 	if err != nil {

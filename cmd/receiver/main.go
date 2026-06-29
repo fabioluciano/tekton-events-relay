@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -35,19 +36,20 @@ import (
 )
 
 type app struct {
-	cfg         *config.Config
-	configPath  string
-	log         *zap.Logger
-	srv         *http.Server
-	metricsSrv  *http.Server
-	regHolder   *registryHolder
-	chainHolder *chainHolder
-	decoders    *event.Registry
-	store       store.Store
-	collectors  *metrics.Collectors
-	buildOpts   []factory.BuildOption
-	status      *pipeline.StatusTracker
-	cleanup     func()
+	cfg          *config.Config
+	configPath   string
+	log          *zap.Logger
+	srv          *http.Server
+	metricsSrv   *http.Server
+	regHolder    *registryHolder
+	chainHolder  *chainHolder
+	decoders     *event.Registry
+	store        store.Store
+	collectors   *metrics.Collectors
+	buildOpts    []factory.BuildOption
+	status       *pipeline.StatusTracker
+	cleanup      func()
+	shutdownOnce sync.Once
 }
 
 func newApp(configPath string) (*app, error) {
@@ -72,7 +74,7 @@ func newApp(configPath string) (*app, error) {
 		return nil, fmt.Errorf("initialize logger: %w", err)
 	}
 
-	tp, cleanupTracer, err := tracing.InitGlobal(context.Background(), cfg.Tracing.Endpoint, cfg.Tracing.ServiceName, cfg.Tracing.Insecure, log)
+	tp, cleanupTracer, err := tracing.InitGlobal(context.Background(), cfg.Tracing.Endpoint, cfg.Tracing.ServiceName, cfg.Tracing.Insecure, cfg.Tracing.SampleRate, log)
 	if err != nil {
 		_ = log.Sync()
 		return nil, fmt.Errorf("init tracing: %w", err)
@@ -141,7 +143,7 @@ func newApp(configPath string) (*app, error) {
 
 	var deadLetter dlq.Queue
 	if cfg.DLQ.Enabled {
-		deadLetter, err = dlq.NewFileQueue(cfg.DLQ.Path, cfg.DLQ.MaxSizeBytes)
+		deadLetter, err = dlq.NewFileQueue(cfg.DLQ.Path, cfg.DLQ.MaxSizeBytes, cfg.DLQ.RetentionDays)
 		if err != nil {
 			if st != nil {
 				_ = st.Close()
@@ -225,32 +227,41 @@ func (a *app) run(ctx context.Context) error {
 	<-ctx.Done()
 	a.log.Info("shutting down")
 
-	return a.shutdown()
+	a.shutdown()
+	return nil
 }
 
-func (a *app) shutdown() error {
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Duration(a.cfg.Server.ShutdownTimeoutSec)*time.Second)
-	defer cancel()
+func (a *app) shutdown() {
+	a.shutdownOnce.Do(func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Duration(a.cfg.Server.ShutdownTimeoutSec)*time.Second)
+		defer cancel()
 
-	if err := a.srv.Shutdown(shutdownCtx); err != nil {
-		a.log.Error("shutdown main server", zap.Error(err))
-	}
-
-	if a.metricsSrv != nil {
-		metricsCtx, c := context.WithTimeout(context.Background(), 5*time.Second)
-		defer c()
-		if err := a.metricsSrv.Shutdown(metricsCtx); err != nil {
-			a.log.Error("shutdown metrics server", zap.Error(err))
+		if err := a.srv.Shutdown(shutdownCtx); err != nil {
+			a.log.Error("shutdown main server", zap.Error(err))
 		}
-	}
 
-	if a.store != nil {
-		if err := a.store.Close(); err != nil {
-			a.log.Error("shutdown store", zap.Error(err))
+		if a.metricsSrv != nil {
+			metricsCtx, c := context.WithTimeout(context.Background(), 5*time.Second)
+			defer c()
+			if err := a.metricsSrv.Shutdown(metricsCtx); err != nil {
+				a.log.Error("shutdown metrics server", zap.Error(err))
+			}
 		}
-	}
 
-	return nil
+		for _, h := range a.regHolder.All() {
+			if err := h.Close(); err != nil {
+				a.log.Error("shutdown handler close",
+					zap.String("handler", h.Name()),
+					zap.Error(err))
+			}
+		}
+
+		if a.store != nil {
+			if err := a.store.Close(); err != nil {
+				a.log.Error("shutdown store", zap.Error(err))
+			}
+		}
+	})
 }
 
 func main() {

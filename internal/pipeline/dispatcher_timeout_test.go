@@ -21,6 +21,7 @@ type sleepyHandler struct {
 
 func (h *sleepyHandler) Name() string              { return "sleepy" }
 func (h *sleepyHandler) Type() notifier.ActionType { return notifier.ActionNotify }
+func (h *sleepyHandler) Close() error              { return nil }
 
 func (h *sleepyHandler) Handle(ctx context.Context, _ domain.Event) error {
 	select {
@@ -33,7 +34,8 @@ func (h *sleepyHandler) Handle(ctx context.Context, _ domain.Event) error {
 
 type sleepySource struct{ h notifier.ActionHandler }
 
-func (s sleepySource) All() []notifier.ActionHandler { return []notifier.ActionHandler{s.h} }
+func (s sleepySource) All() []notifier.ActionHandler          { return []notifier.ActionHandler{s.h} }
+func (s sleepySource) Lookup(_ string) notifier.ActionHandler { return s.h }
 
 func TestDispatcher_HandlerTimeoutAborts(t *testing.T) {
 	collectors := metrics.NewCollectors(prometheus.NewRegistry())

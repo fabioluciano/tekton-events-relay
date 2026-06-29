@@ -15,6 +15,7 @@ import (
 const (
 	testHandler     = "test-handler"
 	celStateSuccess = `event.State == "success"`
+	testRunName     = "test-run"
 )
 
 // mockActionHandler implements ActionHandler for testing.
@@ -31,6 +32,7 @@ func (m *mockActionHandler) Handle(_ context.Context, _ domain.Event) error {
 	m.called = true
 	return m.err
 }
+func (m *mockActionHandler) Close() error { return nil }
 
 func TestWrapWithCEL_EmptyExpression(t *testing.T) {
 	logger := zap.NewNop()
@@ -132,7 +134,7 @@ func TestWrapWithCEL_WrappedHandlerExecutesCELGuard(t *testing.T) {
 			event: domain.Event{
 				Resource: domain.ResourcePipelineRun,
 				State:    domain.StateSuccess,
-				RunName:  "test-run",
+				RunName:  testRunName,
 			},
 			wantCalled:  true,
 			description: "CEL guard should pass for success state",
@@ -142,7 +144,7 @@ func TestWrapWithCEL_WrappedHandlerExecutesCELGuard(t *testing.T) {
 			event: domain.Event{
 				Resource: domain.ResourcePipelineRun,
 				State:    domain.StateFailure,
-				RunName:  "test-run",
+				RunName:  testRunName,
 			},
 			wantCalled:  false,
 			description: "CEL guard should reject failure state",
@@ -152,7 +154,7 @@ func TestWrapWithCEL_WrappedHandlerExecutesCELGuard(t *testing.T) {
 			event: domain.Event{
 				Resource: domain.ResourceTaskRun,
 				State:    domain.StateRunning,
-				RunName:  "test-run",
+				RunName:  testRunName,
 			},
 			wantCalled:  false,
 			description: "CEL guard should reject running state",

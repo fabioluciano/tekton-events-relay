@@ -10,6 +10,7 @@ import (
 	"github.com/google/cel-go/common/ast"
 	"github.com/google/cel-go/common/operators"
 	"github.com/google/cel-go/common/types"
+	"github.com/google/cel-go/common/types/ref"
 	"github.com/google/cel-go/parser"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
@@ -41,6 +42,37 @@ var domainMacros = []cel.EnvOption{
 		cel.GlobalMacro("isPushEvent", 0, buildSCMEventTypeMacro("push")),
 		// stateIn vararg macro
 		cel.GlobalVarArgMacro("stateIn", stateInMacroExpander),
+	),
+	// Build time helper
+	cel.Function("buildTimeExceeds",
+		cel.Overload("buildTimeExceeds_int",
+			[]*cel.Type{cel.IntType},
+			cel.BoolType,
+			cel.FunctionBinding(func(args ...ref.Val) ref.Val {
+				return intToDurationExceeds(args[0])
+			}),
+		),
+	),
+	// Results helpers
+	cel.Function("hasResult",
+		cel.Overload("hasResult_string",
+			[]*cel.Type{cel.StringType},
+			cel.BoolType,
+			cel.FunctionBinding(func(args ...ref.Val) ref.Val {
+				name := string(args[0].(types.String))
+				return types.Bool(resultHasValue(name))
+			}),
+		),
+	),
+	cel.Function("resultValue",
+		cel.Overload("resultValue_string",
+			[]*cel.Type{cel.StringType},
+			cel.StringType,
+			cel.FunctionBinding(func(args ...ref.Val) ref.Val {
+				name := string(args[0].(types.String))
+				return types.String(resultGetValue(name))
+			}),
+		),
 	),
 }
 
@@ -135,6 +167,26 @@ func stateInMacroExpander(eh parser.ExprHelper, _ ast.Expr, args []ast.Expr) (as
 	return eh.NewCall(operators.In, stateField, stateList), nil
 }
 
+func intToDurationExceeds(arg ref.Val) ref.Val {
+	ms := int64(arg.(types.Int))
+	return types.Bool(currentBuildDurationMs() > ms)
+}
+
+func resultHasValue(name string) bool {
+	results := currentResults()
+	v, ok := results[name]
+	return ok && v != ""
+}
+
+func resultGetValue(name string) string {
+	return currentResults()[name]
+}
+
+var (
+	currentBuildDurationMs func() int64
+	currentResults         func() map[string]string
+)
+
 var programCache sync.Map // map[string]*Program
 
 // Program wraps a compiled CEL expression.
@@ -145,6 +197,8 @@ type Program struct {
 
 // Compile compiles a CEL expression against the domain.Event schema.
 // Returns cached program if already compiled. Returns error if expression is invalid or doesn't return bool.
+//
+//nolint:dupl // Compile and CompileString share structure by design (bool vs string return type)
 func Compile(expr string) (*Program, error) {
 	if expr == "" {
 		return nil, fmt.Errorf("cel: empty expression")
@@ -181,6 +235,81 @@ func Compile(expr string) (*Program, error) {
 	p := &Program{prog: prog, expr: expr}
 	programCache.Store(expr, p)
 	return p, nil
+}
+
+// StringProgram wraps a compiled CEL expression that returns a string.
+type StringProgram struct {
+	prog cel.Program
+	expr string // original expression for debugging
+}
+
+var stringProgramCache sync.Map // map[string]*StringProgram
+
+// CompileString compiles a CEL expression that returns a string.
+// Used for dynamic routing expressions (channel_expr, severity_expr, etc.).
+//
+//nolint:dupl // Compile and CompileString share structure by design (bool vs string return type)
+func CompileString(expr string) (*StringProgram, error) {
+	if expr == "" {
+		return nil, fmt.Errorf("cel: empty expression")
+	}
+
+	if cached, ok := stringProgramCache.Load(expr); ok {
+		return cached.(*StringProgram), nil
+	}
+
+	envOpts := []cel.EnvOption{
+		cel.Variable("event", cel.MapType(cel.StringType, cel.DynType)),
+	}
+	envOpts = append(envOpts, domainMacros...)
+
+	env, err := cel.NewEnv(envOpts...)
+	if err != nil {
+		return nil, fmt.Errorf("cel: environment error: %w", err)
+	}
+
+	ast, issues := env.Compile(expr)
+	if issues != nil && issues.Err() != nil {
+		return nil, fmt.Errorf("cel: compile error: %w", issues.Err())
+	}
+
+	if ast.OutputType() != cel.StringType {
+		return nil, fmt.Errorf("cel: expression must return string, got %s", ast.OutputType())
+	}
+
+	prog, err := env.Program(ast)
+	if err != nil {
+		return nil, fmt.Errorf("cel: program error: %w", err)
+	}
+
+	p := &StringProgram{prog: prog, expr: expr}
+	stringProgramCache.Store(expr, p)
+	return p, nil
+}
+
+// EvalString evaluates the compiled string program against an event.
+// Returns the string result or an error.
+func (p *StringProgram) EvalString(e domain.Event) (string, error) {
+	activation := activationPool.Get().(map[string]any)
+	populateActivation(activation, e)
+
+	out, _, err := p.prog.Eval(activation)
+
+	for k := range activation {
+		delete(activation, k)
+	}
+	activationPool.Put(activation)
+
+	if err != nil {
+		return "", fmt.Errorf("cel: eval error: %w", err)
+	}
+
+	result, ok := out.Value().(string)
+	if !ok {
+		return "", fmt.Errorf("cel: unexpected result type %T, expected string", out.Value())
+	}
+
+	return result, nil
 }
 
 // Eval evaluates the compiled program against an event.
@@ -231,6 +360,14 @@ func populateActivation(activation map[string]any, e domain.Event) {
 	for _, r := range e.Results {
 		results[r.Name] = r.Value
 	}
+
+	var durationMs int64
+	if !e.StartedAt.IsZero() && !e.FinishedAt.IsZero() {
+		durationMs = e.FinishedAt.Sub(e.StartedAt).Milliseconds()
+	}
+
+	currentBuildDurationMs = func() int64 { return durationMs }
+	currentResults = func() map[string]string { return results }
 
 	activation["event"] = map[string]any{
 		"Resource":            string(e.Resource),

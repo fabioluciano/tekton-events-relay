@@ -48,6 +48,22 @@ func validateSlackInstance(prefix string, inst SlackInstance) []ValidationError 
 	errs = append(errs, validateCELWhen(prefix, inst)...)
 	errs = append(errs, validateTemplate(prefix, inst)...)
 
+	if inst.ThreadMode != "" && inst.ThreadMode != "grouped" {
+		errs = append(errs, ValidationError{Path: prefix + ".thread_mode", Message: "thread_mode must be empty or \"grouped\""})
+	}
+	if inst.ThreadMode == "grouped" && inst.Mode == "upsert" {
+		errs = append(errs, ValidationError{Path: prefix + ".thread_mode", Message: "thread_mode \"grouped\" and mode \"upsert\" are mutually exclusive"})
+	}
+	if inst.ThreadMode == "grouped" && inst.Auth != nil && inst.Auth.BotToken == nil {
+		errs = append(errs, ValidationError{Path: prefix + ".thread_mode", Message: "thread_mode \"grouped\" requires bot_token auth"})
+	}
+
+	if inst.ChannelExpr != "" {
+		if err := validateCELStringExpression(inst.ChannelExpr); err != nil {
+			errs = append(errs, ValidationError{Path: prefix + ".channel_expr", Message: fmt.Sprintf("invalid CEL: %v", err)})
+		}
+	}
+
 	return errs
 }
 
@@ -58,6 +74,15 @@ func validateTeamsInstance(prefix string, inst TeamsInstance) []ValidationError 
 	if inst.Enabled {
 		if inst.Auth == nil || inst.Auth.WebhookURLFile == "" {
 			errs = append(errs, ValidationError{Path: prefix + ValidationPathAuth, Message: ValidationMsgAuthRequired})
+		}
+	}
+
+	for i, mu := range inst.MentionUsers {
+		if mu.ID == "" {
+			errs = append(errs, ValidationError{
+				Path:    fmt.Sprintf("%s.mention_users[%d].id", prefix, i),
+				Message: "id is required for mention_users entries",
+			})
 		}
 	}
 
@@ -91,6 +116,15 @@ func validateDiscordInstance(prefix string, inst DiscordInstance) []ValidationEr
 		}
 	}
 
+	for i, id := range inst.MentionRoles {
+		if id == "" {
+			errs = append(errs, ValidationError{
+				Path:    fmt.Sprintf("%s.mention_roles[%d]", prefix, i),
+				Message: "role ID must not be empty",
+			})
+		}
+	}
+
 	errs = append(errs, validateCELWhen(prefix, inst)...)
 	errs = append(errs, validateTemplate(prefix, inst)...)
 
@@ -104,6 +138,62 @@ func validatePagerDutyInstance(prefix string, inst PagerDutyInstance) []Validati
 	if inst.Enabled {
 		if inst.Auth == nil || inst.Auth.IntegrationKeyFile == "" {
 			errs = append(errs, ValidationError{Path: prefix + ValidationPathAuth, Message: ValidationMsgAuthRequired})
+		}
+	}
+
+	errs = append(errs, validateCELWhen(prefix, inst)...)
+
+	return errs
+}
+
+func validateOpsgenieInstance(prefix string, inst OpsgenieInstance) []ValidationError {
+	var errs []ValidationError
+
+	if inst.Enabled {
+		if inst.Auth == nil || inst.Auth.APIKeyFile == "" {
+			errs = append(errs, ValidationError{Path: prefix + ValidationPathAuth, Message: ValidationMsgAuthRequired})
+		}
+	}
+
+	if inst.Priority != "" {
+		switch inst.Priority {
+		case "P1", "P2", "P3", "P4", "P5":
+		default:
+			errs = append(errs, ValidationError{Path: prefix + ".priority", Message: "priority must be one of P1, P2, P3, P4, P5"})
+		}
+	}
+
+	errs = append(errs, validateCELWhen(prefix, inst)...)
+
+	return errs
+}
+
+func validateNewRelicInstance(prefix string, inst NewRelicInstance) []ValidationError {
+	var errs []ValidationError
+
+	if inst.Enabled {
+		if inst.Auth == nil || inst.Auth.APIKeyFile == "" {
+			errs = append(errs, ValidationError{Path: prefix + ValidationPathAuth, Message: ValidationMsgAuthRequired})
+		}
+		if inst.AccountID == "" {
+			errs = append(errs, ValidationError{Path: prefix + ".account_id", Message: ValidationMsgRequired})
+		}
+	}
+
+	errs = append(errs, validateCELWhen(prefix, inst)...)
+
+	return errs
+}
+
+func validateHoneycombInstance(prefix string, inst HoneycombInstance) []ValidationError {
+	var errs []ValidationError
+
+	if inst.Enabled {
+		if inst.Auth == nil || inst.Auth.APIKeyFile == "" {
+			errs = append(errs, ValidationError{Path: prefix + ValidationPathAuth, Message: ValidationMsgAuthRequired})
+		}
+		if inst.Dataset == "" {
+			errs = append(errs, ValidationError{Path: prefix + ".dataset", Message: ValidationMsgRequired})
 		}
 	}
 
@@ -183,6 +273,72 @@ func validateSentryInstance(prefix string, inst SentryInstance) []ValidationErro
 	return errs
 }
 
+func validateIncidentIOInstance(prefix string, inst IncidentIOInstance) []ValidationError {
+	var errs []ValidationError
+	// Name validation handled by validate:"required" struct tag
+
+	if inst.Enabled {
+		if inst.Auth == nil || inst.Auth.APIKeyFile == "" {
+			errs = append(errs, ValidationError{Path: prefix + ValidationPathAuth, Message: ValidationMsgAuthRequired})
+		}
+	}
+
+	errs = append(errs, validateCELWhen(prefix, inst)...)
+
+	return errs
+}
+
+func validateTelegramInstance(prefix string, inst TelegramInstance) []ValidationError {
+	var errs []ValidationError
+
+	if inst.Enabled {
+		if inst.Auth == nil || inst.Auth.TokenFile == "" {
+			errs = append(errs, ValidationError{Path: prefix + ValidationPathAuth, Message: ValidationMsgAuthRequired})
+		}
+		if inst.ChatID == "" {
+			errs = append(errs, ValidationError{Path: prefix + ".chat_id", Message: ValidationMsgRequired})
+		}
+	}
+
+	errs = append(errs, validateCELWhen(prefix, inst)...)
+	errs = append(errs, validateTemplate(prefix, inst)...)
+
+	return errs
+}
+
+func validateMattermostInstance(prefix string, inst MattermostInstance) []ValidationError {
+	var errs []ValidationError
+	// Name validation handled by validate:"required" struct tag
+
+	if inst.Enabled {
+		if inst.Auth == nil {
+			errs = append(errs, ValidationError{Path: prefix + ValidationPathAuth, Message: ValidationMsgAuthRequired})
+		} else {
+			hasWebhook := inst.Auth.WebhookURLFile != ""
+			hasBot := inst.Auth.BotToken != nil
+			switch {
+			case !hasWebhook && !hasBot:
+				errs = append(errs, ValidationError{Path: prefix + ".auth", Message: "exactly one of auth.webhook_url_file or auth.bot_token required when enabled"})
+			case hasWebhook && hasBot:
+				errs = append(errs, ValidationError{Path: prefix + ".auth", Message: "auth.webhook_url_file and auth.bot_token are mutually exclusive"})
+			}
+			// Validate bot token nested fields
+			if hasBot && inst.Auth.BotToken != nil {
+				errs = append(errs, validateBotTokenAuth(prefix+".auth.bot_token", inst.Auth.BotToken)...)
+			}
+			// Bot token mode requires base_url
+			if hasBot && inst.BaseURL == "" {
+				errs = append(errs, ValidationError{Path: prefix + ".base_url", Message: "base_url required for bot token mode"})
+			}
+		}
+	}
+
+	errs = append(errs, validateCELWhen(prefix, inst)...)
+	errs = append(errs, validateTemplate(prefix, inst)...)
+
+	return errs
+}
+
 func validateEmailInstance(prefix string, inst EmailInstance) []ValidationError {
 	var errs []ValidationError
 	if inst.Enabled {
@@ -228,9 +384,11 @@ func validateEmailInstance(prefix string, inst EmailInstance) []ValidationError 
 	}
 	errs = append(errs, validateCELWhen(prefix, inst)...)
 	errs = append(errs, validateTemplate(prefix, inst)...)
+
 	return errs
 }
 
+//nolint:gocyclo // Jira validation has many mutually exclusive auth paths (Cloud basic, DC bearer, OAuth2)
 func validateJiraInstance(prefix string, inst JiraInstance) []ValidationError {
 	var errs []ValidationError
 	if inst.Enabled {
@@ -272,8 +430,16 @@ func validateJiraInstance(prefix string, inst JiraInstance) []ValidationError {
 			if action.Transition == "" {
 				errs = append(errs, ValidationError{Path: aprefix + ".transition", Message: "transition name or id required"})
 			}
+		case JiraActionCreateIssue:
+			if inst.Enabled && action.Enabled && action.ProjectKey == "" {
+				errs = append(errs, ValidationError{Path: aprefix + ".project_key", Message: ValidationMsgRequiredForEnabled})
+			}
+		case JiraActionLinkCommit:
+			if inst.Enabled && action.Enabled && action.IssueKey == "" {
+				errs = append(errs, ValidationError{Path: aprefix + ".issue_key", Message: ValidationMsgRequiredForEnabled})
+			}
 		default:
-			errs = append(errs, ValidationError{Path: aprefix + ".type", Message: fmt.Sprintf("invalid jira action type '%s' (must be comment or transition)", action.Type)})
+			errs = append(errs, ValidationError{Path: aprefix + ".type", Message: fmt.Sprintf("invalid jira action type '%s' (must be comment, transition, create_issue, or link_commit)", action.Type)})
 		}
 		if action.When != "" {
 			if err := validateCELExpression(action.When); err != nil {
@@ -298,7 +464,7 @@ func (c *Config) validateJira(names map[string]map[string]bool) error {
 	return nil
 }
 
-//nolint:dupl // validateSCM and validateNotifiers share structure but operate on different config sections
+//nolint:dupl,gocyclo // validateSCM and validateNotifiers share structure but operate on different config sections; high cyclomatic complexity from many notifier types
 func (c *Config) validateNotifiers(names map[string]map[string]bool) error {
 	for i, inst := range c.Notifiers.Slack {
 		if err := checkDuplicateName("notifiers.slack", inst.Name, names); err != nil {
@@ -385,6 +551,46 @@ func (c *Config) validateNotifiers(names map[string]map[string]bool) error {
 			return err
 		}
 		errs := validateSentryInstance(fmt.Sprintf("notifiers.sentry[%d]", i), inst)
+		if len(errs) > 0 {
+			return errs[0]
+		}
+	}
+
+	for i, inst := range c.Notifiers.Mattermost {
+		if err := checkDuplicateName("notifiers.mattermost", inst.Name, names); err != nil {
+			return err
+		}
+		errs := validateMattermostInstance(fmt.Sprintf("notifiers.mattermost[%d]", i), inst)
+		if len(errs) > 0 {
+			return errs[0]
+		}
+	}
+
+	for i, inst := range c.Notifiers.Opsgenie {
+		if err := checkDuplicateName("notifiers.opsgenie", inst.Name, names); err != nil {
+			return err
+		}
+		errs := validateOpsgenieInstance(fmt.Sprintf("notifiers.opsgenie[%d]", i), inst)
+		if len(errs) > 0 {
+			return errs[0]
+		}
+	}
+
+	for i, inst := range c.Notifiers.IncidentIO {
+		if err := checkDuplicateName("notifiers.incidentio", inst.Name, names); err != nil {
+			return err
+		}
+		errs := validateIncidentIOInstance(fmt.Sprintf("notifiers.incidentio[%d]", i), inst)
+		if len(errs) > 0 {
+			return errs[0]
+		}
+	}
+
+	for i, inst := range c.Notifiers.Honeycomb {
+		if err := checkDuplicateName("notifiers.honeycomb", inst.Name, names); err != nil {
+			return err
+		}
+		errs := validateHoneycombInstance(fmt.Sprintf("notifiers.honeycomb[%d]", i), inst)
 		if len(errs) > 0 {
 			return errs[0]
 		}
@@ -477,4 +683,52 @@ func validateWebhookOAuth2Auth(prefix string, auth *WebhookAuthConfig) []Validat
 		return []ValidationError{{Path: prefix + ".auth", Message: "type 'oauth2' does not accept 'token_file', 'username_file', 'password_file', 'secret_file', or 'header'"}}
 	}
 	return validateOAuth2(prefix+".auth", auth.OAuth2)
+}
+
+func validateNATSInstance(prefix string, inst NATSInstance) []ValidationError {
+	var errs []ValidationError
+
+	if inst.Enabled {
+		if len(inst.Servers) == 0 {
+			errs = append(errs, ValidationError{Path: prefix + ".servers", Message: ValidationMsgRequiredForEnabled})
+		}
+		if inst.Subject == "" {
+			errs = append(errs, ValidationError{Path: prefix + ".subject", Message: ValidationMsgRequiredForEnabled})
+		}
+	}
+
+	errs = append(errs, validateCELWhen(prefix, inst)...)
+
+	return errs
+}
+
+func validateRabbitMQInstance(prefix string, inst RabbitMQInstance) []ValidationError {
+	var errs []ValidationError
+
+	if inst.Enabled {
+		if inst.URLFile == "" {
+			errs = append(errs, ValidationError{Path: prefix + ".url_file", Message: ValidationMsgRequiredForEnabled})
+		}
+	}
+
+	errs = append(errs, validateCELWhen(prefix, inst)...)
+
+	return errs
+}
+
+func validateRedisPubSubInstance(prefix string, inst RedisPubSubInstance) []ValidationError {
+	var errs []ValidationError
+
+	if inst.Enabled {
+		if inst.Address == "" {
+			errs = append(errs, ValidationError{Path: prefix + ".address", Message: ValidationMsgRequiredForEnabled})
+		}
+		if inst.Channel == "" {
+			errs = append(errs, ValidationError{Path: prefix + ".channel", Message: ValidationMsgRequiredForEnabled})
+		}
+	}
+
+	errs = append(errs, validateCELWhen(prefix, inst)...)
+
+	return errs
 }

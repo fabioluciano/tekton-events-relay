@@ -57,6 +57,9 @@ func (h *healthHandler) readyEndpoint(w http.ResponseWriter, _ *http.Request) {
 		if snapshot := h.status.Snapshot(); snapshot != nil {
 			body["handlers"] = snapshot
 		}
+		if degraded := h.status.DegradedHandlers(); degraded != nil {
+			body["degraded"] = degraded
+		}
 	}
 	if h.store != nil {
 		storeStatus := h.store.Backend()
@@ -149,17 +152,21 @@ func BuildServer(cfg *config.Config, decoders *event.Registry, chain pipeline.Ha
 	if deadLetter != nil {
 		listHandler := http.Handler(dlqListHandler(deadLetter, log))
 		replayHandler := http.Handler(dlqReplayHandler(deadLetter, chain, collectors, log))
+		analyticsHandler := http.Handler(dlqAnalyticsHandler(deadLetter, log))
 		listHandler = middleware.PanicRecovery(log)(listHandler)
 		replayHandler = middleware.PanicRecovery(log)(replayHandler)
+		analyticsHandler = middleware.PanicRecovery(log)(analyticsHandler)
 		// Per-IP rate limiter for the replay endpoint (10 req/s, burst 20).
 		replayLimiter = middleware.NewRateLimiter(dlqReplayRPS, dlqReplayBurst)
 		replayHandler = replayLimiter.Middleware()(replayHandler)
 		if authMW != nil {
 			listHandler = authMW(listHandler)
 			replayHandler = authMW(replayHandler)
+			analyticsHandler = authMW(analyticsHandler)
 		}
 		mux.Handle("/api/v1/dlq", listHandler)
 		mux.Handle("/api/v1/dlq/replay", replayHandler)
+		mux.Handle("/api/v1/dlq/analytics", analyticsHandler)
 	}
 
 	// Build middleware chain for /events endpoint (order matters: outermost runs first)

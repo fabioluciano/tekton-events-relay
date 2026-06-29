@@ -1,11 +1,17 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	"go.uber.org/zap"
+
+	"github.com/fabioluciano/tekton-events-relay/internal/cel"
+	"github.com/fabioluciano/tekton-events-relay/internal/domain"
+	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
 )
 
 const reloadBaseConfig = `
@@ -106,5 +112,46 @@ func TestReload_InvalidConfigKeepsCurrent(t *testing.T) {
 	// Also check new histogram and gauge were recorded even on failure.
 	if got := testutil.ToFloat64(a.collectors.ConfigReloadLastTimestamp); got == 0 {
 		t.Errorf("config_reload_last_timestamp = 0, want non-zero even on failure")
+	}
+}
+
+// closeSpy tracks Close() calls for verification.
+type closeSpy struct {
+	name       string
+	closeCount int
+}
+
+func (s *closeSpy) Name() string                                   { return s.name }
+func (s *closeSpy) Type() notifier.ActionType                      { return notifier.ActionCommitStatus }
+func (s *closeSpy) Handle(_ context.Context, _ domain.Event) error { return nil }
+func (s *closeSpy) Close() error                                   { s.closeCount++; return nil }
+
+func TestReloadClosesWrappedHandlers(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfgPath := filepath.Join(tmpDir, "config.yaml")
+	writeReloadConfig(t, cfgPath, reloadBaseConfig)
+
+	a, err := newApp(cfgPath)
+	if err != nil {
+		t.Fatalf("newApp: %v", err)
+	}
+	defer a.cleanup()
+
+	spy := &closeSpy{name: "spy-handler"}
+	program, err := cel.Compile(`event.State == "success"`)
+	if err != nil {
+		t.Fatalf("compile CEL: %v", err)
+	}
+	wrapped := notifier.NewConditionalHandler(spy, program, zap.NewNop())
+
+	reg := notifier.NewRegistry()
+	reg.Register(wrapped)
+	a.regHolder.p.Store(reg)
+
+	writeReloadConfig(t, cfgPath, reloadBaseConfig)
+	a.reload()
+
+	if spy.closeCount != 1 {
+		t.Errorf("expected closeCount=1, got %d", spy.closeCount)
 	}
 }

@@ -1031,3 +1031,32 @@ func TestValidate_ValidCELExpressions(t *testing.T) {
 		})
 	}
 }
+
+func TestValidate_SampleRate(t *testing.T) {
+	tests := []struct {
+		name       string
+		sampleRate float64
+		wantErr    bool
+	}{
+		{name: "valid_0.0", sampleRate: 0.0, wantErr: false},
+		{name: "valid_0.5", sampleRate: 0.5, wantErr: false},
+		{name: "valid_1.0", sampleRate: 1.0, wantErr: false},
+		{name: "reject_negative", sampleRate: -0.1, wantErr: true},
+		{name: "reject_above_one", sampleRate: 1.5, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{
+				Tracing: TracingConfig{
+					SampleRate: tt.sampleRate,
+				},
+			}
+
+			err := cfg.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("sample_rate=%g: wantErr=%v, got err=%v", tt.sampleRate, tt.wantErr, err)
+			}
+		})
+	}
+}

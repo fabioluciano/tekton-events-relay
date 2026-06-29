@@ -107,3 +107,50 @@ func TestReadyz_UnavailableWithoutHandlers(t *testing.T) {
 		t.Errorf("body = %+v, want unavailable with reason", body)
 	}
 }
+
+func TestReadyzDegradedReturns200(t *testing.T) {
+	tracker := pipeline.NewStatusTracker()
+
+	for i := 0; i < 85; i++ {
+		tracker.Observe("github", nil)
+	}
+	for i := 0; i < 15; i++ {
+		tracker.Observe("github", errors.New("api error"))
+	}
+
+	health := buildHealthHandler(
+		fakeSource{[]string{"github"}},
+		fakeSource{[]string{"taskrun"}},
+		tracker,
+		nil,
+	)
+
+	rec := httptest.NewRecorder()
+	health.readyEndpoint(rec, httptest.NewRequest("GET", "/readyz", nil))
+
+	if rec.Code != 200 {
+		t.Fatalf("status = %d, want 200 (degraded does not trigger 503)", rec.Code)
+	}
+
+	var body struct {
+		Status   string                            `json:"status"`
+		Handlers map[string]pipeline.HandlerStatus `json:"handlers"`
+		Degraded map[string]float64                `json:"degraded"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body.Status != "ok" {
+		t.Errorf("status = %q, want ok", body.Status)
+	}
+	if body.Degraded == nil {
+		t.Fatal("expected degraded field in response")
+	}
+	rate, ok := body.Degraded["github"]
+	if !ok {
+		t.Fatal("expected 'github' in degraded map")
+	}
+	if rate <= 0.10 {
+		t.Errorf("degraded rate = %f, want > 0.10", rate)
+	}
+}

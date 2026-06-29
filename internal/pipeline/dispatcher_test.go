@@ -9,12 +9,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	promtestutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest/observer"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
+	apperrors "github.com/fabioluciano/tekton-events-relay/internal/errors"
 	"github.com/fabioluciano/tekton-events-relay/internal/event"
+	"github.com/fabioluciano/tekton-events-relay/internal/metrics"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
 )
 
@@ -34,6 +38,7 @@ type mockHandler struct {
 
 func (m *mockHandler) Name() string              { return m.name }
 func (m *mockHandler) Type() notifier.ActionType { return m.actionType }
+func (m *mockHandler) Close() error              { return nil }
 func (m *mockHandler) Handle(ctx context.Context, _ domain.Event) error {
 	m.callCount++
 	if m.sleepDur > 0 {
@@ -365,6 +370,7 @@ type concurrentTrackerHandler struct {
 
 func (h *concurrentTrackerHandler) Name() string              { return h.name }
 func (h *concurrentTrackerHandler) Type() notifier.ActionType { return h.actionType }
+func (h *concurrentTrackerHandler) Close() error              { return nil }
 func (h *concurrentTrackerHandler) Handle(ctx context.Context, _ domain.Event) error {
 	cur := h.active.Add(1)
 	for {
@@ -631,7 +637,7 @@ func TestDispatcher_NextNotCalledOnHandlerErrors(t *testing.T) {
 }
 
 func TestDispatcher_ProviderFiltering(t *testing.T) {
-	provider := "github"
+	provider := testProviderGitHub
 
 	matching := &mockHandler{name: provider, actionType: notifier.ActionCommitStatus}
 	nonMatching := &mockHandler{name: "gitlab", actionType: notifier.ActionCommitStatus}
@@ -713,7 +719,7 @@ func TestDispatcher_EmptyMatched_WithProviderFiltering(t *testing.T) {
 
 	env := &event.Envelope{
 		CloudEventID: testEventID,
-		Report:       domain.Event{Provider: "github"},
+		Report:       domain.Event{Provider: testProviderGitHub},
 	}
 
 	err := dispatcher.Handle(context.Background(), env)
@@ -804,5 +810,264 @@ func TestDispatcher_WaitError_MergedWithHandlerErrors(t *testing.T) {
 	// At minimum the context error should be present
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Errorf("expected context.DeadlineExceeded in chain, got: %v", err)
+	}
+}
+
+func TestDispatcherBusinessMetrics(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	collectors := metrics.NewCollectors(reg)
+
+	mock := &mockHandler{name: testProviderGitHub, actionType: notifier.ActionCommitStatus}
+	registry := notifier.NewRegistry()
+	registry.Register(mock)
+
+	dispatcher := NewDispatcher(registry, testLogger(), collectors, 10)
+	dispatcher.SetNext(&testHandler{fn: func(_ context.Context, _ *event.Envelope) error {
+		return nil
+	}})
+
+	env := &event.Envelope{
+		CloudEventID: testEventID,
+		Report: domain.Event{
+			Provider: testProviderGitHub,
+			Resource: domain.ResourcePipelineRun,
+			State:    domain.StateSuccess,
+		},
+	}
+
+	err := dispatcher.Handle(context.Background(), env)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	stateVal := promtestutil.ToFloat64(collectors.EventsByStateTotal.WithLabelValues("success"))
+	if stateVal != 1 {
+		t.Errorf("EventsByStateTotal{state=success} = %v, want 1", stateVal)
+	}
+
+	providerVal := promtestutil.ToFloat64(collectors.EventsByProviderTotal.WithLabelValues(testProviderGitHub))
+	if providerVal != 1 {
+		t.Errorf("EventsByProviderTotal{provider=github} = %v, want 1", providerVal)
+	}
+
+	resourceVal := promtestutil.ToFloat64(collectors.EventsByResourceTotal.WithLabelValues("pipelinerun"))
+	if resourceVal != 1 {
+		t.Errorf("EventsByResourceTotal{resource=pipelinerun} = %v, want 1", resourceVal)
+	}
+
+	err = dispatcher.Handle(context.Background(), env)
+	if err != nil {
+		t.Fatalf("expected no error on second call, got: %v", err)
+	}
+
+	stateVal = promtestutil.ToFloat64(collectors.EventsByStateTotal.WithLabelValues("success"))
+	if stateVal != 2 {
+		t.Errorf("EventsByStateTotal{state=success} after 2 calls = %v, want 2", stateVal)
+	}
+}
+
+func TestDispatcherBusinessMetrics_EmptyProvider(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	collectors := metrics.NewCollectors(reg)
+
+	mock := &mockHandler{name: "slack", actionType: notifier.ActionNotify}
+	registry := notifier.NewRegistry()
+	registry.Register(mock)
+
+	dispatcher := NewDispatcher(registry, testLogger(), collectors, 10)
+	dispatcher.SetNext(&testHandler{fn: func(_ context.Context, _ *event.Envelope) error {
+		return nil
+	}})
+
+	env := &event.Envelope{
+		CloudEventID: testEventID,
+		Report: domain.Event{
+			Provider: "",
+			Resource: domain.ResourceEventListener,
+			State:    domain.StateDone,
+		},
+	}
+
+	err := dispatcher.Handle(context.Background(), env)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	providerVal := promtestutil.ToFloat64(collectors.EventsByProviderTotal.WithLabelValues(""))
+	if providerVal != 1 {
+		t.Errorf("EventsByProviderTotal{provider=\"\"} = %v, want 1", providerVal)
+	}
+
+	resourceVal := promtestutil.ToFloat64(collectors.EventsByResourceTotal.WithLabelValues("eventlistener"))
+	if resourceVal != 1 {
+		t.Errorf("EventsByResourceTotal{resource=eventlistener} = %v, want 1", resourceVal)
+	}
+}
+
+func TestFallbackHandler(t *testing.T) {
+	primary := &mockHandler{name: testHandlerPrimary, actionType: notifier.ActionCommitStatus, handleErr: errors.New("permanent failure")}
+	fallback := &mockHandler{name: testHandlerFallback, actionType: notifier.ActionCommitStatus}
+
+	registry := notifier.NewRegistry()
+	registry.Register(primary)
+	registry.Register(fallback)
+
+	dispatcher := NewDispatcher(registry, testLogger(), nil, 10).
+		WithFallbacks(map[string]string{testHandlerPrimary: testHandlerFallback}, nil)
+	dispatcher.SetNext(&testHandler{fn: func(_ context.Context, _ *event.Envelope) error {
+		return nil
+	}})
+
+	env := &event.Envelope{
+		CloudEventID: testEventID,
+		Report:       domain.Event{Provider: testHandlerPrimary},
+	}
+
+	err := dispatcher.Handle(context.Background(), env)
+	if err == nil {
+		t.Fatal("expected error from primary handler failure")
+	}
+	if primary.callCount != 1 {
+		t.Errorf("primary callCount = %d, want 1", primary.callCount)
+	}
+	if fallback.callCount != 1 {
+		t.Errorf("fallback callCount = %d, want 1", fallback.callCount)
+	}
+}
+
+func TestFallbackNoRecursion(t *testing.T) {
+	primaryErr := errors.New("primary failed")
+	fallbackErr := errors.New("fallback also failed")
+
+	primary := &mockHandler{name: testHandlerPrimary, actionType: notifier.ActionCommitStatus, handleErr: primaryErr}
+	fallback := &mockHandler{name: testHandlerFallback, actionType: notifier.ActionCommitStatus, handleErr: fallbackErr}
+
+	registry := notifier.NewRegistry()
+	registry.Register(primary)
+	registry.Register(fallback)
+
+	dispatcher := NewDispatcher(registry, testLogger(), nil, 10).
+		WithFallbacks(map[string]string{testHandlerPrimary: testHandlerFallback}, nil)
+	dispatcher.SetNext(&testHandler{fn: func(_ context.Context, _ *event.Envelope) error {
+		return nil
+	}})
+
+	env := &event.Envelope{
+		CloudEventID: testEventID,
+		Report:       domain.Event{Provider: testHandlerPrimary},
+	}
+
+	err := dispatcher.Handle(context.Background(), env)
+	if err == nil {
+		t.Fatal("expected combined error")
+	}
+
+	if !errors.Is(err, primaryErr) {
+		t.Error("error chain should contain primaryErr")
+	}
+	if !errors.Is(err, fallbackErr) {
+		t.Error("error chain should contain fallbackErr")
+	}
+
+	if primary.callCount != 1 {
+		t.Errorf("primary callCount = %d, want 1 (no recursion)", primary.callCount)
+	}
+	if fallback.callCount != 1 {
+		t.Errorf("fallback callCount = %d, want 1 (no recursion)", fallback.callCount)
+	}
+}
+
+func TestFallbackNotTriggeredOnRetryable(t *testing.T) {
+	retryableErr := apperrors.NewRetryable(errors.New("rate limited"), "rate_limit")
+	primary := &mockHandler{name: testHandlerPrimary, actionType: notifier.ActionCommitStatus, handleErr: retryableErr}
+	fallback := &mockHandler{name: testHandlerFallback, actionType: notifier.ActionCommitStatus}
+
+	registry := notifier.NewRegistry()
+	registry.Register(primary)
+	registry.Register(fallback)
+
+	dispatcher := NewDispatcher(registry, testLogger(), nil, 10).
+		WithFallbacks(map[string]string{testHandlerPrimary: testHandlerFallback}, nil)
+	dispatcher.SetNext(&testHandler{fn: func(_ context.Context, _ *event.Envelope) error {
+		return nil
+	}})
+
+	env := &event.Envelope{
+		CloudEventID: testEventID,
+		Report:       domain.Event{Provider: testHandlerPrimary},
+	}
+
+	err := dispatcher.Handle(context.Background(), env)
+	if err == nil {
+		t.Fatal("expected error from retryable handler failure")
+	}
+	if primary.callCount != 1 {
+		t.Errorf("primary callCount = %d, want 1", primary.callCount)
+	}
+	if fallback.callCount != 0 {
+		t.Errorf("fallback callCount = %d, want 0 (retryable should not trigger fallback)", fallback.callCount)
+	}
+}
+
+func TestFallbackNoDoubleFire(t *testing.T) {
+	primary := &mockHandler{name: testHandlerPrimary, actionType: notifier.ActionCommitStatus}
+	fbOnly := &mockHandler{name: testHandlerFBOnly, actionType: notifier.ActionCommitStatus}
+
+	registry := notifier.NewRegistry()
+	registry.Register(primary)
+	registry.Register(fbOnly)
+
+	dispatcher := NewDispatcher(registry, testLogger(), nil, 10).
+		WithFallbacks(map[string]string{testHandlerPrimary: testHandlerFBOnly}, map[string]bool{testHandlerFBOnly: true})
+	dispatcher.SetNext(&testHandler{fn: func(_ context.Context, _ *event.Envelope) error {
+		return nil
+	}})
+
+	env := &event.Envelope{
+		CloudEventID: testEventID,
+		Report:       domain.Event{Provider: testHandlerPrimary},
+	}
+
+	err := dispatcher.Handle(context.Background(), env)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+
+	if primary.callCount != 1 {
+		t.Errorf("primary callCount = %d, want 1", primary.callCount)
+	}
+	if fbOnly.callCount != 0 {
+		t.Errorf("fallback_only handler callCount = %d, want 0 (excluded from normal fan-out)", fbOnly.callCount)
+	}
+}
+
+func TestFallbackOnly_InvokedWhenPrimaryFails(t *testing.T) {
+	primary := &mockHandler{name: testHandlerPrimary, actionType: notifier.ActionCommitStatus, handleErr: errors.New("permanent")}
+	fbOnly := &mockHandler{name: testHandlerFBOnly, actionType: notifier.ActionCommitStatus}
+
+	registry := notifier.NewRegistry()
+	registry.Register(primary)
+	registry.Register(fbOnly)
+
+	dispatcher := NewDispatcher(registry, testLogger(), nil, 10).
+		WithFallbacks(map[string]string{testHandlerPrimary: testHandlerFBOnly}, map[string]bool{testHandlerFBOnly: true})
+	dispatcher.SetNext(&testHandler{fn: func(_ context.Context, _ *event.Envelope) error {
+		return nil
+	}})
+
+	env := &event.Envelope{
+		CloudEventID: testEventID,
+		Report:       domain.Event{Provider: testHandlerPrimary},
+	}
+
+	err := dispatcher.Handle(context.Background(), env)
+	if err == nil {
+		t.Fatal("expected error from primary failure")
+	}
+	if primary.callCount != 1 {
+		t.Errorf("primary callCount = %d, want 1", primary.callCount)
+	}
+	if fbOnly.callCount != 1 {
+		t.Errorf("fallback_only handler callCount = %d, want 1 (invoked as fallback)", fbOnly.callCount)
 	}
 }

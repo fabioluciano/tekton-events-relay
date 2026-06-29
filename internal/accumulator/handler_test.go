@@ -12,6 +12,12 @@ import (
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
 )
 
+const (
+	testOrg      = "org"
+	testProvider = "github"
+	testRepo     = "repo"
+)
+
 // mockActionHandler records calls to Handle for assertions.
 type mockActionHandler struct {
 	name   string
@@ -25,6 +31,7 @@ func (m *mockActionHandler) Handle(_ context.Context, e domain.Event) error {
 	m.events = append(m.events, e)
 	return nil
 }
+func (m *mockActionHandler) Close() error { return nil }
 
 func newTestHandler(t *testing.T) (*Handler, *mockActionHandler) {
 	t.Helper()
@@ -32,7 +39,7 @@ func newTestHandler(t *testing.T) (*Handler, *mockActionHandler) {
 	log := zaptest.NewLogger(t)
 	buf := NewLRUBuffer(30*time.Second, 100)
 	h := NewHandler("test-accumulator", mock, buf, log)
-	t.Cleanup(h.Close)
+	t.Cleanup(func() { _ = h.Close() })
 	return h, mock
 }
 
@@ -58,7 +65,7 @@ func TestHandler_SkipsNonPipelineRun(t *testing.T) {
 	err := h.Handle(context.Background(), domain.Event{
 		Resource: domain.ResourceTaskRun,
 		RunID:    "uid-123",
-		RunName:  "task-build",
+		RunName:  testTaskBuild,
 		State:    domain.StateSuccess,
 	})
 	if err != nil {
@@ -92,7 +99,7 @@ func TestHandler_AccumulatesNonTerminal(t *testing.T) {
 	err := h.Handle(context.Background(), domain.Event{
 		Resource: domain.ResourceTaskRun,
 		RunID:    "uid-abc",
-		RunName:  "task-build",
+		RunName:  testTaskBuild,
 		State:    domain.StateRunning,
 	})
 	if err != nil {
@@ -122,9 +129,9 @@ func TestHandler_FlushesOnTerminalState(t *testing.T) {
 	if err := h.Handle(ctx, domain.Event{
 		Resource: domain.ResourceTaskRun,
 		RunID:    uid,
-		RunName:  "task-build",
+		RunName:  testTaskBuild,
 		State:    domain.StateRunning,
-		Repo:     domain.Repo{Owner: "org", Name: "repo"},
+		Repo:     domain.Repo{Owner: testOrg, Name: testRepo},
 		PRNumber: &prNum,
 	}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -133,9 +140,9 @@ func TestHandler_FlushesOnTerminalState(t *testing.T) {
 	if err := h.Handle(ctx, domain.Event{
 		Resource: domain.ResourceTaskRun,
 		RunID:    uid,
-		RunName:  "task-test",
+		RunName:  testTaskTest,
 		State:    domain.StateRunning,
-		Repo:     domain.Repo{Owner: "org", Name: "repo"},
+		Repo:     domain.Repo{Owner: testOrg, Name: testRepo},
 		PRNumber: &prNum,
 	}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -148,7 +155,7 @@ func TestHandler_FlushesOnTerminalState(t *testing.T) {
 		RunName:   "pipeline-final",
 		State:     domain.StateSuccess,
 		CommitSHA: "abc123",
-		Repo:      domain.Repo{Owner: "org", Name: "repo"},
+		Repo:      domain.Repo{Owner: testOrg, Name: testRepo},
 		PRNumber:  &prNum,
 	}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -165,10 +172,10 @@ func TestHandler_FlushesOnTerminalState(t *testing.T) {
 	if evt.CommitSHA != "abc123" {
 		t.Errorf("expected commitSHA abc123, got %s", evt.CommitSHA)
 	}
-	if evt.Repo.Owner != "org" {
+	if evt.Repo.Owner != testOrg {
 		t.Errorf("expected repo owner org, got %s", evt.Repo.Owner)
 	}
-	if evt.Repo.Name != "repo" {
+	if evt.Repo.Name != testRepo {
 		t.Errorf("expected repo name repo, got %s", evt.Repo.Name)
 	}
 	if evt.PRNumber == nil || *evt.PRNumber != 42 {
@@ -284,5 +291,208 @@ func TestIsTerminalState(t *testing.T) {
 		if isTerminalState(s) {
 			t.Errorf("expected %s to be non-terminal", s)
 		}
+	}
+}
+
+func TestAccumulatorCloser(t *testing.T) {
+	mock := &mockActionHandler{name: "mock-pr", typ: notifier.ActionPRComment}
+	log := zaptest.NewLogger(t)
+	buf := NewLRUBuffer(30*time.Second, 100)
+	h := NewHandler("test-accumulator", mock, buf, log)
+
+	if err := h.Handle(context.Background(), domain.Event{
+		Resource: domain.ResourceTaskRun,
+		RunID:    testUID,
+		RunName:  "task-1",
+		State:    domain.StateRunning,
+	}); err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+
+	if err := h.Close(); err != nil {
+		t.Fatalf("Close() returned error: %v", err)
+	}
+
+	_, exists := buf.Get(testUID)
+	if exists {
+		t.Error("expected buffer to be empty after Close")
+	}
+
+	if err := h.Close(); err != nil {
+		t.Fatalf("second Close() returned error: %v", err)
+	}
+}
+
+func TestHandler_MultiPipelineRunGrouping(t *testing.T) {
+	h, mock := newTestHandler(t)
+	ctx := context.Background()
+	groupID := "deploy-group-1"
+
+	taskEvents := []domain.Event{
+		{Resource: domain.ResourceTaskRun, RunID: testUID, RunName: testTaskBuild, State: domain.StateRunning, AccumulatorGroupID: groupID},
+		{Resource: domain.ResourceTaskRun, RunID: "uid-2", RunName: testTaskTest, State: domain.StateRunning, AccumulatorGroupID: groupID},
+		{Resource: domain.ResourceTaskRun, RunID: "uid-3", RunName: "task-deploy", State: domain.StateRunning, AccumulatorGroupID: groupID},
+	}
+	for _, evt := range taskEvents {
+		if err := h.Handle(ctx, evt); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	}
+
+	if len(mock.events) != 0 {
+		t.Error("provider should not be called for non-terminal events")
+	}
+
+	pr1 := domain.Event{
+		Resource:           domain.ResourcePipelineRun,
+		RunID:              testUID,
+		RunName:            "pipeline-1",
+		State:              domain.StateSuccess,
+		AccumulatorGroupID: groupID,
+		Provider:           testProvider,
+		Repo:               domain.Repo{Owner: testOrg, Name: testRepo},
+	}
+	if err := h.Handle(ctx, pr1); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(mock.events) != 0 {
+		t.Error("provider should not be called when group is incomplete")
+	}
+
+	pr2 := domain.Event{
+		Resource:           domain.ResourcePipelineRun,
+		RunID:              "uid-2",
+		RunName:            "pipeline-2",
+		State:              domain.StateFailure,
+		AccumulatorGroupID: groupID,
+		Provider:           testProvider,
+		Repo:               domain.Repo{Owner: testOrg, Name: testRepo},
+	}
+	if err := h.Handle(ctx, pr2); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(mock.events) != 0 {
+		t.Error("provider should not be called when group is still incomplete")
+	}
+
+	pr3 := domain.Event{
+		Resource:           domain.ResourcePipelineRun,
+		RunID:              "uid-3",
+		RunName:            "pipeline-3",
+		State:              domain.StateSuccess,
+		AccumulatorGroupID: groupID,
+		Provider:           testProvider,
+		Repo:               domain.Repo{Owner: testOrg, Name: testRepo},
+	}
+	if err := h.Handle(ctx, pr3); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(mock.events) != 1 {
+		t.Fatalf("expected 1 provider call when all group members are terminal, got %d", len(mock.events))
+	}
+
+	evt := mock.events[0]
+	if evt.State != domain.StateSuccess {
+		t.Errorf("expected state Success, got %v", evt.State)
+	}
+	if !strings.Contains(evt.Description, "Pipeline Summary") {
+		t.Error("expected description to contain Pipeline Summary")
+	}
+	if !strings.Contains(evt.Description, testTaskBuild) {
+		t.Error("expected description to contain task-build")
+	}
+	if !strings.Contains(evt.Description, testTaskTest) {
+		t.Error("expected description to contain task-test")
+	}
+	if !strings.Contains(evt.Description, "task-deploy") {
+		t.Error("expected description to contain task-deploy")
+	}
+}
+
+func TestHandler_SingleRunBackwardCompat(t *testing.T) {
+	h, mock := newTestHandler(t)
+	ctx := context.Background()
+
+	if err := h.Handle(ctx, domain.Event{
+		Resource: domain.ResourceTaskRun,
+		RunID:    testUID,
+		RunName:  testTaskBuild,
+		State:    domain.StateRunning,
+	}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if err := h.Handle(ctx, domain.Event{
+		Resource: domain.ResourcePipelineRun,
+		RunID:    testUID,
+		RunName:  "pipeline-1",
+		State:    domain.StateSuccess,
+		Provider: testProvider,
+		Repo:     domain.Repo{Owner: testOrg, Name: testRepo},
+	}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(mock.events) != 1 {
+		t.Fatalf("expected 1 provider call for single run, got %d", len(mock.events))
+	}
+	if mock.events[0].State != domain.StateSuccess {
+		t.Errorf("expected state Success, got %v", mock.events[0].State)
+	}
+}
+
+func TestHandler_GroupTaskRunsAccumulateAcrossUIDs(t *testing.T) {
+	h, mock := newTestHandler(t)
+	ctx := context.Background()
+	groupID := "group-multi"
+
+	taskEvents := []domain.Event{
+		{Resource: domain.ResourceTaskRun, RunID: testUID, RunName: testTaskBuild, State: domain.StateSuccess, AccumulatorGroupID: groupID},
+		{Resource: domain.ResourceTaskRun, RunID: "uid-2", RunName: testTaskTest, State: domain.StateSuccess, AccumulatorGroupID: groupID},
+		{Resource: domain.ResourceTaskRun, RunID: testUID, RunName: "task-lint", State: domain.StateSuccess, AccumulatorGroupID: groupID},
+	}
+	for _, evt := range taskEvents {
+		if err := h.Handle(ctx, evt); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	}
+
+	if err := h.Handle(ctx, domain.Event{
+		Resource:           domain.ResourcePipelineRun,
+		RunID:              testUID,
+		RunName:            "pipeline-1",
+		State:              domain.StateSuccess,
+		AccumulatorGroupID: groupID,
+		Provider:           testProvider,
+		Repo:               domain.Repo{Owner: testOrg, Name: testRepo},
+	}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if err := h.Handle(ctx, domain.Event{
+		Resource:           domain.ResourcePipelineRun,
+		RunID:              "uid-2",
+		RunName:            "pipeline-2",
+		State:              domain.StateSuccess,
+		AccumulatorGroupID: groupID,
+		Provider:           testProvider,
+		Repo:               domain.Repo{Owner: testOrg, Name: testRepo},
+	}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(mock.events) != 1 {
+		t.Fatalf("expected 1 provider call, got %d", len(mock.events))
+	}
+
+	desc := mock.events[0].Description
+	if !strings.Contains(desc, testTaskBuild) {
+		t.Error("expected merged description to contain task-build")
+	}
+	if !strings.Contains(desc, testTaskTest) {
+		t.Error("expected merged description to contain task-test")
+	}
+	if !strings.Contains(desc, "task-lint") {
+		t.Error("expected merged description to contain task-lint")
 	}
 }

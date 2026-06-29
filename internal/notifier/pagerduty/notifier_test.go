@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/fabioluciano/tekton-events-relay/internal/cel"
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/scm"
 )
@@ -506,5 +507,97 @@ func TestNotifyHTTPError(t *testing.T) {
 	err := n.Handle(context.Background(), event)
 	if err == nil {
 		t.Error("expected error when server returns 400")
+	}
+}
+
+func TestSeverityExpr(t *testing.T) {
+	severityExpr, err := cel.CompileString(`event.State == "failure" ? "critical" : "warning"`)
+	if err != nil {
+		t.Fatalf("compile severity_expr: %v", err)
+	}
+
+	receivedPayload := make(map[string]any)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&receivedPayload); err != nil {
+			t.Fatalf("decode payload: %v", err)
+		}
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(`{"status":"success"}`))
+	}))
+	defer server.Close()
+
+	n := New(Config{
+		IntegrationKey: scm.NewStaticToken(testKeyValue),
+		Severity:       testSeverityError,
+		SeverityExpr:   severityExpr,
+	}, nil)
+	n.base.BuildURL = func(_ domain.Event) (string, error) { return server.URL, nil }
+
+	// failure state → critical from CEL expression
+	event := domain.Event{
+		State:       domain.StateFailure,
+		RunName:     testRunID123,
+		RunID:       testRunID123,
+		Namespace:   testNamespaceDefault,
+		Context:     testContextBuild,
+		Description: testDescBuildFailed,
+	}
+	if err := n.Handle(context.Background(), event); err != nil {
+		t.Fatalf("Handle() error = %v", err)
+	}
+	inner, ok := receivedPayload["payload"].(map[string]any)
+	if !ok {
+		t.Fatal("inner payload is not a map")
+	}
+	if inner["severity"] != "critical" {
+		t.Errorf("severity = %v, want critical", inner["severity"])
+	}
+
+	// error state → warning from CEL expression
+	event.State = domain.StateError
+	if err := n.Handle(context.Background(), event); err != nil {
+		t.Fatalf("Handle() error = %v", err)
+	}
+	inner, ok = receivedPayload["payload"].(map[string]any)
+	if !ok {
+		t.Fatal("inner payload is not a map")
+	}
+	if inner["severity"] != "warning" {
+		t.Errorf("severity = %v, want warning", inner["severity"])
+	}
+}
+
+func TestSeverityExpr_EmptyFallsBack(t *testing.T) {
+	receivedPayload := make(map[string]any)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&receivedPayload); err != nil {
+			t.Fatalf("decode payload: %v", err)
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer server.Close()
+
+	// No SeverityExpr — falls back to static Severity
+	n := New(Config{
+		IntegrationKey: scm.NewStaticToken(testKeyValue),
+		Severity:       testSeverityWarning,
+	}, nil)
+	n.base.BuildURL = func(_ domain.Event) (string, error) { return server.URL, nil }
+
+	event := domain.Event{
+		State:     domain.StateFailure,
+		RunName:   testRunID123,
+		RunID:     testRunID123,
+		Namespace: testNamespaceDefault,
+	}
+	if err := n.Handle(context.Background(), event); err != nil {
+		t.Fatalf("Handle() error = %v", err)
+	}
+	inner, ok := receivedPayload["payload"].(map[string]any)
+	if !ok {
+		t.Fatal("inner payload is not a map")
+	}
+	if inner["severity"] != testSeverityWarning {
+		t.Errorf("severity = %v, want warning", inner["severity"])
 	}
 }

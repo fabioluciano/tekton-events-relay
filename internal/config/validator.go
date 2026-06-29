@@ -126,50 +126,7 @@ func ValidateAll(cfg *Config) []ValidationError {
 		errs = append(errs, validateSourceHutInstance(prefix, inst)...)
 	}
 
-	for i, inst := range cfg.Notifiers.Slack {
-		prefix := fmt.Sprintf("notifiers.slack[%d]", i)
-		errs = append(errs, validateSlackInstance(prefix, inst)...)
-	}
-
-	for i, inst := range cfg.Notifiers.Teams {
-		prefix := fmt.Sprintf("notifiers.teams[%d]", i)
-		errs = append(errs, validateTeamsInstance(prefix, inst)...)
-	}
-
-	for i, inst := range cfg.Notifiers.Discord {
-		prefix := fmt.Sprintf("notifiers.discord[%d]", i)
-		errs = append(errs, validateDiscordInstance(prefix, inst)...)
-	}
-
-	for i, inst := range cfg.Notifiers.PagerDuty {
-		prefix := fmt.Sprintf("notifiers.pagerduty[%d]", i)
-		errs = append(errs, validatePagerDutyInstance(prefix, inst)...)
-	}
-
-	for i, inst := range cfg.Notifiers.Datadog {
-		prefix := fmt.Sprintf("notifiers.datadog[%d]", i)
-		errs = append(errs, validateDatadogInstance(prefix, inst)...)
-	}
-
-	for i, inst := range cfg.Notifiers.Webhook {
-		prefix := fmt.Sprintf("notifiers.webhook[%d]", i)
-		errs = append(errs, validateWebhookInstance(prefix, inst)...)
-	}
-
-	for i, inst := range cfg.Notifiers.Grafana {
-		prefix := fmt.Sprintf("notifiers.grafana[%d]", i)
-		errs = append(errs, validateGrafanaInstance(prefix, inst)...)
-	}
-
-	for i, inst := range cfg.Notifiers.Sentry {
-		prefix := fmt.Sprintf("notifiers.sentry[%d]", i)
-		errs = append(errs, validateSentryInstance(prefix, inst)...)
-	}
-
-	for i, inst := range cfg.Notifiers.Email {
-		prefix := fmt.Sprintf("notifiers.email[%d]", i)
-		errs = append(errs, validateEmailInstance(prefix, inst)...)
-	}
+	errs = append(errs, validateNotifierInstances(cfg)...)
 
 	for i, inst := range cfg.Jira {
 		prefix := fmt.Sprintf("jira[%d]", i)
@@ -276,6 +233,8 @@ func (c *Config) Validate() error {
 }
 
 // ValidateTokenReferences validates that all token references exist in the secrets store.
+//
+//nolint:gocyclo // Many config sections to validate; each adds a branch
 func (c *Config) ValidateTokenReferences(log *zap.Logger) {
 	checkToken := func(name, token string) {
 		if token == "" {
@@ -339,9 +298,22 @@ func (c *Config) ValidateTokenReferences(log *zap.Logger) {
 			}
 		}
 	}
+	for _, inst := range c.Notifiers.Mattermost {
+		if inst.Auth != nil {
+			checkToken("notifiers.mattermost.auth.webhook_url_file", inst.Auth.WebhookURLFile)
+			if inst.Auth.BotToken != nil {
+				checkToken("notifiers.mattermost.auth.bot_token.token_file", inst.Auth.BotToken.TokenFile)
+			}
+		}
+	}
 	for _, inst := range c.Notifiers.Datadog {
 		if inst.Auth != nil {
 			checkToken("notifiers.datadog.auth.api_key_file", inst.Auth.APIKeyFile)
+		}
+	}
+	for _, inst := range c.Notifiers.Honeycomb {
+		if inst.Auth != nil {
+			checkToken("notifiers.honeycomb.auth.api_key_file", inst.Auth.APIKeyFile)
 		}
 	}
 	for _, inst := range c.Notifiers.PagerDuty {
@@ -352,4 +324,97 @@ func (c *Config) ValidateTokenReferences(log *zap.Logger) {
 	if c.Server.Auth.Enabled {
 		checkToken("server.auth.secret_file", c.Server.Auth.SecretFile)
 	}
+}
+
+// validateNotifierInstances validates all notifier instance types.
+// Extracted from validateNotifiers to keep cyclomatic complexity manageable.
+func validateNotifierInstances(cfg *Config) []ValidationError {
+	var errs []ValidationError
+
+	for i, inst := range cfg.Notifiers.Slack {
+		prefix := fmt.Sprintf("notifiers.slack[%d]", i)
+		errs = append(errs, validateSlackInstance(prefix, inst)...)
+	}
+
+	for i, inst := range cfg.Notifiers.Teams {
+		prefix := fmt.Sprintf("notifiers.teams[%d]", i)
+		errs = append(errs, validateTeamsInstance(prefix, inst)...)
+	}
+
+	for i, inst := range cfg.Notifiers.Discord {
+		prefix := fmt.Sprintf("notifiers.discord[%d]", i)
+		errs = append(errs, validateDiscordInstance(prefix, inst)...)
+	}
+
+	for i, inst := range cfg.Notifiers.PagerDuty {
+		prefix := fmt.Sprintf("notifiers.pagerduty[%d]", i)
+		errs = append(errs, validatePagerDutyInstance(prefix, inst)...)
+	}
+
+	for i, inst := range cfg.Notifiers.Datadog {
+		prefix := fmt.Sprintf("notifiers.datadog[%d]", i)
+		errs = append(errs, validateDatadogInstance(prefix, inst)...)
+	}
+
+	for i, inst := range cfg.Notifiers.Webhook {
+		prefix := fmt.Sprintf("notifiers.webhook[%d]", i)
+		errs = append(errs, validateWebhookInstance(prefix, inst)...)
+	}
+
+	for i, inst := range cfg.Notifiers.Grafana {
+		prefix := fmt.Sprintf("notifiers.grafana[%d]", i)
+		errs = append(errs, validateGrafanaInstance(prefix, inst)...)
+	}
+
+	for i, inst := range cfg.Notifiers.Sentry {
+		prefix := fmt.Sprintf("notifiers.sentry[%d]", i)
+		errs = append(errs, validateSentryInstance(prefix, inst)...)
+	}
+
+	for i, inst := range cfg.Notifiers.Mattermost {
+		prefix := fmt.Sprintf("notifiers.mattermost[%d]", i)
+		errs = append(errs, validateMattermostInstance(prefix, inst)...)
+	}
+
+	for i, inst := range cfg.Notifiers.Telegram {
+		prefix := fmt.Sprintf("notifiers.telegram[%d]", i)
+		errs = append(errs, validateTelegramInstance(prefix, inst)...)
+	}
+
+	for i, inst := range cfg.Notifiers.IncidentIO {
+		prefix := fmt.Sprintf("notifiers.incidentio[%d]", i)
+		errs = append(errs, validateIncidentIOInstance(prefix, inst)...)
+	}
+
+	for i, inst := range cfg.Notifiers.NewRelic {
+		prefix := fmt.Sprintf("notifiers.newrelic[%d]", i)
+		errs = append(errs, validateNewRelicInstance(prefix, inst)...)
+	}
+
+	for i, inst := range cfg.Notifiers.Honeycomb {
+		prefix := fmt.Sprintf("notifiers.honeycomb[%d]", i)
+		errs = append(errs, validateHoneycombInstance(prefix, inst)...)
+	}
+
+	for i, inst := range cfg.Notifiers.Email {
+		prefix := fmt.Sprintf("notifiers.email[%d]", i)
+		errs = append(errs, validateEmailInstance(prefix, inst)...)
+	}
+
+	for i, inst := range cfg.Notifiers.NATS {
+		prefix := fmt.Sprintf("notifiers.nats[%d]", i)
+		errs = append(errs, validateNATSInstance(prefix, inst)...)
+	}
+
+	for i, inst := range cfg.Notifiers.RabbitMQ {
+		prefix := fmt.Sprintf("notifiers.rabbitmq[%d]", i)
+		errs = append(errs, validateRabbitMQInstance(prefix, inst)...)
+	}
+
+	for i, inst := range cfg.Notifiers.RedisPubSub {
+		prefix := fmt.Sprintf("notifiers.redispubsub[%d]", i)
+		errs = append(errs, validateRedisPubSubInstance(prefix, inst)...)
+	}
+
+	return errs
 }

@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/fabioluciano/tekton-events-relay/internal/cel"
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
 	"github.com/fabioluciano/tekton-events-relay/internal/httpx"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
@@ -36,6 +37,7 @@ const (
 type Config struct {
 	IntegrationKey       scm.TokenRefresher // PagerDuty service routing key
 	Severity             string             // critical, error, warning, info — default: critical
+	SeverityExpr         *cel.StringProgram // CEL expression evaluated per event for dynamic severity
 	AcknowledgeOnRunning bool               // when true, in-progress (running) events send an acknowledge
 	// HTTPClient overrides the HTTP client. When nil, notifier.DefaultHTTPClient() is used.
 	HTTPClient *http.Client
@@ -117,6 +119,13 @@ func (n *Notifier) payload(e domain.Event, integrationKey string) (any, error) {
 		return nil, fmt.Errorf("unsupported state for pagerduty: %s", e.State)
 	}
 
+	severity := n.cfg.Severity
+	if n.cfg.SeverityExpr != nil {
+		if s, err := n.cfg.SeverityExpr.EvalString(e); err == nil && s != "" {
+			severity = s
+		}
+	}
+
 	p := map[string]any{
 		"routing_key":  integrationKey,
 		"event_action": action,
@@ -124,7 +133,7 @@ func (n *Notifier) payload(e domain.Event, integrationKey string) (any, error) {
 		"payload": map[string]any{
 			"summary":   fmt.Sprintf("[%s] %s — %s", e.State, e.Context, e.Description),
 			"source":    fmt.Sprintf("%s/%s", e.Namespace, e.RunName),
-			"severity":  n.cfg.Severity,
+			"severity":  severity,
 			"component": e.Context,
 			"group":     e.Namespace,
 			"custom_details": map[string]string{
@@ -144,3 +153,6 @@ func (n *Notifier) payload(e domain.Event, integrationKey string) (any, error) {
 
 	return p, nil
 }
+
+// Close is a no-op; this handler holds no resources requiring cleanup.
+func (n *Notifier) Close() error { return nil }

@@ -6,10 +6,14 @@ package dlq
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/event"
 )
+
+// ErrStopScan is returned by a Scan callback to stop iteration early without error.
+var ErrStopScan = errors.New("stop scan")
 
 // DeadEvent is a failed event preserved for inspection and replay.
 type DeadEvent struct {
@@ -18,6 +22,32 @@ type DeadEvent struct {
 	Cause      string          `json:"cause"`
 	RetryCount int             `json:"retry_count"` // times this event was replayed
 	Envelope   *event.Envelope `json:"envelope"`
+}
+
+// ReplayFilter narrows replay to matching dead events.
+// Zero-value fields are ignored (no constraint).
+type ReplayFilter struct {
+	Provider string    `json:"provider,omitempty"`
+	State    string    `json:"state,omitempty"`
+	After    time.Time `json:"after,omitempty"`
+}
+
+// Matches reports whether the dead event satisfies all non-zero filter fields.
+func (f ReplayFilter) Matches(e DeadEvent) bool {
+	if f.Provider != "" {
+		if e.Envelope == nil || e.Envelope.Report.Provider != f.Provider {
+			return false
+		}
+	}
+	if f.State != "" {
+		if e.Envelope == nil || string(e.Envelope.Report.State) != f.State {
+			return false
+		}
+	}
+	if !f.After.IsZero() && e.FailedAt.Before(f.After) {
+		return false
+	}
+	return true
 }
 
 // Queue stores dead events.
@@ -31,5 +61,9 @@ type Queue interface {
 	Remove(ctx context.Context, id string) error
 	// Size reports the number of stored events.
 	Size(ctx context.Context) (int, error)
+	// Scan iterates over all dead events without loading the full file into
+	// memory. The callback is invoked once per entry; returning a non-nil
+	// error from fn stops iteration and propagates the error.
+	Scan(ctx context.Context, fn func(DeadEvent) error) error
 	Close() error
 }

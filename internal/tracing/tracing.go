@@ -7,16 +7,17 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/sdk/resource"
-	"go.opentelemetry.io/otel/sdk/trace"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
 )
 
 // Init configures a global TracerProvider with an OTLP HTTP exporter.
 // If endpoint is empty, a noop TracerProvider is set (feature disabled).
 // When insecure is false, the exporter uses TLS (HTTPS).
-func Init(ctx context.Context, endpoint, serviceName string, insecure bool) (*trace.TracerProvider, error) {
+// sampleRate controls the trace sampling ratio (0.0 = none, 1.0 = all).
+func Init(ctx context.Context, endpoint, serviceName string, insecure bool, sampleRate float64) (*sdktrace.TracerProvider, error) {
 	if endpoint == "" {
-		tp := trace.NewTracerProvider()
+		tp := sdktrace.NewTracerProvider()
 		otel.SetTracerProvider(tp)
 		return tp, nil
 	}
@@ -42,9 +43,12 @@ func Init(ctx context.Context, endpoint, serviceName string, insecure bool) (*tr
 		return nil, err
 	}
 
-	tp := trace.NewTracerProvider(
-		trace.WithBatcher(exporter),
-		trace.WithResource(res),
+	tp := sdktrace.NewTracerProvider(
+		sdktrace.WithBatcher(exporter),
+		sdktrace.WithResource(res),
+		sdktrace.WithSampler(
+			sdktrace.ParentBased(sdktrace.TraceIDRatioBased(sampleRate)),
+		),
 	)
 	otel.SetTracerProvider(tp)
 

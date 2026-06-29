@@ -5,10 +5,12 @@ package grafana
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"text/template"
 	"time"
 
@@ -25,10 +27,15 @@ var _ notifier.ActionHandler = (*Notifier)(nil)
 
 // Notifier posts annotations to Grafana.
 type Notifier struct {
-	base     *notifier.Base
-	name     string
-	tags     []string
-	template *template.Template
+	base          *notifier.Base
+	name          string
+	tags          []string
+	template      *template.Template
+	dashboardUIDs []string
+	panelID       int
+	token         scm.TokenRefresher
+	baseURL       string
+	log           *zap.Logger
 }
 
 // Config configures the Grafana notifier.
@@ -41,8 +48,11 @@ type Config struct {
 	Tags         []string
 	Template     string
 	DashboardUID string
-	PanelID      int
-	Log          *zap.Logger
+	// DashboardUIDs creates one annotation per UID in parallel. When set it
+	// overrides DashboardUID.
+	DashboardUIDs []string
+	PanelID       int
+	Log           *zap.Logger
 	// HTTPClient overrides the HTTP client. When nil, httpx.NewClient() is used.
 	HTTPClient *http.Client
 	// RetryPolicy overrides the global retry policy. When nil, the global default is used.
@@ -81,7 +91,26 @@ func New(cfg Config) (*Notifier, error) {
 		return nil, fmt.Errorf("grafana: token refresher is required")
 	}
 
-	n := &Notifier{name: cfg.Name, tags: cfg.Tags, template: tmpl}
+	// Normalize: singular DashboardUID becomes a one-element DashboardUIDs
+	// when DashboardUIDs is not explicitly set.
+	dashboardUIDs := cfg.DashboardUIDs
+	if len(dashboardUIDs) == 0 && cfg.DashboardUID != "" {
+		dashboardUIDs = []string{cfg.DashboardUID}
+	}
+
+	n := &Notifier{
+		name:          cfg.Name,
+		tags:          cfg.Tags,
+		template:      tmpl,
+		dashboardUIDs: dashboardUIDs,
+		panelID:       cfg.PanelID,
+		token:         cfg.Token,
+		baseURL:       strings.TrimRight(cfg.URL, "/"),
+		log:           cfg.Log,
+	}
+	if n.log == nil {
+		n.log = zap.NewNop()
+	}
 	url := strings.TrimRight(cfg.URL, "/") + "/api/annotations"
 	token := cfg.Token
 
@@ -104,27 +133,11 @@ func New(cfg Config) (*Notifier, error) {
 			return nil
 		},
 		BuildPayload: func(e domain.Event) (any, error) {
-			var buf bytes.Buffer
-			if err := tmpl.Execute(&buf, e); err != nil {
-				return nil, fmt.Errorf("execute template: %w", err)
+			uid := ""
+			if len(n.dashboardUIDs) == 1 {
+				uid = n.dashboardUIDs[0]
 			}
-			tags := append([]string{"tekton-events-relay", string(e.State)}, n.tags...)
-			start, end := annotationTimes(e)
-			payload := map[string]any{
-				"time": start,
-				"text": buf.String(),
-				"tags": tags,
-			}
-			if end != nil {
-				payload["timeEnd"] = *end
-			}
-			if cfg.DashboardUID != "" {
-				payload["dashboardUID"] = cfg.DashboardUID
-			}
-			if cfg.PanelID != 0 {
-				payload["panelId"] = cfg.PanelID
-			}
-			return payload, nil
+			return n.buildPayload(e, uid)
 		},
 	}
 	return n, nil
@@ -152,7 +165,94 @@ func (n *Notifier) Name() string { return n.name }
 // Type returns the action type.
 func (n *Notifier) Type() notifier.ActionType { return notifier.ActionNotify }
 
-// Handle posts the annotation.
+// Handle posts the annotation. When DashboardUIDs is set, one annotation per
+// UID is created in parallel.
 func (n *Notifier) Handle(ctx context.Context, e domain.Event) error {
-	return n.base.Send(ctx, e)
+	if len(n.dashboardUIDs) <= 1 {
+		return n.base.Send(ctx, e)
+	}
+
+	var (
+		wg   sync.WaitGroup
+		mu   sync.Mutex
+		errs []error
+	)
+	for _, uid := range n.dashboardUIDs {
+		wg.Add(1)
+		go func(dashUID string) {
+			defer wg.Done()
+			if err := n.sendForDashboard(ctx, e, dashUID); err != nil {
+				mu.Lock()
+				errs = append(errs, err)
+				mu.Unlock()
+			}
+		}(uid)
+	}
+	wg.Wait()
+	if len(errs) > 0 {
+		return fmt.Errorf("grafana: %d dashboard annotation(s) failed: %w", len(errs), errs[0])
+	}
+	return nil
 }
+
+// sendForDashboard sends a single annotation scoped to the given dashboard UID.
+func (n *Notifier) sendForDashboard(ctx context.Context, e domain.Event, dashboardUID string) error {
+	payload, err := n.buildPayload(e, dashboardUID)
+	if err != nil {
+		return err
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal payload: %w", err)
+	}
+	u, err := n.base.BuildURL(e)
+	if err != nil {
+		return fmt.Errorf("build url: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", n.base.UserAgent)
+	if err := n.base.Auth(req); err != nil {
+		return fmt.Errorf("auth: %w", err)
+	}
+	resp, err := n.base.HTTP.Do(req)
+	if err != nil {
+		return fmt.Errorf("send: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode >= 300 {
+		return fmt.Errorf("grafana returned %d", resp.StatusCode)
+	}
+	return nil
+}
+
+func (n *Notifier) buildPayload(e domain.Event, dashboardUID string) (any, error) {
+	var buf bytes.Buffer
+	if err := n.template.Execute(&buf, e); err != nil {
+		return nil, fmt.Errorf("execute template: %w", err)
+	}
+	tags := append([]string{"tekton-events-relay", string(e.State)}, n.tags...)
+	start, end := annotationTimes(e)
+	payload := map[string]any{
+		"time": start,
+		"text": buf.String(),
+		"tags": tags,
+	}
+	if end != nil {
+		payload["timeEnd"] = *end
+	}
+	if dashboardUID != "" {
+		payload["dashboardUID"] = dashboardUID
+	}
+	if n.panelID != 0 {
+		payload["panelId"] = n.panelID
+	}
+	return payload, nil
+}
+
+// Close is a no-op; this handler holds no resources requiring cleanup.
+func (n *Notifier) Close() error { return nil }

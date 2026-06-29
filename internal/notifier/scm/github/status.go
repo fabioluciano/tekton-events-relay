@@ -91,3 +91,6 @@ var githubStateMap = scm.StateMap{
 	domain.StateError:    stateError,
 	domain.StateCanceled: stateError,
 }
+
+// Close is a no-op; this handler holds no resources requiring cleanup.
+func (r *StatusReporter) Close() error { return nil }

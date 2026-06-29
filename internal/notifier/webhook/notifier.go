@@ -10,16 +10,23 @@ package webhook
 import (
 	"go.uber.org/zap"
 
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 
 	"github.com/itchyny/gojq"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
+	"github.com/fabioluciano/tekton-events-relay/internal/httpx"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
 )
+
+// Compile-time checks.
+var _ notifier.ActionHandler = (*Notifier)(nil)
 
 // Payload field names for webhook events.
 const (
@@ -42,6 +49,10 @@ type Config struct {
 	Auth      *ResolvedAuth
 	Transform string            // gojq expression to transform payload
 	Headers   map[string]string // custom headers (Authorization, X-Token, etc.)
+	// HTTPClient overrides the HTTP client. When nil, httpx.NewClient() is used.
+	HTTPClient *http.Client
+	// RetryPolicy overrides the global retry policy. When nil, the global default is used.
+	RetryPolicy *httpx.RetryPolicy
 }
 
 // Notifier sends events to a generic HTTP webhook endpoint.
@@ -69,13 +80,18 @@ func New(cfg Config, log *zap.Logger) (*Notifier, error) {
 		n.transform = code
 	}
 
+	httpClient := httpx.NewClient()
+	if cfg.HTTPClient != nil {
+		httpClient = cfg.HTTPClient
+	}
 	n.base = &notifier.Base{
-		HTTP:         notifier.DefaultHTTPClient(),
+		HTTP:         httpClient,
 		BuildURL:     func(_ domain.Event) (string, error) { return cfg.URL, validateURL(cfg.URL) },
 		BuildPayload: n.payload,
 		Auth:         n.auth,
 		UserAgent:    notifier.UserAgent,
 		Log:          log,
+		RetryPolicy:  cfg.RetryPolicy,
 	}
 	return n, nil
 }
@@ -89,6 +105,67 @@ func (n *Notifier) Type() notifier.ActionType { return notifier.ActionNotify }
 // Handle sends the event via webhook.
 func (n *Notifier) Handle(ctx context.Context, e domain.Event) error {
 	return n.base.Send(ctx, e)
+}
+
+// Close is a no-op; this handler holds no resources requiring cleanup.
+func (n *Notifier) Close() error { return nil }
+
+// Flush sends multiple events as a single JSON array payload to the webhook URL.
+// If a gojq transform is configured, each event is transformed independently
+// before being wrapped in an array.
+func (n *Notifier) Flush(ctx context.Context, events []domain.Event) error {
+	if len(events) == 0 {
+		return nil
+	}
+
+	payloads := make([]any, 0, len(events))
+	for _, e := range events {
+		p, err := n.payload(e)
+		if err != nil {
+			return fmt.Errorf("webhook batch payload: %w", err)
+		}
+		payloads = append(payloads, p)
+	}
+
+	url, err := n.base.BuildURL(events[0])
+	if err != nil {
+		return fmt.Errorf("build url: %w", err)
+	}
+
+	body, err := json.Marshal(payloads)
+	if err != nil {
+		return fmt.Errorf("marshal batch payload: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", notifier.UserAgent)
+
+	if n.base.Auth != nil {
+		if err := n.base.Auth(req); err != nil {
+			return fmt.Errorf("apply auth: %w", err)
+		}
+	}
+
+	rp := httpx.DefaultRetryPolicy()
+	if n.base.RetryPolicy != nil {
+		rp = *n.base.RetryPolicy
+	}
+	resp, err := httpx.DoWithRetryPolicy(n.base.HTTP, req, rp)
+	if err != nil {
+		return fmt.Errorf("webhook batch: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode >= 300 {
+		buf, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("webhook batch responded %d: %s", resp.StatusCode, string(buf))
+	}
+	return nil
 }
 
 // payload builds the webhook payload from the domain.Event.

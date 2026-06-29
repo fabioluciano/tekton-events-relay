@@ -22,6 +22,7 @@ func (s *stub) Handle(_ context.Context, _ domain.Event) error {
 	s.called++
 	return s.err
 }
+func (s *stub) Close() error { return nil }
 
 func TestRegistry_FanOut(t *testing.T) {
 	reg := NewRegistry()

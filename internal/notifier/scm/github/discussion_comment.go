@@ -147,3 +147,6 @@ func (h *DiscussionCommentHandler) addDiscussionComment(ctx context.Context, dis
 	_, err := h.client.DoGraphQL(ctx, mutation, variables)
 	return err
 }
+
+// Close is a no-op; this handler holds no resources requiring cleanup.
+func (h *DiscussionCommentHandler) Close() error { return nil }

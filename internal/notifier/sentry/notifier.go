@@ -12,6 +12,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/fabioluciano/tekton-events-relay/internal/cel"
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
 	"github.com/fabioluciano/tekton-events-relay/internal/httpx"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
@@ -22,13 +23,15 @@ const defaultBaseURL = "https://sentry.io"
 
 // Notifier creates Sentry releases and deploys.
 type Notifier struct {
-	name     string
-	baseURL  string
-	token    scm.TokenRefresher
-	org      string
-	projects []string
-	http     *http.Client
-	log      *zap.Logger
+	name            string
+	baseURL         string
+	token           scm.TokenRefresher
+	org             string
+	projects        []string
+	environmentExpr *cel.StringProgram
+	http            *http.Client
+	retryPolicy     *httpx.RetryPolicy
+	log             *zap.Logger
 }
 
 // Config configures the Sentry notifier.
@@ -40,7 +43,14 @@ type Config struct {
 	Token    scm.TokenRefresher
 	Org      string
 	Projects []string
-	Log      *zap.Logger
+	// EnvironmentExpr is a CEL expression evaluated per event for dynamic
+	// environment mapping. When nil, event.Namespace is used.
+	EnvironmentExpr *cel.StringProgram
+	Log             *zap.Logger
+	// HTTPClient overrides the HTTP client. When nil, httpx.NewClient() is used.
+	HTTPClient *http.Client
+	// RetryPolicy overrides the global retry policy. When nil, the global default is used.
+	RetryPolicy *httpx.RetryPolicy
 }
 
 // validateURL checks that a URL has an http or https scheme.
@@ -76,14 +86,20 @@ func New(cfg Config) *Notifier {
 	if log == nil {
 		log = zap.NewNop()
 	}
+	httpClient := httpx.NewClient()
+	if cfg.HTTPClient != nil {
+		httpClient = cfg.HTTPClient
+	}
 	return &Notifier{
-		name:     cfg.Name,
-		baseURL:  strings.TrimRight(base, "/"),
-		token:    cfg.Token,
-		org:      cfg.Org,
-		projects: cfg.Projects,
-		http:     notifier.DefaultHTTPClient(),
-		log:      log,
+		name:            cfg.Name,
+		baseURL:         strings.TrimRight(base, "/"),
+		token:           cfg.Token,
+		org:             cfg.Org,
+		projects:        cfg.Projects,
+		environmentExpr: cfg.EnvironmentExpr,
+		http:            httpClient,
+		retryPolicy:     cfg.RetryPolicy,
+		log:             log,
 	}
 }
 
@@ -105,6 +121,11 @@ func (n *Notifier) Handle(ctx context.Context, e domain.Event) error {
 
 	version := e.CommitSHA
 	environment := e.Context
+	if n.environmentExpr != nil {
+		if env, evalErr := n.environmentExpr.EvalString(e); evalErr == nil && env != "" {
+			environment = env
+		}
+	}
 	if environment == "" {
 		environment = "production"
 	}
@@ -144,7 +165,11 @@ func (n *Notifier) post(ctx context.Context, url string, payload any) error {
 	req.Header.Set("Authorization", "Bearer "+tok)
 	req.Header.Set("User-Agent", notifier.UserAgent)
 
-	resp, err := httpx.DoWithRetryPolicy(n.http, req, httpx.DefaultRetryPolicy())
+	rp := httpx.DefaultRetryPolicy()
+	if n.retryPolicy != nil {
+		rp = *n.retryPolicy
+	}
+	resp, err := httpx.DoWithRetryPolicy(n.http, req, rp)
 	if err != nil {
 		return err
 	}
@@ -155,3 +180,6 @@ func (n *Notifier) post(ctx context.Context, url string, payload any) error {
 	}
 	return nil
 }
+
+// Close is a no-op; this handler holds no resources requiring cleanup.
+func (n *Notifier) Close() error { return nil }

@@ -53,9 +53,9 @@ func (a *Handler) Type() notifier.ActionType {
 }
 
 // Handle processes events:
-//   - TaskRun: accumulate in buffer
+//   - TaskRun: accumulate in buffer (using group key if present)
 //   - PipelineRun non-terminal: accumulate in buffer
-//   - PipelineRun terminal: flush buffer and post aggregate comment via provider
+//   - PipelineRun terminal: check group completion or flush single run
 //
 // Other events are ignored.
 func (a *Handler) Handle(ctx context.Context, event domain.Event) error {
@@ -64,12 +64,19 @@ func (a *Handler) Handle(ctx context.Context, event domain.Event) error {
 		return nil
 	}
 
-	// Accumulate both TaskRun and PipelineRun events
+	groupID := event.AccumulatorGroupID
+
+	if groupID != "" {
+		return a.handleGrouped(ctx, event, groupID, uid)
+	}
+	return a.handleSingle(ctx, event, uid)
+}
+
+func (a *Handler) handleSingle(ctx context.Context, event domain.Event, uid string) error {
 	if event.Resource == domain.ResourceTaskRun || event.Resource == domain.ResourcePipelineRun {
-		a.buffer.Add(uid, &event)
+		a.buffer.Add(ctx, uid, &event)
 	}
 
-	// Only flush on terminal PipelineRun
 	if event.Resource == domain.ResourcePipelineRun && isTerminalState(event.State) {
 		return a.flushAndPost(ctx, uid, event)
 	}
@@ -77,9 +84,28 @@ func (a *Handler) Handle(ctx context.Context, event domain.Event) error {
 	return nil
 }
 
-// Close stops the background expiry goroutine of the internal buffer.
-func (a *Handler) Close() {
-	a.buffer.Close()
+func (a *Handler) handleGrouped(ctx context.Context, event domain.Event, groupID, uid string) error {
+	if event.Resource == domain.ResourceTaskRun || event.Resource == domain.ResourcePipelineRun {
+		a.buffer.AddWithGroup(ctx, groupID, uid, &event)
+	}
+
+	if event.Resource == domain.ResourcePipelineRun && isTerminalState(event.State) {
+		if a.buffer.IsGroupComplete(groupID) {
+			return a.flushGroupAndPost(ctx, groupID, event)
+		}
+		a.log.Info("group member terminal, waiting for remaining members",
+			zap.String("group_id", groupID),
+			zap.String("uid", uid),
+			zap.String("state", string(event.State)),
+		)
+	}
+
+	return nil
+}
+
+// Close releases resources held by the buffer.
+func (a *Handler) Close() error {
+	return a.buffer.Close()
 }
 
 // SummaryData is passed to custom templates when rendering pipeline summaries.
@@ -100,7 +126,7 @@ type TaskSummary struct {
 
 // flushAndPost retrieves accumulated state and posts aggregate comment.
 func (a *Handler) flushAndPost(ctx context.Context, uid string, finalEvent domain.Event) error {
-	state, exists := a.buffer.Flush(uid)
+	state, exists := a.buffer.Flush(ctx, uid)
 	if !exists || len(state.Tasks) == 0 {
 		return nil
 	}
@@ -128,6 +154,41 @@ func (a *Handler) flushAndPost(ctx context.Context, uid string, finalEvent domai
 
 	a.log.Info("posting aggregate pipeline summary",
 		zap.String("uid", uid),
+		zap.Int("task_count", len(state.Tasks)),
+	)
+
+	return a.provider.Handle(ctx, aggregateEvent)
+}
+
+func (a *Handler) flushGroupAndPost(ctx context.Context, groupID string, finalEvent domain.Event) error {
+	state, exists := a.buffer.FlushGroup(ctx, groupID)
+	if !exists || len(state.Tasks) == 0 {
+		return nil
+	}
+
+	var markdown string
+	if a.tmpl != nil {
+		markdown = renderWithTemplate(a.tmpl, state, finalEvent)
+	} else {
+		markdown = generateMarkdown(state)
+	}
+
+	aggregateEvent := domain.Event{
+		Provider:    finalEvent.Provider,
+		Resource:    domain.ResourcePipelineRun,
+		RunName:     finalEvent.RunName,
+		RunID:       finalEvent.RunID,
+		Namespace:   finalEvent.Namespace,
+		State:       finalEvent.State,
+		Context:     "tekton/pipeline-summary",
+		Description: markdown,
+		CommitSHA:   finalEvent.CommitSHA,
+		Repo:        finalEvent.Repo,
+		PRNumber:    finalEvent.PRNumber,
+	}
+
+	a.log.Info("posting aggregate group pipeline summary",
+		zap.String("group_id", groupID),
 		zap.Int("task_count", len(state.Tasks)),
 	)
 

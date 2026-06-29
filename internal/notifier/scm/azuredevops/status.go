@@ -77,3 +77,6 @@ var azureStateMap = scm.StateMap{
 	domain.StateError:    "error",
 	domain.StateCanceled: "error",
 }
+
+// Close is a no-op; this handler holds no resources requiring cleanup.
+func (r *StatusReporter) Close() error { return nil }

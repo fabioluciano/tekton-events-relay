@@ -25,6 +25,7 @@ func (m *mockActionHandler) Handle(_ context.Context, _ domain.Event) error {
 	m.called = true
 	return nil
 }
+func (m *mockActionHandler) Close() error { return nil }
 
 func TestCELIntegration_EndToEnd(t *testing.T) {
 	logger := zap.NewNop()

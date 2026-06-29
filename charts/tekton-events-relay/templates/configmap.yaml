@@ -112,6 +112,14 @@ data:
       allow_customrun: {{ .Values.config.filter.allow_customrun }}
       allow_eventlistener: {{ .Values.config.filter.allow_eventlistener }}
       ignore_unknown: {{ .Values.config.filter.ignore_unknown }}
+      allow_namespaces:
+      {{- range .Values.config.filter.allow_namespaces }}
+        - {{ . | quote }}
+      {{- end }}
+      deny_namespaces:
+      {{- range .Values.config.filter.deny_namespaces }}
+        - {{ . | quote }}
+      {{- end }}
 
     {{- if .Values.config.tracing }}
     {{- if .Values.config.tracing.endpoint }}
@@ -763,6 +771,30 @@ data:
           {{- end }}
           {{- if .when }}
           when: {{ .when | quote }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+
+      {{- if .Values.config.notifiers.opsgenie }}
+      opsgenie:
+        {{- range .Values.config.notifiers.opsgenie }}
+        - name: {{ .name }}
+          enabled: {{ .enabled }}
+          {{- if .api_key }}
+          auth:
+            api_key_file: {{ include "tekton-events-relay.resolveValue" (dict "field" .api_key "provider" "opsgenie" "instance" .name "key" (default "api_key" .api_key.secretRef.key)) }}
+          {{- end }}
+          {{- if .team_name }}
+          team_name: {{ .team_name | quote }}
+          {{- end }}
+          {{- if .priority }}
+          priority: {{ .priority | quote }}
+          {{- end }}
+          {{- if .when }}
+          when: {{ .when | quote }}
+          {{- end }}
+          {{- if .dedupe }}
+          dedupe: true
           {{- end }}
         {{- end }}
       {{- end }}

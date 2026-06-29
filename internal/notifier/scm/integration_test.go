@@ -350,3 +350,5 @@ func (a *statusHandlerAdapter) Handle(ctx context.Context, e domain.Event) error
 	// Delegate to wrapped handler
 	return a.handler.Handle(ctx, e)
 }
+
+func (a *statusHandlerAdapter) Close() error { return a.handler.Close() }

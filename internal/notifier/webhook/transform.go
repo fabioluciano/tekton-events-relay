@@ -7,7 +7,7 @@ import (
 	"github.com/itchyny/gojq"
 )
 
-// ApplyTransform applies a compiled gojq query to the input payload.
+// ApplyTransform applies a compiled, trusted administrator-configured gojq query to the input payload.
 // Returns the transformed output or an error if the transform fails.
 //
 // Behavioral Rules:

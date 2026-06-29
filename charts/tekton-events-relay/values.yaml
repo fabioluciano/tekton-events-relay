@@ -237,9 +237,10 @@ config:
         secretRef:
           name: webhook-secret
           key: hmac-key
-      # -- Replay protection: require an X-Webhook-Timestamp header (unix
-      # seconds) within timestamp_tolerance of the server clock
-      validate_timestamp: false
+      # -- Replay protection for hmac-sha256 auth: require an
+      # X-Webhook-Timestamp header (unix seconds) within timestamp_tolerance of
+      # the server clock. Required when type is hmac-sha256.
+      validate_timestamp: true
       # -- Accepted clock skew for replay protection (Go duration format)
       timestamp_tolerance: 5m
 
@@ -362,6 +363,10 @@ config:
     allow_eventlistener: false
     # -- Ignore unknown event types
     ignore_unknown: true
+    # -- Namespace allow list (path.Match patterns). Empty = allow all.
+    allow_namespaces: []
+    # -- Namespace deny list (path.Match patterns). Deny wins over allow.
+    deny_namespaces: []
 
   # Pipeline Summary Accumulator (Feature 3)
   # Aggregates TaskRun events into single PR comment when PipelineRun completes
@@ -899,18 +904,28 @@ config:
       - name: main-channel
         # -- Enable or disable this Slack notifier instance
         enabled: false
-        # Webhook mode:
-        # webhook_url:
-        #   secretRef:
-        #     name: slack-webhook
-        #     key: webhook_url
-        # Bot token mode:
+        # -- Enable notification deduplication (dedupe by handler_name + cloud_event_id)
+        dedupe: false
+        # -- Override global retry policy for this notifier instance
+        retry_override:
+          max_attempts: 0     # 0 = use global default
+          initial_backoff: "" # "" = use global default
+          max_backoff: ""     # "" = use global default
+        # Webhook URL mode (simpler):
+        webhook_url:
+          secretRef:
+            name: slack-webhook
+            key: webhook_url
+        # Bot token mode (alternative — enables threading/upsert):
         # bot_token:
         #   token:
         #     secretRef:
         #       name: slack-bot-token
         #       key: token
         #   channel_id: "C12345"
+        # Create the referenced Secret:
+        # kubectl create secret generic slack-webhook -n tekton-events-relay \
+        #   --from-literal=webhook_url=https://hooks.slack.com/services/...
         # -- Slack channel to post notifications (e.g., #ci-notifications, @username)
         channel: "#ci-notifications"
         # -- Display name for the bot posting messages
@@ -943,10 +958,19 @@ config:
       - name: main-channel
         # -- Enable or disable this Teams notifier instance
         enabled: false
-        # webhook_url:
-        #   secretRef:
-        #     name: teams-webhook
-        #     key: webhook_url
+        # -- Enable notification deduplication (dedupe by handler_name + cloud_event_id)
+        dedupe: false
+        # -- Override global retry policy for this notifier instance
+        retry_override:
+          max_attempts: 0     # 0 = use global default
+          initial_backoff: "" # "" = use global default
+          max_backoff: ""     # "" = use global default
+        webhook_url:
+          secretRef:
+            name: teams-webhook
+            key: webhook_url
+        # kubectl create secret generic teams-webhook -n tekton-events-relay \
+        #   --from-literal=webhook_url=https://outlook.office.com/webhook/...
         # -- CEL expression to filter which events trigger notifications
         when: 'event.State == "success" || event.State == "failure" || event.State == "error"'
         template:
@@ -971,18 +995,27 @@ config:
       - name: main-channel
         # -- Enable or disable this Discord notifier instance
         enabled: false
-        # Webhook mode:
-        # webhook_url:
-        #   secretRef:
-        #     name: discord-webhook
-        #     key: webhook_url
-        # Bot token mode:
+        # -- Enable notification deduplication (dedupe by handler_name + cloud_event_id)
+        dedupe: false
+        # -- Override global retry policy for this notifier instance
+        retry_override:
+          max_attempts: 0     # 0 = use global default
+          initial_backoff: "" # "" = use global default
+          max_backoff: ""     # "" = use global default
+        # Webhook URL mode (simpler):
+        webhook_url:
+          secretRef:
+            name: discord-webhook
+            key: webhook_url
+        # Bot token mode (alternative):
         # bot_token:
         #   token:
         #     secretRef:
         #       name: discord-bot-token
         #       key: token
         #   channel_id: "123456789012345678"
+        # kubectl create secret generic discord-webhook -n tekton-events-relay \
+        #   --from-literal=webhook_url=https://discord.com/api/webhooks/...
         # -- Display name for the bot posting messages
         username: "Tekton CI"
         # -- Message mode: "create" (default) posts a new message per event;
@@ -1011,10 +1044,19 @@ config:
       - name: main-service
         # -- Enable or disable this PagerDuty notifier instance
         enabled: false
-        # integration_key:
-        #   secretRef:
-        #     name: pagerduty-integration-key
-        #     key: integration_key
+        # -- Enable notification deduplication (dedupe by handler_name + cloud_event_id)
+        dedupe: false
+        # -- Override global retry policy for this notifier instance
+        retry_override:
+          max_attempts: 0     # 0 = use global default
+          initial_backoff: "" # "" = use global default
+          max_backoff: ""     # "" = use global default
+        integration_key:
+          secretRef:
+            name: pagerduty-integration-key
+            key: integration_key
+        # kubectl create secret generic pagerduty-integration-key -n tekton-events-relay \
+        #   --from-literal=integration_key=<your-integration-key>
         # -- Incident severity level (critical, error, warning, info)
         severity: "critical"
         # -- Send an acknowledge event while the run is in progress (opt-in).
@@ -1031,10 +1073,19 @@ config:
       - name: main-instance
         # -- Enable or disable this Datadog notifier instance
         enabled: false
-        # api_key:
-        #   secretRef:
-        #     name: datadog-api-key
-        #     key: api_key
+        # -- Enable notification deduplication (dedupe by handler_name + cloud_event_id)
+        dedupe: false
+        # -- Override global retry policy for this notifier instance
+        retry_override:
+          max_attempts: 0     # 0 = use global default
+          initial_backoff: "" # "" = use global default
+          max_backoff: ""     # "" = use global default
+        api_key:
+          secretRef:
+            name: datadog-api-key
+            key: api_key
+        # kubectl create secret generic datadog-api-key -n tekton-events-relay \
+        #   --from-literal=api_key=<your-api-key>
         # -- Datadog site (datadoghq.com, datadoghq.eu, us3.datadoghq.com, etc.)
         site: "datadoghq.com"
         # Custom tags appended to auto-generated tags (state, context, namespace, etc.)
@@ -1055,11 +1106,25 @@ config:
       - name: main-webhook
         # -- Enable or disable this webhook notifier instance
         enabled: false
-        # url:
-        #   secretRef:
-        #     name: custom-webhook
-        #     key: url
+        # -- Enable notification deduplication (dedupe by handler_name + cloud_event_id)
+        dedupe: false
+        # -- Override global retry policy for this notifier instance
+        retry_override:
+          max_attempts: 0     # 0 = use global default
+          initial_backoff: "" # "" = use global default
+          max_backoff: ""     # "" = use global default
+        url:
+          secretRef:
+            name: custom-webhook
+            key: url
         # Outbound authentication (type: bearer/basic/apikey/hmac/oauth2)
+        auth:
+          type: bearer
+          token:
+            secretRef:
+              name: webhook-token
+              key: token
+        # OAuth2 mode (alternative):
         # auth:
         #   type: oauth2
         #   oauth2:
@@ -1072,6 +1137,10 @@ config:
         #         name: webhook-oauth2-creds
         #         key: client_secret
         #     token_url: "https://auth.company.example.com/oauth/token"
+        # kubectl create secret generic custom-webhook -n tekton-events-relay \
+        #   --from-literal=url=https://example.com/webhook
+        # kubectl create secret generic webhook-token -n tekton-events-relay \
+        #   --from-literal=token=<your-bearer-token>
         # -- CEL expression to filter which events trigger webhook calls
         when: 'event.State == "success" || event.State == "failure" || event.State == "error"'
         # Custom HTTP headers for authentication and routing
@@ -1087,34 +1156,48 @@ config:
     # -------------------------------------------------------------------------
     # Grafana
     # -------------------------------------------------------------------------
-    grafana: []
-      # - name: deploy-markers
-      #   enabled: false
-      #   url: https://grafana.company.example.com
-      #   token:
-      #     secretRef:
-      #       name: grafana-token
-      #       key: token
-      #   # Scope the annotation to a dashboard (optional; org-wide when empty).
-      #   dashboard_uid: "abc123"
-      #   # Scope to a panel within that dashboard (optional; requires dashboard_uid).
-      #   panel_id: 4
-      #   template:
-      #     configmapRef:
-      #       name: grafana-templates
-      #       key: deploy-marker.tmpl
+    grafana:
+      - name: deploy-markers
+        enabled: false
+        url: https://grafana.company.example.com
+        token:
+          secretRef:
+            name: grafana-token
+            key: token
+        # -- Override global retry policy for this notifier instance
+        retry_override:
+          max_attempts: 0     # 0 = use global default
+          initial_backoff: "" # "" = use global default
+          max_backoff: ""     # "" = use global default
+        # Scope the annotation to a dashboard (optional; org-wide when empty).
+        # dashboard_uid: "abc123"
+        # Scope to a panel within that dashboard (optional; requires dashboard_uid).
+        # panel_id: 4
+        # template:
+        #   configmapRef:
+        #     name: grafana-templates
+        #     key: deploy-marker.tmpl
+        # kubectl create secret generic grafana-token -n tekton-events-relay \
+        #   --from-literal=token=<your-service-account-token>
 
     # -------------------------------------------------------------------------
     # Sentry
     # -------------------------------------------------------------------------
-    sentry: []
-      # - name: main
-      #   enabled: false
-      #   org: acme
-      #   token:
-      #     secretRef:
-      #       name: sentry-token
-      #       key: token
+    sentry:
+      - name: main
+        enabled: false
+        org: acme
+        token:
+          secretRef:
+            name: sentry-token
+            key: token
+        # -- Override global retry policy for this notifier instance
+        retry_override:
+          max_attempts: 0     # 0 = use global default
+          initial_backoff: "" # "" = use global default
+          max_backoff: ""     # "" = use global default
+        # kubectl create secret generic sentry-token -n tekton-events-relay \
+        #   --from-literal=token=<your-auth-token>
 
     # -------------------------------------------------------------------------
     # Email (SMTP)
@@ -1135,11 +1218,13 @@ config:
         encryption: starttls
         # SMTP credentials. Omit auth entirely for unauthenticated relays.
         # Password comes from the mounted secret (key: password).
-        # password:
-        #   secretRef:
-        #     name: email-default-credentials
-        #     key: password
-        # username: ci@example.com
+        username: ci@example.com
+        password:
+          secretRef:
+            name: email-default-credentials
+            key: password
+        # kubectl create secret generic email-default-credentials -n tekton-events-relay \
+        #   --from-literal=password=<your-smtp-password>
         # XOAUTH2 (Gmail/M365): set xoauth2 and supply the access token from a
         # mounted secret (key: token). Mutually exclusive with password.
         # xoauth2: true
@@ -1178,6 +1263,58 @@ config:
         html: false
         # -- CEL expression to filter which events are emailed
         when: 'event.Resource == "pipelinerun" && stateIn("failure", "error")'
+        # -- Override global retry policy for this notifier instance
+        retry_override:
+          max_attempts: 0     # 0 = use global default
+          initial_backoff: "" # "" = use global default
+          max_backoff: ""     # "" = use global default
+
+    # -------------------------------------------------------------------------
+    # Mattermost
+    # -------------------------------------------------------------------------
+    # -- Mattermost notification channels configuration. Supports webhook and bot token modes.
+    mattermost:
+      # -- Unique identifier for this Mattermost channel configuration
+      - name: main-channel
+        # -- Enable or disable this Mattermost notifier instance
+        enabled: false
+        # -- Enable notification deduplication (dedupe by handler_name + cloud_event_id)
+        dedupe: false
+        # -- Override global retry policy for this notifier instance
+        retry_override:
+          max_attempts: 0     # 0 = use global default
+          initial_backoff: "" # "" = use global default
+          max_backoff: ""     # "" = use global default
+        # Webhook URL mode (simpler):
+        webhook_url:
+          secretRef:
+            name: mattermost-webhook
+            key: webhook_url
+        # Bot token mode (alternative — uses /api/v4/posts API):
+        # bot_token:
+        #   token:
+        #     secretRef:
+        #       name: mattermost-bot-token
+        #       key: token
+        #   channel_id: "channel-id-123"
+        # base_url: "https://mattermost.example.com"
+        # Create the referenced Secret:
+        # kubectl create secret generic mattermost-webhook -n tekton-events-relay \
+        #   --from-literal=webhook_url=https://mattermost.example.com/hooks/...
+        # -- Mattermost channel override (e.g. #alerts)
+        channel: "#ci-notifications"
+        # -- Display name for the bot posting messages
+        username: "Tekton CI"
+        # -- Icon URL for the bot avatar (optional)
+        # icon_url: "https://example.com/icon.png"
+        # -- CEL expression to filter which events trigger notifications
+        when: 'event.State == "failure" || event.State == "error"'
+        # -- Go template for message formatting (optional)
+        # template: |
+        #   :warning: *Pipeline {{.State}}*
+        #   *Run:* `{{.RunName}}`
+        #   *Commit:* `{{.CommitSHA}}`
+        #   {{if .TargetURL}}[View in Dashboard]({{.TargetURL}}){{end}}
 
   # ---------------------------------------------------------------------------
   # Jira (issue tracking) — top-level integration, sibling of notifiers.
@@ -1201,12 +1338,13 @@ config:
       # Cloud basic auth (email + API token); without it, Data Center bearer PAT.
       # OAuth2 client_credentials (Data Center/gateway) is also supported and is
       # not combinable with email or token.
-      auth: {}
-        # email: ci@example.com
-        # token:
-        #   secretRef:
-        #     name: jira-default-token
-        #     key: token
+      auth:
+        email: ci@example.com
+        token:
+          secretRef:
+            name: jira-default-token
+            key: token
+        # OAuth2 mode (alternative; mutually exclusive with email/token):
         # oauth2:
         #   client_id:
         #     configmapRef:
@@ -1217,6 +1355,8 @@ config:
         #       name: jira-oauth2-creds
         #       key: client_secret
         #   token_url: "https://jira.company.example.com/oauth/token"
+      # kubectl create secret generic jira-default-token -n tekton-events-relay \
+      #   --from-literal=token=<your-api-token>
       # -- Skip TLS verification (self-hosted Data Center only)
       # insecure_skip_verify: false
       actions:

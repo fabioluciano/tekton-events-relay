@@ -18,6 +18,9 @@ import (
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
 )
 
+// pingTimeout is the context deadline for olric Ping calls.
+const pingTimeout = 5 * time.Second
+
 const (
 	olricStartTimeout  = 30 * time.Second
 	olricLockDeadline  = 5 * time.Second
@@ -30,6 +33,7 @@ const (
 // replicas discover each other via memberlist gossip (no extra deployment).
 type olricStore struct {
 	db     *olric.Olric
+	client *olric.EmbeddedClient
 	dedupe olric.DMap
 	runs   olric.DMap
 	ttl    time.Duration
@@ -67,25 +71,8 @@ func newOlricStore(cfg config.StoreConfig, opts Options) (*olricStore, error) {
 		return nil, fmt.Errorf("store.olric: configure: %w", err)
 	}
 
-	_, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	startErr := make(chan error, 1)
-	go func() {
-		// Start blocks for the lifetime of the cluster member.
-		startErr <- db.Start()
-	}()
-
-	select {
-	case <-started:
-	case err := <-startErr:
-		return nil, fmt.Errorf("store.olric: start: %w", err)
-	case <-time.After(olricStartTimeout):
-		cancel()
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer shutdownCancel()
-		_ = db.Shutdown(shutdownCtx)
-		return nil, fmt.Errorf("store.olric: start timed out after %s", olricStartTimeout)
+	if err := startOlric(db, started, olricStartTimeout); err != nil {
+		return nil, err
 	}
 
 	client := db.NewEmbeddedClient()
@@ -98,12 +85,53 @@ func newOlricStore(cfg config.StoreConfig, opts Options) (*olricStore, error) {
 		return nil, fmt.Errorf("store.olric: dmap %s: %w", olricRunBufferDMap, err)
 	}
 
-	return &olricStore{db: db, dedupe: dedupe, runs: runs, ttl: cfg.TTL}, nil
+	return &olricStore{db: db, client: client, dedupe: dedupe, runs: runs, ttl: cfg.TTL}, nil
+}
+
+// startOlric launches db.Start in a goroutine and waits for either the Started
+// callback, an immediate Start error, or the given timeout. On timeout it calls
+// db.Shutdown and drains startErr so the goroutine exits before returning — no
+// leak.
+func startOlric(db *olric.Olric, started <-chan struct{}, timeout time.Duration) error {
+	startErr := make(chan error, 1)
+	go func() {
+		startErr <- db.Start()
+	}()
+
+	select {
+	case <-started:
+		return nil
+	case err := <-startErr:
+		return fmt.Errorf("store.olric: start: %w", err)
+	case <-time.After(timeout):
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
+		_ = db.Shutdown(shutdownCtx)
+		// Drain so the goroutine exits before we return. Shutdown should
+		// unblock Start; guard with a short timeout in case it fails.
+		select {
+		case <-startErr:
+		case <-time.After(5 * time.Second):
+		}
+		return fmt.Errorf("store.olric: start timed out after %s", timeout)
+	}
 }
 
 func (s *olricStore) Dedupe() DedupeStore  { return s }
 func (s *olricStore) RunBuffer() RunBuffer { return s }
 func (s *olricStore) Backend() string      { return BackendOlric }
+func (s *olricStore) Ping(ctx context.Context) error {
+	pingCtx, cancel := context.WithTimeout(ctx, pingTimeout)
+	defer cancel()
+	members, err := s.client.Members(pingCtx)
+	if err != nil {
+		return fmt.Errorf("olric ping: %w", err)
+	}
+	if len(members) == 0 {
+		return errors.New("olric: no cluster members")
+	}
+	return nil
+}
 
 func (s *olricStore) Close() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

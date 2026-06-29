@@ -1,4 +1,4 @@
-package factory
+package factory //nolint:dupl // Factory structs are structurally similar by design
 
 import (
 	"go.uber.org/zap"
@@ -7,7 +7,6 @@ import (
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/datadog"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/middleware"
-	"github.com/fabioluciano/tekton-events-relay/internal/secrets"
 )
 
 // DatadogFactory builds ActionHandlers from Datadog instance configurations.
@@ -19,22 +18,26 @@ func (f *DatadogFactory) Build(inst config.DatadogInstance, log *zap.Logger) ([]
 		return nil, nil
 	}
 
-	// Resolve API key from volume mount
 	apiKeyFile := ""
 	apiKeyKey := ""
 	if inst.Auth != nil {
 		apiKeyFile = inst.Auth.APIKeyFile
 		apiKeyKey = inst.Auth.APIKeyKey
 	}
-	apiKey, err := secrets.ResolveOrInfer(apiKeyFile, "datadog", inst.Name, "api_key", apiKeyKey, log)
+	apiKey, err := resolveFileRefresher(apiKeyFile, apiKeyKey, "datadog", inst.Name, log)
 	if err != nil {
 		return nil, err
 	}
 
+	httpClient, retryPolicy := buildNotifierClient(inst.RetryOverride)
+
 	handler := datadog.New(datadog.Config{
-		APIKey: apiKey,
-		Site:   inst.Site,
-		Tags:   inst.Tags,
+		APIKey:      apiKey,
+		Site:        inst.Site,
+		Tags:        inst.Tags,
+		ExtraTags:   inst.ExtraTags,
+		HTTPClient:  httpClient,
+		RetryPolicy: retryPolicy,
 	}, log)
 
 	wrapped, err := middleware.WrapWithCEL(handler, inst.When, log)

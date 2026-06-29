@@ -35,6 +35,10 @@ run = "go test -race -coverprofile=coverage.txt -covermode=atomic ./..."
 description = "Run golangci-lint"
 run = "golangci-lint run --timeout=5m"
 
+[tasks.vet]
+description = "Run go vet"
+run = "go vet ./..."
+
 [tasks.fmt]
 description = "Format Go code"
 run = "gofmt -w ."
@@ -123,7 +127,7 @@ run = """
 description = "Run Trivy IaC scanner on Helm charts"
 run = """
   echo "🔍 Running Trivy IaC scanner..."
-  trivy config --severity HIGH,CRITICAL --exit-code 0 charts/
+  trivy config --severity HIGH,CRITICAL --exit-code 1 charts/
 """
 
 [tasks.helm-validate]

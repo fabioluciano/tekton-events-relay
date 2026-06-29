@@ -10,7 +10,8 @@ import (
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
 )
 
-// WrapWithCEL wraps a handler with a CEL guard if whenExpr is non-empty.
+// WrapWithCEL wraps a handler with a trusted administrator-configured CEL guard.
+// Config validation must compile the expression before this runtime wrapper is built.
 func WrapWithCEL(handler notifier.ActionHandler, whenExpr string, log *zap.Logger) (notifier.ActionHandler, error) {
 	if whenExpr == "" {
 		return handler, nil

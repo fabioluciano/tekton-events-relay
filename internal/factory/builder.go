@@ -36,7 +36,8 @@ func BuildAndRegister[C any](
 }
 
 // buildActionsWithMiddleware iterates actions, invokes buildFn for each enabled action,
-// wraps each handler with CEL condition and filter middleware, and returns the slice.
+// wraps each handler with CEL condition, filter, context_per_task and dedupe middleware,
+// then returns the slice.
 func buildActionsWithMiddleware(
 	actions []config.Action,
 	log *zap.Logger,
@@ -64,6 +65,9 @@ func buildActionsWithMiddleware(
 		wrapped = middleware.WrapWithFilter(wrapped, action.Filter)
 		if action.Type == notifier.ActionCommitStatus {
 			wrapped = middleware.WrapWithContextPerTask(wrapped, action.ContextPerTask)
+		}
+		if action.Dedupe {
+			wrapped = middleware.WrapWithDedupe(wrapped, currentDedupeStore, log)
 		}
 		handlers = append(handlers, wrapped)
 	}

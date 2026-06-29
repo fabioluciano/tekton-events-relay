@@ -113,6 +113,12 @@ type Event struct {
 	// JiraIssueKey links the run to a Jira issue (e.g. PROJ-123); empty if absent.
 	JiraIssueKey string `json:"jira_issue_key,omitempty" yaml:"jira_issue_key,omitempty"`
 
+	// AccumulatorGroupID groups multiple PipelineRuns for a single aggregate
+	// PR comment. When non-empty, the accumulator buffers all runs sharing
+	// the same group ID and flushes only when every member reaches a terminal
+	// state (or TTL expires). Empty preserves single-run behavior.
+	AccumulatorGroupID string `json:"accumulator_group_id,omitempty" yaml:"accumulator_group_id,omitempty"`
+
 	// Results (optional - populated from TaskRun.status.taskResults or PipelineRun.status.pipelineResults)
 	Results []Result `json:"results,omitempty" yaml:"results,omitempty"`
 

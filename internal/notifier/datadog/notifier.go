@@ -14,7 +14,9 @@ import (
 	"strings"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
+	"github.com/fabioluciano/tekton-events-relay/internal/httpx"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
+	"github.com/fabioluciano/tekton-events-relay/internal/notifier/scm"
 )
 
 // validateURL checks that a URL has an http or https scheme.
@@ -41,9 +43,14 @@ const (
 
 // Config holds the Datadog notifier configuration.
 type Config struct {
-	APIKey string
-	Site   string   // default: datadoghq.com (alternative: datadoghq.eu)
-	Tags   []string // extra tags besides the automatically generated ones
+	APIKey    scm.TokenRefresher
+	Site      string   // default: datadoghq.com (alternative: datadoghq.eu)
+	Tags      []string // extra tags besides the automatically generated ones
+	ExtraTags []string // appended after Tags
+	// HTTPClient overrides the HTTP client. When nil, notifier.DefaultHTTPClient() is used.
+	HTTPClient *http.Client
+	// RetryPolicy overrides the global retry policy. When nil, the global default is used.
+	RetryPolicy *httpx.RetryPolicy
 }
 
 // Notifier sends events to Datadog via the Events API.
@@ -58,13 +65,18 @@ func New(cfg Config, log *zap.Logger) *Notifier {
 		cfg.Site = defaultSite
 	}
 	n := &Notifier{cfg: cfg}
+	httpClient := notifier.DefaultHTTPClient()
+	if cfg.HTTPClient != nil {
+		httpClient = cfg.HTTPClient
+	}
 	n.base = &notifier.Base{
-		HTTP:         notifier.DefaultHTTPClient(),
+		HTTP:         httpClient,
 		BuildURL:     n.url,
 		BuildPayload: n.payload,
 		Auth:         n.auth,
 		UserAgent:    notifier.UserAgent,
 		Log:          log,
+		RetryPolicy:  cfg.RetryPolicy,
 	}
 	return n
 }
@@ -89,7 +101,14 @@ func (n *Notifier) url(_ domain.Event) (string, error) {
 }
 
 func (n *Notifier) auth(req *http.Request) error {
-	req.Header.Set("DD-API-KEY", n.cfg.APIKey)
+	if n.cfg.APIKey == nil {
+		return fmt.Errorf("datadog: api key refresher is required")
+	}
+	apiKey, err := n.cfg.APIKey.Token(req.Context())
+	if err != nil {
+		return fmt.Errorf("datadog: resolve api key: %w", err)
+	}
+	req.Header.Set("DD-API-KEY", apiKey)
 	return nil
 }
 
@@ -105,6 +124,7 @@ func (n *Notifier) payload(e domain.Event) (any, error) {
 		tags = append(tags, fmt.Sprintf("commit_sha:%s", e.CommitSHA[:min(7, len(e.CommitSHA))]))
 	}
 	tags = append(tags, n.cfg.Tags...)
+	tags = append(tags, n.cfg.ExtraTags...)
 
 	alertType := alertTypeFor(e.State)
 
@@ -131,3 +151,6 @@ func alertTypeFor(s domain.State) string {
 func sanitizeTag(s string) string {
 	return strings.NewReplacer("/", "_", ":", "_").Replace(s)
 }
+
+// Close is a no-op; this handler holds no resources requiring cleanup.
+func (n *Notifier) Close() error { return nil }

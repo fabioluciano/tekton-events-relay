@@ -78,3 +78,6 @@ func (h *IssueCommentHandler) Handle(_ context.Context, e domain.Event) error {
 
 	return postComment(h.client, h.template, h.mode, h.log, e, int64(*e.IssueNumber), "issue_comment")
 }
+
+// Close is a no-op; this handler holds no resources requiring cleanup.
+func (h *IssueCommentHandler) Close() error { return nil }

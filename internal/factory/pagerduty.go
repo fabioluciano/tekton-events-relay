@@ -1,13 +1,13 @@
-package factory
+package factory //nolint:dupl // Factory structs are structurally similar by design
 
 import (
 	"go.uber.org/zap"
 
+	"github.com/fabioluciano/tekton-events-relay/internal/cel"
 	"github.com/fabioluciano/tekton-events-relay/internal/config"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/middleware"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/pagerduty"
-	"github.com/fabioluciano/tekton-events-relay/internal/secrets"
 )
 
 // PagerDutyFactory builds ActionHandlers from PagerDuty instance configurations.
@@ -19,23 +19,36 @@ func (f *PagerDutyFactory) Build(inst config.PagerDutyInstance, log *zap.Logger)
 		return nil, nil
 	}
 
-	// Resolve integration key from volume mount
 	integrationKeyFile := ""
 	integrationKeyKey := ""
 	if inst.Auth != nil {
 		integrationKeyFile = inst.Auth.IntegrationKeyFile
 		integrationKeyKey = inst.Auth.IntegrationKeyKey
 	}
-	integrationKey, err := secrets.ResolveOrInfer(integrationKeyFile, "pagerduty", inst.Name, "integration_key", integrationKeyKey, log)
+	integrationKey, err := resolveFileRefresher(integrationKeyFile, integrationKeyKey, "pagerduty", inst.Name, log)
 	if err != nil {
 		return nil, err
 	}
 
-	handler := pagerduty.New(pagerduty.Config{
+	httpClient, retryPolicy := buildNotifierClient(inst.RetryOverride)
+
+	pdCfg := pagerduty.Config{
 		IntegrationKey:       integrationKey,
 		Severity:             inst.Severity,
 		AcknowledgeOnRunning: inst.AcknowledgeOnRunning,
-	}, log)
+		HTTPClient:           httpClient,
+		RetryPolicy:          retryPolicy,
+	}
+
+	if inst.SeverityExpr != "" {
+		prog, err := cel.CompileString(inst.SeverityExpr)
+		if err != nil {
+			return nil, err
+		}
+		pdCfg.SeverityExpr = prog
+	}
+
+	handler := pagerduty.New(pdCfg, log)
 
 	wrapped, err := middleware.WrapWithCEL(handler, inst.When, log)
 	if err != nil {

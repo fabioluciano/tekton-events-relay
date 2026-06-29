@@ -2,9 +2,13 @@ package cel
 
 import (
 	"testing"
+	"time"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
 )
+
+const testCommitSHA = "abc123"
+const testResultName = "commit"
 
 func TestCompile_ResourceMatch(t *testing.T) {
 	prog, err := Compile(`event.Resource == "taskrun"`)
@@ -342,4 +346,181 @@ func TestMacro_IsPREvent(t *testing.T) {
 	if result {
 		t.Error("expected false when SCMEventType != pull_request")
 	}
+}
+
+func TestNewMacros(t *testing.T) {
+	t.Run("buildTimeExceeds", func(t *testing.T) {
+		tests := []struct {
+			name       string
+			expr       string
+			startedAt  time.Time
+			finishedAt time.Time
+			want       bool
+		}{
+			{
+				name:       "zero time returns false",
+				expr:       `buildTimeExceeds(5000)`,
+				startedAt:  time.Time{},
+				finishedAt: time.Time{},
+				want:       false,
+			},
+			{
+				name:       "10s exceeds 5s threshold",
+				expr:       `buildTimeExceeds(5000)`,
+				startedAt:  time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+				finishedAt: time.Date(2025, 1, 1, 0, 0, 10, 0, time.UTC),
+				want:       true,
+			},
+			{
+				name:       "2s does not exceed 5s threshold",
+				expr:       `buildTimeExceeds(5000)`,
+				startedAt:  time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+				finishedAt: time.Date(2025, 1, 1, 0, 0, 2, 0, time.UTC),
+				want:       false,
+			},
+			{
+				name:       "0ms does not exceed 0 threshold",
+				expr:       `buildTimeExceeds(0)`,
+				startedAt:  time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+				finishedAt: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+				want:       false,
+			},
+			{
+				name:       "1ms exceeds 0 threshold",
+				expr:       `buildTimeExceeds(0)`,
+				startedAt:  time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+				finishedAt: time.Date(2025, 1, 1, 0, 0, 0, int(time.Millisecond), time.UTC),
+				want:       true,
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				prog, err := Compile(tt.expr)
+				if err != nil {
+					t.Fatalf("unexpected compile error: %v", err)
+				}
+				ev := domain.Event{StartedAt: tt.startedAt, FinishedAt: tt.finishedAt}
+				got, err := prog.Eval(ev)
+				if err != nil {
+					t.Fatalf("unexpected eval error: %v", err)
+				}
+				if got != tt.want {
+					t.Errorf("got %v, want %v", got, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("hasResult", func(t *testing.T) {
+		tests := []struct {
+			name    string
+			expr    string
+			results []domain.Result
+			want    bool
+		}{
+			{
+				name:    "existing non-empty result",
+				expr:    `hasResult("commit")`,
+				results: []domain.Result{{Name: testResultName, Value: testCommitSHA}},
+				want:    true,
+			},
+			{
+				name:    "nonexistent key",
+				expr:    `hasResult("missing")`,
+				results: []domain.Result{{Name: testResultName, Value: testCommitSHA}},
+				want:    false,
+			},
+			{
+				name:    "empty value returns false",
+				expr:    `hasResult("empty")`,
+				results: []domain.Result{{Name: "empty", Value: ""}},
+				want:    false,
+			},
+			{
+				name:    "nil results",
+				expr:    `hasResult("any")`,
+				results: nil,
+				want:    false,
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				prog, err := Compile(tt.expr)
+				if err != nil {
+					t.Fatalf("unexpected compile error: %v", err)
+				}
+				ev := domain.Event{Results: tt.results}
+				got, err := prog.Eval(ev)
+				if err != nil {
+					t.Fatalf("unexpected eval error: %v", err)
+				}
+				if got != tt.want {
+					t.Errorf("got %v, want %v", got, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("resultValue", func(t *testing.T) {
+		tests := []struct {
+			name    string
+			expr    string
+			results []domain.Result
+			want    bool
+		}{
+			{
+				name:    "returns matching value",
+				expr:    `resultValue("commit") == "abc123"`,
+				results: []domain.Result{{Name: testResultName, Value: testCommitSHA}},
+				want:    true,
+			},
+			{
+				name:    "nonexistent key returns empty",
+				expr:    `resultValue("missing") == ""`,
+				results: []domain.Result{{Name: testResultName, Value: testCommitSHA}},
+				want:    true,
+			},
+			{
+				name:    "nil results returns empty",
+				expr:    `resultValue("any") == ""`,
+				results: nil,
+				want:    true,
+			},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				prog, err := Compile(tt.expr)
+				if err != nil {
+					t.Fatalf("unexpected compile error: %v", err)
+				}
+				ev := domain.Event{Results: tt.results}
+				got, err := prog.Eval(ev)
+				if err != nil {
+					t.Fatalf("unexpected eval error: %v", err)
+				}
+				if got != tt.want {
+					t.Errorf("got %v, want %v", got, tt.want)
+				}
+			})
+		}
+	})
+
+	t.Run("combined expression", func(t *testing.T) {
+		prog, err := Compile(`buildTimeExceeds(5000) && hasResult("commit")`)
+		if err != nil {
+			t.Fatalf("unexpected compile error: %v", err)
+		}
+		ev := domain.Event{
+			StartedAt:  time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+			FinishedAt: time.Date(2025, 1, 1, 0, 0, 10, 0, time.UTC),
+			Results:    []domain.Result{{Name: testResultName, Value: testCommitSHA}},
+		}
+		got, err := prog.Eval(ev)
+		if err != nil {
+			t.Fatalf("unexpected eval error: %v", err)
+		}
+		if !got {
+			t.Error("expected true when duration exceeds and result exists")
+		}
+	})
 }

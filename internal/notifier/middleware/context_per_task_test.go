@@ -18,6 +18,7 @@ func (c *captureHandler) Handle(_ context.Context, e domain.Event) error {
 	c.last = e
 	return nil
 }
+func (c *captureHandler) Close() error { return nil }
 
 func TestContextPerTask_RewritesTaskRunContext(t *testing.T) {
 	inner := &captureHandler{}

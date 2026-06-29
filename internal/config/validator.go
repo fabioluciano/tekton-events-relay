@@ -3,11 +3,8 @@ package config
 import (
 	"errors"
 	"fmt"
-	"net"
-	"net/url"
 	"reflect"
 	"strings"
-	"time"
 
 	"github.com/go-playground/validator/v10"
 	"go.uber.org/zap"
@@ -60,6 +57,32 @@ func NewValidator() *validator.Validate {
 func ValidateAll(cfg *Config) []ValidationError {
 	var errs []ValidationError
 
+	// Top-level numeric range validations
+	if cfg.HandlerTimeout < 0 {
+		errs = append(errs, ValidationError{
+			Path:    "handler_timeout",
+			Message: fmt.Sprintf("must be non-negative, got %s", cfg.HandlerTimeout),
+		})
+	}
+	if cfg.MaxConcurrency < 0 {
+		errs = append(errs, ValidationError{
+			Path:    "max_concurrency",
+			Message: fmt.Sprintf("must be non-negative, got %d", cfg.MaxConcurrency),
+		})
+	}
+	if cfg.Retry.MaxAttempts < 0 {
+		errs = append(errs, ValidationError{
+			Path:    "retry.max_attempts",
+			Message: fmt.Sprintf("must be non-negative, got %d", cfg.Retry.MaxAttempts),
+		})
+	}
+	if cfg.DedupeSize < 0 {
+		errs = append(errs, ValidationError{
+			Path:    "dedupe_size",
+			Message: fmt.Sprintf("must be non-negative, got %d", cfg.DedupeSize),
+		})
+	}
+
 	// Run struct tag validation via go-playground/validator
 	if err := configValidator.Struct(cfg); err != nil {
 		var validationErrors validator.ValidationErrors
@@ -103,44 +126,11 @@ func ValidateAll(cfg *Config) []ValidationError {
 		errs = append(errs, validateSourceHutInstance(prefix, inst)...)
 	}
 
-	for i, inst := range cfg.Notifiers.Slack {
-		prefix := fmt.Sprintf("notifiers.slack[%d]", i)
-		errs = append(errs, validateSlackInstance(prefix, inst)...)
-	}
+	errs = append(errs, validateNotifierInstances(cfg)...)
 
-	for i, inst := range cfg.Notifiers.Teams {
-		prefix := fmt.Sprintf("notifiers.teams[%d]", i)
-		errs = append(errs, validateTeamsInstance(prefix, inst)...)
-	}
-
-	for i, inst := range cfg.Notifiers.Discord {
-		prefix := fmt.Sprintf("notifiers.discord[%d]", i)
-		errs = append(errs, validateDiscordInstance(prefix, inst)...)
-	}
-
-	for i, inst := range cfg.Notifiers.PagerDuty {
-		prefix := fmt.Sprintf("notifiers.pagerduty[%d]", i)
-		errs = append(errs, validatePagerDutyInstance(prefix, inst)...)
-	}
-
-	for i, inst := range cfg.Notifiers.Datadog {
-		prefix := fmt.Sprintf("notifiers.datadog[%d]", i)
-		errs = append(errs, validateDatadogInstance(prefix, inst)...)
-	}
-
-	for i, inst := range cfg.Notifiers.Webhook {
-		prefix := fmt.Sprintf("notifiers.webhook[%d]", i)
-		errs = append(errs, validateWebhookInstance(prefix, inst)...)
-	}
-
-	for i, inst := range cfg.Notifiers.Grafana {
-		prefix := fmt.Sprintf("notifiers.grafana[%d]", i)
-		errs = append(errs, validateGrafanaInstance(prefix, inst)...)
-	}
-
-	for i, inst := range cfg.Notifiers.Sentry {
-		prefix := fmt.Sprintf("notifiers.sentry[%d]", i)
-		errs = append(errs, validateSentryInstance(prefix, inst)...)
+	for i, inst := range cfg.Jira {
+		prefix := fmt.Sprintf("jira[%d]", i)
+		errs = append(errs, validateJiraInstance(prefix, inst)...)
 	}
 
 	return errs
@@ -176,6 +166,8 @@ func translateFieldMessage(fe validator.FieldError) string {
 		return ValidationMsgRequiredWhenEnabled
 	case "unsupported_auth_type":
 		return fmt.Sprintf("unsupported auth type '%s' (must be 'hmac-sha256' or 'bearer')", fe.Param())
+	case "hmac_requires_timestamp":
+		return ValidationMsgHMACReplayRequired
 	default:
 		return fmt.Sprintf("failed on '%s' validation", fe.Tag())
 	}
@@ -188,7 +180,7 @@ func validateServerAuthStruct(sl validator.StructLevel) {
 	auth := sl.Current().Interface().(AuthConfig)
 	if auth.Enabled {
 		switch auth.Type {
-		case "hmac-sha256", AuthTypeBearer:
+		case AuthTypeHMACSHA256, AuthTypeBearer:
 		case "":
 			sl.ReportError(auth.Type, "type", "type", "required_when_enabled", "")
 		default:
@@ -196,6 +188,9 @@ func validateServerAuthStruct(sl validator.StructLevel) {
 		}
 		if auth.SecretFile == "" {
 			sl.ReportError(auth.SecretFile, "secret_file", "secret_file", "required_when_enabled", "")
+		}
+		if auth.Type == AuthTypeHMACSHA256 && !auth.ValidateTimestamp {
+			sl.ReportError(auth.ValidateTimestamp, "validate_timestamp", "validate_timestamp", "hmac_requires_timestamp", "")
 		}
 	}
 }
@@ -237,95 +232,9 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-func (c *Config) validateLogging() error {
-	if (c.Logging.Verbose.Caller || c.Logging.Verbose.HTTPCalls || c.Logging.Verbose.Payloads) && c.Logging.Level != "debug" {
-		return fmt.Errorf("logging.verbose: verbose options (caller, http_calls, payloads) require logging.level to be 'debug', current level is '%s'", c.Logging.Level)
-	}
-	return nil
-}
-
-func (c *Config) validateServer() error {
-	if c.MaxConcurrency != 0 && (c.MaxConcurrency < 1 || c.MaxConcurrency > 500) {
-		return fmt.Errorf("max_concurrency: must be between 1 and 500 (or 0 for default), got %d", c.MaxConcurrency)
-	}
-	if c.Server.Auth.Enabled {
-		switch c.Server.Auth.Type {
-		case "hmac-sha256", AuthTypeBearer:
-		default:
-			return fmt.Errorf("server.auth.type: unsupported auth type '%s' (must be 'hmac-sha256' or 'bearer')", c.Server.Auth.Type)
-		}
-		if c.Server.Auth.SecretFile == "" {
-			return fmt.Errorf("server.auth: enabled but missing 'secret_file'")
-		}
-	}
-	return nil
-}
-
-func (c *Config) validateStore() error {
-	switch c.Store.Backend {
-	case "", "memory", "olric":
-	case "valkey":
-		if c.Store.Valkey.Address == "" {
-			return fmt.Errorf("store.valkey: backend selected but missing 'address'")
-		}
-	default:
-		return fmt.Errorf("store.backend: unsupported backend '%s' (must be 'memory', 'valkey' or 'olric')", c.Store.Backend)
-	}
-	for i, peer := range c.Store.Olric.Peers {
-		host, port, err := net.SplitHostPort(peer)
-		if err != nil || host == "" || port == "" {
-			return fmt.Errorf("store.olric.peers[%d]: '%s' must be in host:port format", i, peer)
-		}
-	}
-	return nil
-}
-
-func (c *Config) validateRetry() error {
-	if c.Retry.MaxAttempts < 0 {
-		return fmt.Errorf("retry.max_attempts: must be non-negative")
-	}
-	if c.Retry.InitialBackoff < 0 || c.Retry.MaxBackoff < 0 {
-		return fmt.Errorf("retry: backoff values must be non-negative")
-	}
-	if c.Retry.InitialBackoff > c.Retry.MaxBackoff && c.Retry.MaxBackoff > 0 {
-		return fmt.Errorf("retry: initial_backoff must be <= max_backoff")
-	}
-	return nil
-}
-
-func (c *Config) validateLimits() error {
-	if c.DedupeSize > 1000000 {
-		return fmt.Errorf("dedupe_size: maximum is 1000000")
-	}
-	if c.DLQ.Enabled && c.DLQ.MaxSizeBytes < 1024 {
-		return fmt.Errorf("dlq.max_size_bytes: minimum is 1024")
-	}
-	if c.HandlerTimeout > 0 && c.Server.WriteTimeoutSec > 0 && c.HandlerTimeout > time.Duration(c.Server.WriteTimeoutSec)*time.Second {
-		return fmt.Errorf("handler_timeout must be less than write_timeout")
-	}
-	return nil
-}
-
-func (c *Config) validateTracing() error {
-	if c.Tracing.Endpoint != "" {
-		if _, err := url.ParseRequestURI(c.Tracing.Endpoint); err != nil {
-			return fmt.Errorf("tracing.endpoint: invalid URL '%s': %w", c.Tracing.Endpoint, err)
-		}
-	}
-	return nil
-}
-
-func (c *Config) validateTLS() error {
-	if c.Server.TLS.CertFile != "" && c.Server.TLS.KeyFile == "" {
-		return fmt.Errorf("server.tls: cert_file set but missing key_file")
-	}
-	if c.Server.TLS.KeyFile != "" && c.Server.TLS.CertFile == "" {
-		return fmt.Errorf("server.tls: key_file set but missing cert_file")
-	}
-	return nil
-}
-
 // ValidateTokenReferences validates that all token references exist in the secrets store.
+//
+//nolint:gocyclo // Many config sections to validate; each adds a branch
 func (c *Config) ValidateTokenReferences(log *zap.Logger) {
 	checkToken := func(name, token string) {
 		if token == "" {
@@ -389,9 +298,22 @@ func (c *Config) ValidateTokenReferences(log *zap.Logger) {
 			}
 		}
 	}
+	for _, inst := range c.Notifiers.Mattermost {
+		if inst.Auth != nil {
+			checkToken("notifiers.mattermost.auth.webhook_url_file", inst.Auth.WebhookURLFile)
+			if inst.Auth.BotToken != nil {
+				checkToken("notifiers.mattermost.auth.bot_token.token_file", inst.Auth.BotToken.TokenFile)
+			}
+		}
+	}
 	for _, inst := range c.Notifiers.Datadog {
 		if inst.Auth != nil {
 			checkToken("notifiers.datadog.auth.api_key_file", inst.Auth.APIKeyFile)
+		}
+	}
+	for _, inst := range c.Notifiers.Honeycomb {
+		if inst.Auth != nil {
+			checkToken("notifiers.honeycomb.auth.api_key_file", inst.Auth.APIKeyFile)
 		}
 	}
 	for _, inst := range c.Notifiers.PagerDuty {
@@ -402,4 +324,97 @@ func (c *Config) ValidateTokenReferences(log *zap.Logger) {
 	if c.Server.Auth.Enabled {
 		checkToken("server.auth.secret_file", c.Server.Auth.SecretFile)
 	}
+}
+
+// validateNotifierInstances validates all notifier instance types.
+// Extracted from validateNotifiers to keep cyclomatic complexity manageable.
+func validateNotifierInstances(cfg *Config) []ValidationError {
+	var errs []ValidationError
+
+	for i, inst := range cfg.Notifiers.Slack {
+		prefix := fmt.Sprintf("notifiers.slack[%d]", i)
+		errs = append(errs, validateSlackInstance(prefix, inst)...)
+	}
+
+	for i, inst := range cfg.Notifiers.Teams {
+		prefix := fmt.Sprintf("notifiers.teams[%d]", i)
+		errs = append(errs, validateTeamsInstance(prefix, inst)...)
+	}
+
+	for i, inst := range cfg.Notifiers.Discord {
+		prefix := fmt.Sprintf("notifiers.discord[%d]", i)
+		errs = append(errs, validateDiscordInstance(prefix, inst)...)
+	}
+
+	for i, inst := range cfg.Notifiers.PagerDuty {
+		prefix := fmt.Sprintf("notifiers.pagerduty[%d]", i)
+		errs = append(errs, validatePagerDutyInstance(prefix, inst)...)
+	}
+
+	for i, inst := range cfg.Notifiers.Datadog {
+		prefix := fmt.Sprintf("notifiers.datadog[%d]", i)
+		errs = append(errs, validateDatadogInstance(prefix, inst)...)
+	}
+
+	for i, inst := range cfg.Notifiers.Webhook {
+		prefix := fmt.Sprintf("notifiers.webhook[%d]", i)
+		errs = append(errs, validateWebhookInstance(prefix, inst)...)
+	}
+
+	for i, inst := range cfg.Notifiers.Grafana {
+		prefix := fmt.Sprintf("notifiers.grafana[%d]", i)
+		errs = append(errs, validateGrafanaInstance(prefix, inst)...)
+	}
+
+	for i, inst := range cfg.Notifiers.Sentry {
+		prefix := fmt.Sprintf("notifiers.sentry[%d]", i)
+		errs = append(errs, validateSentryInstance(prefix, inst)...)
+	}
+
+	for i, inst := range cfg.Notifiers.Mattermost {
+		prefix := fmt.Sprintf("notifiers.mattermost[%d]", i)
+		errs = append(errs, validateMattermostInstance(prefix, inst)...)
+	}
+
+	for i, inst := range cfg.Notifiers.Telegram {
+		prefix := fmt.Sprintf("notifiers.telegram[%d]", i)
+		errs = append(errs, validateTelegramInstance(prefix, inst)...)
+	}
+
+	for i, inst := range cfg.Notifiers.IncidentIO {
+		prefix := fmt.Sprintf("notifiers.incidentio[%d]", i)
+		errs = append(errs, validateIncidentIOInstance(prefix, inst)...)
+	}
+
+	for i, inst := range cfg.Notifiers.NewRelic {
+		prefix := fmt.Sprintf("notifiers.newrelic[%d]", i)
+		errs = append(errs, validateNewRelicInstance(prefix, inst)...)
+	}
+
+	for i, inst := range cfg.Notifiers.Honeycomb {
+		prefix := fmt.Sprintf("notifiers.honeycomb[%d]", i)
+		errs = append(errs, validateHoneycombInstance(prefix, inst)...)
+	}
+
+	for i, inst := range cfg.Notifiers.Email {
+		prefix := fmt.Sprintf("notifiers.email[%d]", i)
+		errs = append(errs, validateEmailInstance(prefix, inst)...)
+	}
+
+	for i, inst := range cfg.Notifiers.NATS {
+		prefix := fmt.Sprintf("notifiers.nats[%d]", i)
+		errs = append(errs, validateNATSInstance(prefix, inst)...)
+	}
+
+	for i, inst := range cfg.Notifiers.RabbitMQ {
+		prefix := fmt.Sprintf("notifiers.rabbitmq[%d]", i)
+		errs = append(errs, validateRabbitMQInstance(prefix, inst)...)
+	}
+
+	for i, inst := range cfg.Notifiers.RedisPubSub {
+		prefix := fmt.Sprintf("notifiers.redispubsub[%d]", i)
+		errs = append(errs, validateRedisPubSubInstance(prefix, inst)...)
+	}
+
+	return errs
 }

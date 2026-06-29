@@ -13,6 +13,7 @@ import (
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/datadog"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/discord"
+	"github.com/fabioluciano/tekton-events-relay/internal/notifier/scm"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/slack"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/teams"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/webhook"
@@ -113,7 +114,7 @@ func TestDiscord_Payload(t *testing.T) {
 
 func TestDatadog_Payload(t *testing.T) {
 	_, body := captureServer(t)
-	n := datadog.New(datadog.Config{APIKey: "dd-key", Site: "datadoghq.com"}, zap.NewNop())
+	n := datadog.New(datadog.Config{APIKey: scm.NewStaticToken("dd-key"), Site: "datadoghq.com"}, zap.NewNop())
 	// Datadog uses fixed URL (api.<site>/api/v2/events) — test payload structure
 
 	_ = n

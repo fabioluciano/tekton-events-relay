@@ -29,12 +29,24 @@ type Collectors struct {
 	// State backend failures (dedupe/accumulator fail open on error) {backend, op}
 	StoreErrors *prometheus.CounterVec
 
+	// Store operation latency (instrumented wrapper) {backend, operation}
+	StoreDuration *prometheus.HistogramVec
+
+	// Store operation errors (instrumented wrapper) {backend, operation}
+	StoreOpErrors *prometheus.CounterVec
+
 	// Dead letter queue observability
 	DLQSize     prometheus.Gauge
 	DLQEnqueued prometheus.Counter
 
 	// Config hot-reload outcomes {result}
 	ConfigReloads *prometheus.CounterVec
+
+	// Config reload duration (seconds) — no labels
+	ConfigReloadDuration prometheus.Histogram
+
+	// Unix seconds of the most recent config reload (success or failure)
+	ConfigReloadLastTimestamp prometheus.Gauge
 
 	// Handlers exceeding their execution deadline {handler}
 	HandlerTimeouts *prometheus.CounterVec
@@ -46,10 +58,19 @@ type Collectors struct {
 	// Sustained evictions mean dedupe_size is too small for the event rate.
 	DeduperEvictions prometheus.Counter
 
+	// DLQ replay observability
+	DlqReplayTotal    *prometheus.CounterVec   // {status}
+	DlqReplayDuration *prometheus.HistogramVec // no labels
+
 	// HTTP RED metrics (D-30)
 	HTTPRequestDuration  *prometheus.HistogramVec // {method, code}
 	HTTPRequestsTotal    *prometheus.CounterVec   // {method, code}
 	HTTPRequestsInFlight prometheus.Gauge
+
+	// Business metrics — event dimension counters
+	EventsByStateTotal    *prometheus.CounterVec // {state}
+	EventsByProviderTotal *prometheus.CounterVec // {provider}
+	EventsByResourceTotal *prometheus.CounterVec // {resource}
 }
 
 // NewCollectors creates and registers all collectors with the given registerer.
@@ -180,6 +201,19 @@ func NewCollectors(reg prometheus.Registerer) *Collectors {
 			},
 			[]string{"result"},
 		),
+		ConfigReloadDuration: prometheus.NewHistogram(
+			prometheus.HistogramOpts{
+				Name:    "tekton_events_relay_config_reload_duration_seconds",
+				Help:    "Duration of configuration reload in seconds",
+				Buckets: buckets,
+			},
+		),
+		ConfigReloadLastTimestamp: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Name: "tekton_events_relay_config_reload_last_timestamp",
+				Help: "Unix timestamp of the last configuration reload",
+			},
+		),
 		HandlerTimeouts: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Name: "tekton_events_relay_handler_timeouts_total",
@@ -201,6 +235,36 @@ func NewCollectors(reg prometheus.Registerer) *Collectors {
 				Help: "Total dedupe entries evicted by the LRU capacity bound (memory backend)",
 			},
 		),
+		StoreDuration: prometheus.NewHistogramVec(
+			prometheus.HistogramOpts{
+				Name:    "store_operation_duration_seconds",
+				Help:    "Store operation latency by backend and operation.",
+				Buckets: buckets,
+			},
+			[]string{"backend", "operation"},
+		),
+		StoreOpErrors: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "store_operation_errors_total",
+				Help: "Total store operation errors by backend and operation.",
+			},
+			[]string{"backend", "operation"},
+		),
+		DlqReplayTotal: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "tekton_events_relay_dlq_replay_total",
+				Help: "Total DLQ replay attempts by status",
+			},
+			[]string{"status"},
+		),
+		DlqReplayDuration: prometheus.NewHistogramVec(
+			prometheus.HistogramOpts{
+				Name:    "tekton_events_relay_dlq_replay_duration_seconds",
+				Help:    "Duration of DLQ replay operations in seconds",
+				Buckets: buckets,
+			},
+			[]string{},
+		),
 		HTTPRequestDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "http_request_duration_seconds",
 			Help:    "HTTP request latency.",
@@ -214,6 +278,27 @@ func NewCollectors(reg prometheus.Registerer) *Collectors {
 			Name: "http_requests_in_flight",
 			Help: "Current number of HTTP requests being served.",
 		}),
+		EventsByStateTotal: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "tekton_events_relay_events_by_state_total",
+				Help: "Total events observed by pipeline state",
+			},
+			[]string{"state"},
+		),
+		EventsByProviderTotal: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "tekton_events_relay_events_by_provider_total",
+				Help: "Total events observed by SCM provider",
+			},
+			[]string{"provider"},
+		),
+		EventsByResourceTotal: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Name: "tekton_events_relay_events_by_resource_total",
+				Help: "Total events observed by Tekton resource type",
+			},
+			[]string{"resource"},
+		),
 	}
 
 	reg.MustRegister(
@@ -235,12 +320,21 @@ func NewCollectors(reg prometheus.Registerer) *Collectors {
 		c.DLQSize,
 		c.DLQEnqueued,
 		c.ConfigReloads,
+		c.ConfigReloadDuration,
+		c.ConfigReloadLastTimestamp,
 		c.HandlerTimeouts,
 		c.NotifierLatency,
 		c.DeduperEvictions,
+		c.StoreDuration,
+		c.StoreOpErrors,
+		c.DlqReplayTotal,
+		c.DlqReplayDuration,
 		c.HTTPRequestDuration,
 		c.HTTPRequestsTotal,
 		c.HTTPRequestsInFlight,
+		c.EventsByStateTotal,
+		c.EventsByProviderTotal,
+		c.EventsByResourceTotal,
 	)
 
 	return c

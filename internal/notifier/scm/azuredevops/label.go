@@ -112,3 +112,6 @@ func (h *LabelHandler) applyLabelSet(ctx context.Context, e domain.Event) error 
 	}
 	return nil
 }
+
+// Close is a no-op; this handler holds no resources requiring cleanup.
+func (h *LabelHandler) Close() error { return nil }

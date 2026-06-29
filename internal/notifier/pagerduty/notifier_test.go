@@ -7,7 +7,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/fabioluciano/tekton-events-relay/internal/cel"
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
+	"github.com/fabioluciano/tekton-events-relay/internal/notifier/scm"
 )
 
 const (
@@ -31,8 +33,22 @@ const (
 	testTargetURL        = "https://tekton.example.com/run-123"
 )
 
+type rotatingToken struct {
+	values []string
+	index  int
+}
+
+func (r *rotatingToken) Token(context.Context) (string, error) {
+	if r.index >= len(r.values) {
+		return r.values[len(r.values)-1], nil
+	}
+	value := r.values[r.index]
+	r.index++
+	return value, nil
+}
+
 func TestNew(t *testing.T) {
-	cfg := Config{IntegrationKey: testKeyValue}
+	cfg := Config{IntegrationKey: scm.NewStaticToken(testKeyValue)}
 	n := New(cfg, nil)
 	if n == nil {
 		t.Fatal("expected notifier")
@@ -40,7 +56,7 @@ func TestNew(t *testing.T) {
 }
 
 func TestNewWithDefaultSeverity(t *testing.T) {
-	cfg := Config{IntegrationKey: testKeyValue}
+	cfg := Config{IntegrationKey: scm.NewStaticToken(testKeyValue)}
 	n := New(cfg, nil)
 	if n.cfg.Severity != testSeverityCrit {
 		t.Errorf("expected default severity 'critical', got %q", n.cfg.Severity)
@@ -48,7 +64,7 @@ func TestNewWithDefaultSeverity(t *testing.T) {
 }
 
 func TestNewWithCustomSeverity(t *testing.T) {
-	cfg := Config{IntegrationKey: testKeyValue, Severity: testSeverityWarning}
+	cfg := Config{IntegrationKey: scm.NewStaticToken(testKeyValue), Severity: testSeverityWarning}
 	n := New(cfg, nil)
 	if n.cfg.Severity != testSeverityWarning {
 		t.Errorf("expected severity 'warning', got %q", n.cfg.Severity)
@@ -56,9 +72,35 @@ func TestNewWithCustomSeverity(t *testing.T) {
 }
 
 func TestName(t *testing.T) {
-	n := New(Config{IntegrationKey: "test"}, nil)
+	n := New(Config{IntegrationKey: scm.NewStaticToken("test")}, nil)
 	if n.Name() != testNamePagerDuty {
 		t.Errorf("Name() = %q, want pagerduty", n.Name())
+	}
+}
+
+func TestNotifier_ResolvesIntegrationKeyPerRequest(t *testing.T) {
+	var got []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("failed to decode payload: %v", err)
+		}
+		got = append(got, payload["routing_key"].(string))
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer server.Close()
+
+	n := New(Config{IntegrationKey: &rotatingToken{values: []string{"v1", "v2"}}}, nil)
+	n.base.BuildURL = func(_ domain.Event) (string, error) { return server.URL, nil }
+	event := domain.Event{State: domain.StateFailure, RunName: testRunID123, RunID: testRunID123, Namespace: testNamespaceDefault}
+	if err := n.Handle(context.Background(), event); err != nil {
+		t.Fatalf("first Handle() error = %v", err)
+	}
+	if err := n.Handle(context.Background(), event); err != nil {
+		t.Fatalf("second Handle() error = %v", err)
+	}
+	if len(got) != 2 || got[0] != "v1" || got[1] != "v2" {
+		t.Fatalf("routing_key values = %v, want [v1 v2]", got)
 	}
 }
 
@@ -73,7 +115,7 @@ func TestNotifyWithFailureState(t *testing.T) {
 	}))
 	defer server.Close()
 
-	n := New(Config{IntegrationKey: testKeyValue}, nil)
+	n := New(Config{IntegrationKey: scm.NewStaticToken(testKeyValue)}, nil)
 	n.base.BuildURL = func(_ domain.Event) (string, error) { return server.URL, nil }
 
 	event := domain.Event{
@@ -114,7 +156,7 @@ func TestNotifyWithErrorState(t *testing.T) {
 	}))
 	defer server.Close()
 
-	n := New(Config{IntegrationKey: testKeyValue}, nil)
+	n := New(Config{IntegrationKey: scm.NewStaticToken(testKeyValue)}, nil)
 	n.base.BuildURL = func(_ domain.Event) (string, error) { return server.URL, nil }
 
 	event := domain.Event{
@@ -147,7 +189,7 @@ func TestNotifyWithSuccessState(t *testing.T) {
 	}))
 	defer server.Close()
 
-	n := New(Config{IntegrationKey: testKeyValue}, nil)
+	n := New(Config{IntegrationKey: scm.NewStaticToken(testKeyValue)}, nil)
 	n.base.BuildURL = func(_ domain.Event) (string, error) { return server.URL, nil }
 
 	event := domain.Event{
@@ -170,7 +212,7 @@ func TestNotifyWithSuccessState(t *testing.T) {
 }
 
 func TestNotifyWithIrrelevantState(t *testing.T) {
-	n := New(Config{IntegrationKey: testKeyValue}, nil)
+	n := New(Config{IntegrationKey: scm.NewStaticToken(testKeyValue)}, nil)
 
 	testCases := []struct {
 		name  string
@@ -235,7 +277,7 @@ func TestNotifyRunningWithAcknowledgeEnabled(t *testing.T) {
 	}))
 	defer server.Close()
 
-	n := New(Config{IntegrationKey: testKeyValue, AcknowledgeOnRunning: true}, nil)
+	n := New(Config{IntegrationKey: scm.NewStaticToken(testKeyValue), AcknowledgeOnRunning: true}, nil)
 	n.base.BuildURL = func(_ domain.Event) (string, error) { return server.URL, nil }
 
 	event := domain.Event{
@@ -267,7 +309,7 @@ func TestNotifyRunningWithAcknowledgeDisabled(t *testing.T) {
 	}))
 	defer server.Close()
 
-	n := New(Config{IntegrationKey: testKeyValue}, nil)
+	n := New(Config{IntegrationKey: scm.NewStaticToken(testKeyValue)}, nil)
 	n.base.BuildURL = func(_ domain.Event) (string, error) { return server.URL, nil }
 
 	event := domain.Event{
@@ -286,7 +328,7 @@ func TestNotifyRunningWithAcknowledgeDisabled(t *testing.T) {
 }
 
 func TestPayloadWithFailureState(t *testing.T) {
-	n := New(Config{IntegrationKey: testKeyValue, Severity: testSeverityError}, nil)
+	n := New(Config{IntegrationKey: scm.NewStaticToken(testKeyValue), Severity: testSeverityError}, nil)
 
 	event := domain.Event{
 		State:       domain.StateFailure,
@@ -299,7 +341,7 @@ func TestPayloadWithFailureState(t *testing.T) {
 		CommitSHA:   "abc123def",
 	}
 
-	payload, err := n.payload(event)
+	payload, err := n.payload(event, testKeyValue)
 	if err != nil {
 		t.Fatalf("payload() failed: %v", err)
 	}
@@ -373,7 +415,7 @@ func TestPayloadWithFailureState(t *testing.T) {
 }
 
 func TestPayloadWithSuccessState(t *testing.T) {
-	n := New(Config{IntegrationKey: testKeyValue}, nil)
+	n := New(Config{IntegrationKey: scm.NewStaticToken(testKeyValue)}, nil)
 
 	event := domain.Event{
 		State:       domain.StateSuccess,
@@ -383,7 +425,7 @@ func TestPayloadWithSuccessState(t *testing.T) {
 		Description: "All tests passed",
 	}
 
-	payload, err := n.payload(event)
+	payload, err := n.payload(event, testKeyValue)
 	if err != nil {
 		t.Fatalf("payload() failed: %v", err)
 	}
@@ -399,7 +441,7 @@ func TestPayloadWithSuccessState(t *testing.T) {
 }
 
 func TestPayloadWithoutTargetURL(t *testing.T) {
-	n := New(Config{IntegrationKey: testKeyValue}, nil)
+	n := New(Config{IntegrationKey: scm.NewStaticToken(testKeyValue)}, nil)
 
 	event := domain.Event{
 		State:       domain.StateFailure,
@@ -410,7 +452,7 @@ func TestPayloadWithoutTargetURL(t *testing.T) {
 		TargetURL:   "",
 	}
 
-	payload, err := n.payload(event)
+	payload, err := n.payload(event, testKeyValue)
 	if err != nil {
 		t.Fatalf("payload() failed: %v", err)
 	}
@@ -426,7 +468,7 @@ func TestPayloadWithoutTargetURL(t *testing.T) {
 }
 
 func TestPayloadWithUnsupportedState(t *testing.T) {
-	n := New(Config{IntegrationKey: testKeyValue}, nil)
+	n := New(Config{IntegrationKey: scm.NewStaticToken(testKeyValue)}, nil)
 
 	event := domain.Event{
 		State:     domain.StatePending,
@@ -434,7 +476,7 @@ func TestPayloadWithUnsupportedState(t *testing.T) {
 		Namespace: testNamespaceDefault,
 	}
 
-	_, err := n.payload(event)
+	_, err := n.payload(event, testKeyValue)
 	if err == nil {
 		t.Error("expected error for unsupported state")
 	}
@@ -451,7 +493,7 @@ func TestNotifyHTTPError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	n := New(Config{IntegrationKey: testKeyValue}, nil)
+	n := New(Config{IntegrationKey: scm.NewStaticToken(testKeyValue)}, nil)
 	n.base.BuildURL = func(_ domain.Event) (string, error) { return server.URL, nil }
 
 	event := domain.Event{
@@ -465,5 +507,97 @@ func TestNotifyHTTPError(t *testing.T) {
 	err := n.Handle(context.Background(), event)
 	if err == nil {
 		t.Error("expected error when server returns 400")
+	}
+}
+
+func TestSeverityExpr(t *testing.T) {
+	severityExpr, err := cel.CompileString(`event.State == "failure" ? "critical" : "warning"`)
+	if err != nil {
+		t.Fatalf("compile severity_expr: %v", err)
+	}
+
+	receivedPayload := make(map[string]any)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&receivedPayload); err != nil {
+			t.Fatalf("decode payload: %v", err)
+		}
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(`{"status":"success"}`))
+	}))
+	defer server.Close()
+
+	n := New(Config{
+		IntegrationKey: scm.NewStaticToken(testKeyValue),
+		Severity:       testSeverityError,
+		SeverityExpr:   severityExpr,
+	}, nil)
+	n.base.BuildURL = func(_ domain.Event) (string, error) { return server.URL, nil }
+
+	// failure state → critical from CEL expression
+	event := domain.Event{
+		State:       domain.StateFailure,
+		RunName:     testRunID123,
+		RunID:       testRunID123,
+		Namespace:   testNamespaceDefault,
+		Context:     testContextBuild,
+		Description: testDescBuildFailed,
+	}
+	if err := n.Handle(context.Background(), event); err != nil {
+		t.Fatalf("Handle() error = %v", err)
+	}
+	inner, ok := receivedPayload["payload"].(map[string]any)
+	if !ok {
+		t.Fatal("inner payload is not a map")
+	}
+	if inner["severity"] != "critical" {
+		t.Errorf("severity = %v, want critical", inner["severity"])
+	}
+
+	// error state → warning from CEL expression
+	event.State = domain.StateError
+	if err := n.Handle(context.Background(), event); err != nil {
+		t.Fatalf("Handle() error = %v", err)
+	}
+	inner, ok = receivedPayload["payload"].(map[string]any)
+	if !ok {
+		t.Fatal("inner payload is not a map")
+	}
+	if inner["severity"] != "warning" {
+		t.Errorf("severity = %v, want warning", inner["severity"])
+	}
+}
+
+func TestSeverityExpr_EmptyFallsBack(t *testing.T) {
+	receivedPayload := make(map[string]any)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&receivedPayload); err != nil {
+			t.Fatalf("decode payload: %v", err)
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer server.Close()
+
+	// No SeverityExpr — falls back to static Severity
+	n := New(Config{
+		IntegrationKey: scm.NewStaticToken(testKeyValue),
+		Severity:       testSeverityWarning,
+	}, nil)
+	n.base.BuildURL = func(_ domain.Event) (string, error) { return server.URL, nil }
+
+	event := domain.Event{
+		State:     domain.StateFailure,
+		RunName:   testRunID123,
+		RunID:     testRunID123,
+		Namespace: testNamespaceDefault,
+	}
+	if err := n.Handle(context.Background(), event); err != nil {
+		t.Fatalf("Handle() error = %v", err)
+	}
+	inner, ok := receivedPayload["payload"].(map[string]any)
+	if !ok {
+		t.Fatal("inner payload is not a map")
+	}
+	if inner["severity"] != testSeverityWarning {
+		t.Errorf("severity = %v, want warning", inner["severity"])
 	}
 }

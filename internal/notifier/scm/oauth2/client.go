@@ -36,27 +36,39 @@ type Client struct {
 }
 
 // NewClient creates a client backed by the client_credentials grant.
-// The httpClient parameter is accepted for interface compatibility but the
-// token source uses context.Background() for refresh requests.
-func NewClient(creds ClientCredentials, _ *http.Client) *Client {
+// When httpClient is non-nil it is injected into the context via
+// oauth2.HTTPClient so all token endpoint calls use that transport
+// instead of http.DefaultClient.
+func NewClient(creds ClientCredentials, httpClient *http.Client) *Client {
 	cfg := clientcredentials.Config{
 		ClientID:     creds.ClientID,
 		ClientSecret: creds.ClientSecret,
 		TokenURL:     creds.TokenURL,
 	}
-	return &Client{ts: cfg.TokenSource(context.Background())}
+	ctx := context.Background()
+	if httpClient != nil {
+		ctx = context.WithValue(ctx, oauth2.HTTPClient, httpClient)
+	}
+	return &Client{ts: cfg.TokenSource(ctx)}
 }
 
 // NewRefreshTokenClient creates a client backed by the refresh_token grant.
 // The x/oauth2 TokenSource exchanges the seeded refresh token for an access
 // token and rotates it automatically before expiry.
-func NewRefreshTokenClient(creds RefreshTokenCredentials, _ *http.Client) *Client {
+// When httpClient is non-nil it is injected into the context via
+// oauth2.HTTPClient so all token endpoint calls use that transport
+// instead of http.DefaultClient.
+func NewRefreshTokenClient(creds RefreshTokenCredentials, httpClient *http.Client) *Client {
 	cfg := oauth2.Config{
 		ClientID:     creds.ClientID,
 		ClientSecret: creds.ClientSecret,
 		Endpoint:     oauth2.Endpoint{TokenURL: creds.TokenURL},
 	}
-	ts := cfg.TokenSource(context.Background(), &oauth2.Token{RefreshToken: creds.RefreshToken})
+	ctx := context.Background()
+	if httpClient != nil {
+		ctx = context.WithValue(ctx, oauth2.HTTPClient, httpClient)
+	}
+	ts := cfg.TokenSource(ctx, &oauth2.Token{RefreshToken: creds.RefreshToken})
 	return &Client{ts: ts}
 }
 

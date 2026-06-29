@@ -1,10 +1,13 @@
 package factory
 
 import (
+	"time"
+
 	"go.uber.org/zap"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/config"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
+	"github.com/fabioluciano/tekton-events-relay/internal/notifier/batch"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/middleware"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/webhook"
 	"github.com/fabioluciano/tekton-events-relay/internal/secrets"
@@ -19,13 +22,11 @@ func (f *WebhookFactory) Build(inst config.WebhookInstance, log *zap.Logger) ([]
 		return nil, nil
 	}
 
-	// Resolve URL from volume mount
 	url, err := secrets.ResolveOrInfer(inst.URLFile, "webhook", inst.Name, "url", inst.URLKey, log)
 	if err != nil {
 		return nil, err
 	}
 
-	// Resolve auth secrets if auth is configured
 	var auth *webhook.ResolvedAuth
 	if inst.Auth != nil {
 		resolvedAuth, err := f.resolveAuthSecrets(inst.Name, inst.Auth, log)
@@ -35,17 +36,34 @@ func (f *WebhookFactory) Build(inst config.WebhookInstance, log *zap.Logger) ([]
 		auth = resolvedAuth
 	}
 
+	httpClient, retryPolicy := buildNotifierClient(inst.RetryOverride)
+
 	handler, err := webhook.New(webhook.Config{
-		URL:       url,
-		Auth:      auth,
-		Transform: inst.Transform,
-		Headers:   inst.Headers,
+		URL:         url,
+		Auth:        auth,
+		Transform:   inst.Transform,
+		Headers:     inst.Headers,
+		HTTPClient:  httpClient,
+		RetryPolicy: retryPolicy,
 	}, log)
 	if err != nil {
 		return nil, err
 	}
 
-	wrapped, err := middleware.WrapWithCEL(handler, inst.When, log)
+	var h notifier.ActionHandler = handler
+	if inst.Batch != nil && inst.Batch.Enabled {
+		batchCfg := batch.Config{
+			Enabled:       true,
+			MaxSize:       inst.Batch.MaxSize,
+			FlushInterval: inst.Batch.FlushInterval,
+		}
+		if batchCfg.FlushInterval == 0 {
+			batchCfg.FlushInterval = 5 * time.Second
+		}
+		h = batch.New(handler, "webhook", batchCfg, log, nil)
+	}
+
+	wrapped, err := middleware.WrapWithCEL(h, inst.When, log)
 	if err != nil {
 		return nil, err
 	}

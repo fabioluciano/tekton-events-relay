@@ -181,3 +181,6 @@ func (h *DiscussionHandler) findDiscussion(ctx context.Context, projectID string
 	}
 	return nil, nil //nolint:nilnil // not-found is a valid, non-error result here
 }
+
+// Close is a no-op; this handler holds no resources requiring cleanup.
+func (h *DiscussionHandler) Close() error { return nil }

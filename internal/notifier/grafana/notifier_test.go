@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 )
 
 const testInstanceName = "grafana-prod"
+const testGrafanaTemplate = "{{.State}}"
 
 func TestNotifier_PostsAnnotation(t *testing.T) {
 	var got map[string]any
@@ -122,7 +124,7 @@ func TestNotifier_RegionAnnotation_FinishOnlyUsesFinishForBoth(t *testing.T) {
 	finish := time.Date(2026, 1, 1, 12, 5, 0, 0, time.UTC)
 	got := postAndCapture(t, Config{
 		Name:     testInstanceName,
-		Template: "{{.State}}",
+		Template: testGrafanaTemplate,
 	}, domain.Event{
 		State:      domain.StateFailure,
 		FinishedAt: finish,
@@ -139,7 +141,7 @@ func TestNotifier_RegionAnnotation_FinishOnlyUsesFinishForBoth(t *testing.T) {
 func TestNotifier_PointAnnotation_NonTerminalOmitsTimeEnd(t *testing.T) {
 	got := postAndCapture(t, Config{
 		Name:     testInstanceName,
-		Template: "{{.State}}",
+		Template: testGrafanaTemplate,
 	}, domain.Event{
 		State: domain.StateRunning,
 	})
@@ -155,7 +157,7 @@ func TestNotifier_PointAnnotation_NonTerminalOmitsTimeEnd(t *testing.T) {
 func TestNotifier_ScopedAnnotation_IncludesDashboardAndPanel(t *testing.T) {
 	got := postAndCapture(t, Config{
 		Name:         testInstanceName,
-		Template:     "{{.State}}",
+		Template:     testGrafanaTemplate,
 		DashboardUID: "jcIIG-07z",
 		PanelID:      42,
 	}, domain.Event{
@@ -174,7 +176,7 @@ func TestNotifier_ScopedAnnotation_IncludesDashboardAndPanel(t *testing.T) {
 func TestNotifier_OrgAnnotation_OmitsDashboardAndPanelWhenUnset(t *testing.T) {
 	got := postAndCapture(t, Config{
 		Name:     testInstanceName,
-		Template: "{{.State}}",
+		Template: testGrafanaTemplate,
 	}, domain.Event{
 		State:      domain.StateSuccess,
 		FinishedAt: time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC),
@@ -216,5 +218,75 @@ func TestNotifier_FileTemplate(t *testing.T) {
 	}
 	if n == nil {
 		t.Error("expected notifier, got nil")
+	}
+}
+
+func TestMultipleDashboards(t *testing.T) {
+	var mu sync.Mutex
+	var payloads []map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var got map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		mu.Lock()
+		payloads = append(payloads, got)
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	n, err := New(Config{
+		Name:          testInstanceName,
+		URL:           srv.URL,
+		Token:         scm.NewStaticToken("token"),
+		Template:      testGrafanaTemplate,
+		DashboardUIDs: []string{"uid-1", "uid-2", "uid-3"},
+		Log:           zap.NewNop(),
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	err = n.Handle(context.Background(), domain.Event{
+		State:      domain.StateSuccess,
+		FinishedAt: time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(payloads) != 3 {
+		t.Fatalf("expected 3 annotations, got %d", len(payloads))
+	}
+
+	seen := make(map[string]bool)
+	for _, p := range payloads {
+		uid, ok := p["dashboardUID"].(string)
+		if !ok {
+			t.Errorf("dashboardUID missing in payload: %v", p)
+			continue
+		}
+		seen[uid] = true
+	}
+	for _, want := range []string{"uid-1", "uid-2", "uid-3"} {
+		if !seen[want] {
+			t.Errorf("missing annotation for dashboard %q", want)
+		}
+	}
+}
+
+func TestMultipleDashboards_SingularFallback(t *testing.T) {
+	got := postAndCapture(t, Config{
+		Name:         testInstanceName,
+		Template:     testGrafanaTemplate,
+		DashboardUID: "single-uid",
+	}, domain.Event{
+		State:      domain.StateSuccess,
+		FinishedAt: time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC),
+	})
+
+	if got["dashboardUID"] != "single-uid" {
+		t.Errorf("dashboardUID = %v, want single-uid", got["dashboardUID"])
 	}
 }

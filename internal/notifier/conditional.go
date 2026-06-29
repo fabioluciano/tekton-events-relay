@@ -39,6 +39,11 @@ func (c *ConditionalHandler) Type() ActionType {
 	return c.inner.Type()
 }
 
+// Close delegates to the inner handler's Close method.
+func (c *ConditionalHandler) Close() error {
+	return c.inner.Close()
+}
+
 // Handle evaluates CEL expression before delegating.
 // - If program is nil: always delegate
 // - If CEL eval returns true: delegate to inner handler

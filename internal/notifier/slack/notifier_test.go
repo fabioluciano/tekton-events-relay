@@ -26,6 +26,7 @@ const (
 	testFieldCommit   = "Commit"
 	testFieldDuration = "Duration"
 	testChannelID     = "C12345"
+	testBotToken      = "xoxb-test-token" //nolint:gosec // test-only credential
 )
 
 func TestNew(t *testing.T) {
@@ -106,7 +107,7 @@ func TestNew_BotTokenMode(t *testing.T) {
 	defer srv.Close()
 
 	cfg := Config{
-		Token:     staticRefresher{tok: "xoxb-test-token"},
+		Token:     staticRefresher{tok: testBotToken},
 		ChannelID: testChannelID,
 		apiURL:    srv.URL + "/",
 	}
@@ -143,7 +144,7 @@ func TestBotToken_Upsert_SecondCallUpdates(t *testing.T) {
 	defer srv.Close()
 
 	cfg := Config{
-		Token:        staticRefresher{tok: "xoxb-test-token"},
+		Token:        staticRefresher{tok: testBotToken},
 		ChannelID:    testChannelID,
 		Mode:         ModeUpsert,
 		MessageStore: msgstore.NewMemoryStore(0, 0),
@@ -182,7 +183,7 @@ func TestBotToken_Upsert_FailsOpenWithoutStore(t *testing.T) {
 	defer srv.Close()
 
 	cfg := Config{
-		Token:     staticRefresher{tok: "xoxb-test-token"},
+		Token:     staticRefresher{tok: testBotToken},
 		ChannelID: testChannelID,
 		Mode:      ModeUpsert,
 		// No MessageStore: upsert must degrade to a plain post each time.
@@ -256,7 +257,7 @@ func TestBotToken_ThreadTS_SetsThreadOption(t *testing.T) {
 	defer srv.Close()
 
 	cfg := Config{
-		Token:     staticRefresher{tok: "xoxb-test-token"},
+		Token:     staticRefresher{tok: testBotToken},
 		ChannelID: testChannelID,
 		ThreadTS:  "999.999",
 		apiURL:    srv.URL + "/",
@@ -450,7 +451,7 @@ func TestPayload(t *testing.T) {
 	}
 }
 
-func TestPayload_WithChannel(t *testing.T) {
+func TestDynamicChannel(t *testing.T) {
 	n, err := New(Config{
 		WebhookURL: testURL,
 		Channel:    "#alerts",
@@ -718,5 +719,135 @@ func TestHandle_MultipleStates(t *testing.T) {
 				t.Errorf("expected 1 webhook call, got %d", callCount)
 			}
 		})
+	}
+}
+
+func TestThreadReply_Grouped_SecondCallHasThreadTS(t *testing.T) {
+	var threadTSValues []string
+	var paths []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		paths = append(paths, r.URL.Path)
+		threadTSValues = append(threadTSValues, r.FormValue("thread_ts"))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true,"channel":"C12345","ts":"111.111"}`))
+	}))
+	defer srv.Close()
+
+	cfg := Config{
+		Token:        staticRefresher{tok: testBotToken},
+		ChannelID:    testChannelID,
+		ThreadMode:   ThreadModeGrouped,
+		MessageStore: msgstore.NewMemoryStore(0, 0),
+		apiURL:       srv.URL + "/",
+	}
+	n, err := New(cfg, nil)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	evt := domain.Event{RunID: testRunID, RunName: testRunID, State: domain.StateRunning, Context: testBuild, Namespace: testNamespace}
+
+	// First call posts top-level (no thread_ts).
+	if err := n.Handle(context.Background(), evt); err != nil {
+		t.Fatalf("first Handle() failed: %v", err)
+	}
+	// Second call for the same RunID must include thread_ts.
+	evt.State = domain.StateSuccess
+	if err := n.Handle(context.Background(), evt); err != nil {
+		t.Fatalf("second Handle() failed: %v", err)
+	}
+
+	if len(paths) != 2 {
+		t.Fatalf("expected 2 calls, got %d (%v)", len(paths), paths)
+	}
+	for i, p := range paths {
+		if !strings.Contains(p, "chat.postMessage") {
+			t.Errorf("call %d path = %q, want chat.postMessage", i, p)
+		}
+	}
+	if threadTSValues[0] != "" {
+		t.Errorf("first call thread_ts = %q, want empty (top-level post)", threadTSValues[0])
+	}
+	if threadTSValues[1] != "111.111" {
+		t.Errorf("second call thread_ts = %q, want 111.111 (reply to first post)", threadTSValues[1])
+	}
+}
+
+func TestThreadReply_Grouped_DifferentRunIDsPostNormally(t *testing.T) {
+	var threadTSValues []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		threadTSValues = append(threadTSValues, r.FormValue("thread_ts"))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true,"channel":"C12345","ts":"111.111"}`))
+	}))
+	defer srv.Close()
+
+	cfg := Config{
+		Token:        staticRefresher{tok: testBotToken},
+		ChannelID:    testChannelID,
+		ThreadMode:   ThreadModeGrouped,
+		MessageStore: msgstore.NewMemoryStore(0, 0),
+		apiURL:       srv.URL + "/",
+	}
+	n, err := New(cfg, nil)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	evt1 := domain.Event{RunID: "run-aaa", RunName: "run-aaa", State: domain.StateRunning, Context: testBuild, Namespace: testNamespace}
+	evt2 := domain.Event{RunID: "run-bbb", RunName: "run-bbb", State: domain.StateRunning, Context: testBuild, Namespace: testNamespace}
+
+	if err := n.Handle(context.Background(), evt1); err != nil {
+		t.Fatalf("Handle(run-aaa) failed: %v", err)
+	}
+	if err := n.Handle(context.Background(), evt2); err != nil {
+		t.Fatalf("Handle(run-bbb) failed: %v", err)
+	}
+
+	if len(threadTSValues) != 2 {
+		t.Fatalf("expected 2 calls, got %d", len(threadTSValues))
+	}
+	for i, v := range threadTSValues {
+		if v != "" {
+			t.Errorf("call %d thread_ts = %q, want empty (different RunIDs post top-level)", i, v)
+		}
+	}
+}
+
+func TestThreadReply_EmptyPreservesExistingBehavior(t *testing.T) {
+	srv, rec := newSlackTestServer(t)
+	defer srv.Close()
+
+	cfg := Config{
+		Token:        staticRefresher{tok: testBotToken},
+		ChannelID:    testChannelID,
+		MessageStore: msgstore.NewMemoryStore(0, 0),
+		apiURL:       srv.URL + "/",
+	}
+	n, err := New(cfg, nil)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	evt := domain.Event{RunID: testRunID, RunName: testRunID, State: domain.StateRunning, Context: testBuild, Namespace: testNamespace}
+
+	if err := n.Handle(context.Background(), evt); err != nil {
+		t.Fatalf("first Handle() failed: %v", err)
+	}
+	evt.State = domain.StateSuccess
+	if err := n.Handle(context.Background(), evt); err != nil {
+		t.Fatalf("second Handle() failed: %v", err)
+	}
+
+	// Without thread_mode, both calls are independent chat.postMessage.
+	if len(rec.paths) != 2 {
+		t.Fatalf("expected 2 calls, got %d", len(rec.paths))
+	}
+	for i, p := range rec.paths {
+		if !strings.Contains(p, "chat.postMessage") {
+			t.Errorf("call %d path = %q, want chat.postMessage", i, p)
+		}
 	}
 }

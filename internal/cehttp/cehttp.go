@@ -34,6 +34,9 @@ func FromRequest(r *http.Request) (*Event, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := ce.Validate(); err != nil {
+		return nil, err
+	}
 
 	timeStr := ""
 	if !ce.Time().IsZero() {

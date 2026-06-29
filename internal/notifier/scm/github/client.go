@@ -3,7 +3,6 @@ package github
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -37,13 +36,7 @@ type Client struct {
 func buildTransport(insecureSkipVerify bool, debug bool, log *zap.Logger) http.RoundTripper {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.MaxIdleConnsPerHost = httpx.SharedMaxIdleConnsPerHost
-
-	if insecureSkipVerify {
-		if transport.TLSClientConfig == nil {
-			transport.TLSClientConfig = &tls.Config{} //nolint:gosec
-		}
-		transport.TLSClientConfig.InsecureSkipVerify = true //nolint:gosec
-	}
+	transport.TLSClientConfig = httpx.TLSConfig(insecureSkipVerify)
 
 	var rt http.RoundTripper = transport
 	if debug {

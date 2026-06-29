@@ -14,6 +14,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	apperrors "github.com/fabioluciano/tekton-events-relay/internal/errors"
 	"github.com/fabioluciano/tekton-events-relay/internal/event"
 	"github.com/fabioluciano/tekton-events-relay/internal/metrics"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier"
@@ -22,6 +23,7 @@ import (
 // HandlerSource provides access to registered action handlers.
 type HandlerSource interface {
 	All() []notifier.ActionHandler
+	Lookup(name string) notifier.ActionHandler
 }
 
 // Dispatcher fans out events to all registered action handlers concurrently.
@@ -33,6 +35,13 @@ type Dispatcher struct {
 	maxConcurrency int
 	handlerTimeout time.Duration
 	status         *StatusTracker
+	fallbacks      map[string]string // handler name → fallback handler name
+	fallbackOnly   map[string]bool   // handler names that are fallback-only (excluded from normal fan-out)
+}
+
+type handlerResult struct {
+	handler notifier.ActionHandler
+	err     error
 }
 
 // NewDispatcher creates a new Dispatcher with the given registry and logger.
@@ -58,6 +67,15 @@ func (d *Dispatcher) WithStatusTracker(t *StatusTracker) *Dispatcher {
 	return d
 }
 
+// WithFallbacks configures fallback routing. fallbacks maps handler names to
+// their fallback handler names. fallbackOnly lists handler names that should
+// be excluded from normal fan-out (they are only invoked as fallbacks).
+func (d *Dispatcher) WithFallbacks(fallbacks map[string]string, fallbackOnly map[string]bool) *Dispatcher {
+	d.fallbacks = fallbacks
+	d.fallbackOnly = fallbackOnly
+	return d
+}
+
 // Handle dispatches the event to all registered action handlers.
 // Returns an error if any handler fails, but continues trying all handlers.
 // Handlers return nil (skip) when provider doesn't match or required fields missing.
@@ -73,15 +91,25 @@ func (d *Dispatcher) Handle(ctx context.Context, env *event.Envelope) error {
 
 	matched := make([]notifier.ActionHandler, 0, len(handlers))
 	for _, h := range handlers {
+		if d.isFallbackOnly(h.Name()) {
+			continue
+		}
 		if env.Report.Provider != "" && env.Report.Provider != h.Name() && h.Type() != notifier.ActionNotify {
 			continue
 		}
 		matched = append(matched, h)
 	}
 
+	if d.collectors != nil {
+		d.collectors.EventsByStateTotal.WithLabelValues(string(env.Report.State)).Inc()
+		d.collectors.EventsByProviderTotal.WithLabelValues(env.Report.Provider).Inc()
+		d.collectors.EventsByResourceTotal.WithLabelValues(string(env.Report.Resource)).Inc()
+	}
+
 	var (
-		mu   sync.Mutex
-		errs = make([]error, 0, len(matched))
+		mu      sync.Mutex
+		errs    = make([]error, 0, len(matched))
+		results = make([]handlerResult, 0, len(matched))
 	)
 
 	g := &errgroup.Group{}
@@ -109,6 +137,8 @@ func (d *Dispatcher) Handle(ctx context.Context, env *event.Envelope) error {
 				defer cancel()
 			}
 
+			hCtx = context.WithValue(hCtx, notifier.CloudEventIDKey, env.CloudEventID)
+
 			start := time.Now()
 			err := h.Handle(hCtx, env.Report)
 			duration := time.Since(start)
@@ -131,6 +161,7 @@ func (d *Dispatcher) Handle(ctx context.Context, env *event.Envelope) error {
 				status = "error"
 				mu.Lock()
 				errs = append(errs, fmt.Errorf("%s/%s: %w", h.Name(), h.Type(), err))
+				results = append(results, handlerResult{handler: h, err: err})
 				mu.Unlock()
 				d.log.Error("handler failed",
 					zap.String("handler", h.Name()),
@@ -140,7 +171,9 @@ func (d *Dispatcher) Handle(ctx context.Context, env *event.Envelope) error {
 					zap.Error(err),
 				)
 			} else {
-				// Build target description for better observability
+				mu.Lock()
+				results = append(results, handlerResult{handler: h, err: nil})
+				mu.Unlock()
 				fields := []zap.Field{
 					zap.String("handler", h.Name()),
 					zap.String("action", string(h.Type())),
@@ -173,11 +206,10 @@ func (d *Dispatcher) Handle(ctx context.Context, env *event.Envelope) error {
 		})
 	}
 
-	_ = g.Wait()
+	waitErr := g.Wait()
 
 	handledCount := len(matched) - len(errs)
 
-	// Observability: warn if zero handlers actually processed the event
 	if handledCount == 0 && len(handlers) > 0 {
 		d.log.Warn("no handlers processed event",
 			zap.String("event_id", env.CloudEventID),
@@ -186,8 +218,78 @@ func (d *Dispatcher) Handle(ctx context.Context, env *event.Envelope) error {
 			zap.Int("total_handlers", len(handlers)))
 	}
 
-	if len(errs) > 0 {
-		return errors.Join(errs...)
+	if d.fallbacks != nil {
+		fallbackErrs := d.executeFallbacks(ctx, env, results)
+		errs = append(errs, fallbackErrs...)
+	}
+
+	allErrs := errs
+	if waitErr != nil {
+		allErrs = append(allErrs, waitErr)
+	}
+	if len(allErrs) > 0 {
+		return errors.Join(allErrs...)
 	}
 	return d.Next(ctx, env)
+}
+
+func (d *Dispatcher) isFallbackOnly(name string) bool {
+	if d.fallbackOnly == nil {
+		return false
+	}
+	return d.fallbackOnly[name]
+}
+
+func (d *Dispatcher) executeFallbacks(ctx context.Context, env *event.Envelope, results []handlerResult) []error {
+	var fallbackErrs []error
+	for _, r := range results {
+		if r.err == nil {
+			continue
+		}
+		if apperrors.IsRetryable(r.err) {
+			continue
+		}
+		fallbackName, ok := d.fallbacks[r.handler.Name()]
+		if !ok || fallbackName == "" {
+			continue
+		}
+		fb := d.registry.Lookup(fallbackName)
+		if fb == nil {
+			d.log.Warn("fallback handler not found",
+				zap.String("primary", r.handler.Name()),
+				zap.String("fallback", fallbackName),
+			)
+			continue
+		}
+
+		d.log.Info("invoking fallback handler",
+			zap.String("primary", r.handler.Name()),
+			zap.String("fallback", fallbackName),
+			zap.String("runID", env.Report.RunName),
+		)
+
+		fbCtx := ctx
+		if d.handlerTimeout > 0 {
+			var cancel context.CancelFunc
+			fbCtx, cancel = context.WithTimeout(ctx, d.handlerTimeout)
+			defer cancel()
+		}
+		fbCtx = context.WithValue(fbCtx, notifier.CloudEventIDKey, env.CloudEventID)
+
+		fbErr := fb.Handle(fbCtx, env.Report)
+		if fbErr != nil {
+			d.log.Error("fallback handler failed",
+				zap.String("primary", r.handler.Name()),
+				zap.String("fallback", fallbackName),
+				zap.Error(fbErr),
+			)
+			fallbackErrs = append(fallbackErrs, fmt.Errorf("fallback %s for %s: %w", fallbackName, r.handler.Name(), errors.Join(r.err, fbErr)))
+		} else {
+			d.log.Info("fallback handler succeeded",
+				zap.String("primary", r.handler.Name()),
+				zap.String("fallback", fallbackName),
+			)
+		}
+	}
+	return fallbackErrs
 }

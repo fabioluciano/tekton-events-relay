@@ -2,7 +2,9 @@ package discord
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -431,5 +433,255 @@ func TestTemplateFile_InvalidSyntax(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "invalid template") {
 		t.Errorf("error = %v, want 'invalid template'", err)
+	}
+}
+
+// bodyRecordingServer captures request bodies for payload inspection.
+type bodyRecordingServer struct {
+	mu   sync.Mutex
+	bods []string
+}
+
+func newBodyRecordingServer(t *testing.T) (*httptest.Server, *bodyRecordingServer) {
+	t.Helper()
+	rec := &bodyRecordingServer{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		rec.mu.Lock()
+		rec.bods = append(rec.bods, string(body))
+		rec.mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"msg-1"}`))
+	}))
+	t.Cleanup(srv.Close)
+	return srv, rec
+}
+
+func TestRoleMention_Webhook_SingleRole(t *testing.T) {
+	srv, rec := newBodyRecordingServer(t)
+	n, err := New(Config{
+		WebhookURL:   webhookURL(srv.URL),
+		MentionRoles: []string{"111222333"},
+	}, nil)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	if err := n.Handle(context.Background(), successEvent()); err != nil {
+		t.Fatalf("Handle() failed: %v", err)
+	}
+
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	if len(rec.bods) != 1 {
+		t.Fatalf("expected 1 request, got %d", len(rec.bods))
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(rec.bods[0]), &payload); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+	content, _ := payload["content"].(string)
+	if !strings.Contains(content, "<@&111222333>") {
+		t.Errorf("content = %q, want to contain <@&111222333>", content)
+	}
+}
+
+func TestRoleMention_Webhook_MultipleRoles(t *testing.T) {
+	srv, rec := newBodyRecordingServer(t)
+	n, err := New(Config{
+		WebhookURL:   webhookURL(srv.URL),
+		MentionRoles: []string{"111", "222", "333"},
+	}, nil)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	if err := n.Handle(context.Background(), successEvent()); err != nil {
+		t.Fatalf("Handle() failed: %v", err)
+	}
+
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	if len(rec.bods) != 1 {
+		t.Fatalf("expected 1 request, got %d", len(rec.bods))
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(rec.bods[0]), &payload); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+	content, _ := payload["content"].(string)
+	want := "<@&111> <@&222> <@&333>"
+	if !strings.Contains(content, want) {
+		t.Errorf("content = %q, want to contain %q", content, want)
+	}
+}
+
+func TestRoleMention_Webhook_EmptyRoles_NoContentChange(t *testing.T) {
+	srv, rec := newBodyRecordingServer(t)
+	n, err := New(Config{
+		WebhookURL: webhookURL(srv.URL),
+	}, nil)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	if err := n.Handle(context.Background(), successEvent()); err != nil {
+		t.Fatalf("Handle() failed: %v", err)
+	}
+
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	if len(rec.bods) != 1 {
+		t.Fatalf("expected 1 request, got %d", len(rec.bods))
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(rec.bods[0]), &payload); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+	content, _ := payload["content"].(string)
+	if strings.Contains(content, "<@&") {
+		t.Errorf("content = %q, should not contain role mentions when MentionRoles is empty", content)
+	}
+}
+
+func TestRoleMention_BotMode_SingleRole(t *testing.T) {
+	srv, rec := newBodyRecordingServer(t)
+	n, err := New(Config{
+		BotToken:     staticRefresher{tok: "bot-test-token"},
+		ChannelID:    testChannelID,
+		MentionRoles: []string{"999888777"},
+		httpClient:   redirectClient(srv.URL),
+	}, nil)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	if err := n.Handle(context.Background(), successEvent()); err != nil {
+		t.Fatalf("Handle() failed: %v", err)
+	}
+
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	if len(rec.bods) != 1 {
+		t.Fatalf("expected 1 request, got %d", len(rec.bods))
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(rec.bods[0]), &payload); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+	content, _ := payload["content"].(string)
+	if !strings.Contains(content, "<@&999888777>") {
+		t.Errorf("content = %q, want to contain <@&999888777>", content)
+	}
+}
+
+func TestRoleMention_WithTemplate(t *testing.T) {
+	srv, rec := newBodyRecordingServer(t)
+	n, err := New(Config{
+		WebhookURL:   webhookURL(srv.URL),
+		Template:     "Build {{.State}} for {{.RunName}}",
+		MentionRoles: []string{"555"},
+	}, nil)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	if err := n.Handle(context.Background(), successEvent()); err != nil {
+		t.Fatalf("Handle() failed: %v", err)
+	}
+
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	if len(rec.bods) != 1 {
+		t.Fatalf("expected 1 request, got %d", len(rec.bods))
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(rec.bods[0]), &payload); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+	content, _ := payload["content"].(string)
+	if !strings.Contains(content, "<@&555>") {
+		t.Errorf("content = %q, want to contain <@&555>", content)
+	}
+	if !strings.Contains(content, "Build success for run-1") {
+		t.Errorf("content = %q, want to contain template output", content)
+	}
+	if !strings.HasPrefix(content, "<@&555>") {
+		t.Errorf("content = %q, want role mention before template output", content)
+	}
+}
+
+func TestDiscordThreadReply(t *testing.T) {
+	srv, rec := newRecordingServer(t)
+	store := msgstore.NewMemoryStore(0, 0)
+	cfg := Config{
+		BotToken:     staticRefresher{tok: "bot-test-token"},
+		ChannelID:    testChannelID,
+		ThreadMode:   ThreadModeGrouped,
+		MessageStore: store,
+		httpClient:   redirectClient(srv.URL),
+	}
+	n, err := New(cfg, nil)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	evt := successEvent()
+
+	// First call posts top-level and stores the message ID.
+	if err := n.Handle(context.Background(), evt); err != nil {
+		t.Fatalf("first Handle() failed: %v", err)
+	}
+	if id, ok := store.Load(testRunID); !ok || id != "msg-1" {
+		t.Errorf("stored id = %q, ok=%v; want msg-1", id, ok)
+	}
+
+	// Second call for the same RunID must reply in the thread.
+	evt.State = domain.StateRunning
+	if err := n.Handle(context.Background(), evt); err != nil {
+		t.Fatalf("second Handle() failed: %v", err)
+	}
+
+	if len(rec.paths) != 2 {
+		t.Fatalf("expected 2 calls, got %d", len(rec.paths))
+	}
+	// Both calls should be channel messages (POST).
+	if rec.methods[0] != http.MethodPost || rec.methods[1] != http.MethodPost {
+		t.Errorf("methods = %v, want [POST POST]", rec.methods)
+	}
+}
+
+func TestDiscordThreadReply_WebhookFailsOpenWithoutStore(t *testing.T) {
+	srv, rec := newRecordingServer(t)
+	cfg := Config{
+		WebhookURL: webhookURL(srv.URL),
+		ThreadMode: ThreadModeGrouped,
+	}
+	n, err := New(cfg, nil)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	evt := successEvent()
+	if err := n.Handle(context.Background(), evt); err != nil {
+		t.Fatalf("first Handle() failed: %v", err)
+	}
+	if err := n.Handle(context.Background(), evt); err != nil {
+		t.Fatalf("second Handle() failed: %v", err)
+	}
+
+	// Without a store, thread mode degrades to normal sends.
+	if len(rec.methods) != 2 {
+		t.Fatalf("expected 2 calls, got %d", len(rec.methods))
+	}
+	for i, m := range rec.methods {
+		if m != http.MethodPost {
+			t.Errorf("call %d method = %q, want POST", i, m)
+		}
 	}
 }

@@ -18,9 +18,10 @@ import (
 )
 
 const (
-	testToken = "secret-token"
-	testEmail = "ci@example.com"
-	testIssue = "PROJ-123"
+	testToken   = "secret-token"
+	testEmail   = "ci@example.com"
+	testIssue   = "PROJ-123"
+	testBaseURL = "https://x"
 )
 
 func testEvent() domain.Event {
@@ -189,14 +190,14 @@ func TestTransitionHandler_UnavailableTransitionIsSkipped(t *testing.T) {
 }
 
 func TestNewTransitionHandler_RequiresTransition(t *testing.T) {
-	client := NewClient(ClientConfig{BaseURL: "https://x", Token: scm.NewStaticToken(testToken)}, zap.NewNop())
+	client := NewClient(ClientConfig{BaseURL: testBaseURL, Token: scm.NewStaticToken(testToken)}, zap.NewNop())
 	if _, err := NewTransitionHandler(client, "", zap.NewNop()); err == nil {
 		t.Error("expected error for empty transition")
 	}
 }
 
 func TestNewCommentHandler_InvalidTemplateRejected(t *testing.T) {
-	client := NewClient(ClientConfig{BaseURL: "https://x", Token: scm.NewStaticToken(testToken)}, zap.NewNop())
+	client := NewClient(ClientConfig{BaseURL: testBaseURL, Token: scm.NewStaticToken(testToken)}, zap.NewNop())
 	if _, err := NewCommentHandler(client, "{{ .Oops", zap.NewNop()); err == nil {
 		t.Error("expected error for invalid template")
 	}

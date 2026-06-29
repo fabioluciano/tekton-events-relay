@@ -3,6 +3,7 @@ package email
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
 	"encoding/base64"
 	"fmt"
 	"net"
@@ -33,9 +34,10 @@ type capturedMsg struct {
 // fakeSMTP is a minimal in-process SMTP server capturing every message it
 // receives across multiple connections.
 type fakeSMTP struct {
-	ln   net.Listener
-	mu   sync.Mutex
-	msgs []capturedMsg
+	ln     net.Listener
+	mu     sync.Mutex
+	msgs   []capturedMsg
+	notify chan struct{} // buffered; signaled on each new message arrival
 }
 
 func newFakeSMTP(t *testing.T) *fakeSMTP {
@@ -44,7 +46,7 @@ func newFakeSMTP(t *testing.T) *fakeSMTP {
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
-	s := &fakeSMTP{ln: ln}
+	s := &fakeSMTP{ln: ln, notify: make(chan struct{}, 100)}
 	go s.serve()
 	t.Cleanup(func() { _ = ln.Close() })
 	return s
@@ -112,6 +114,11 @@ func (s *fakeSMTP) handle(conn net.Conn) {
 			s.mu.Lock()
 			s.msgs = append(s.msgs, cur)
 			s.mu.Unlock()
+			// Signal waiters that a new message arrived.
+			select {
+			case s.notify <- struct{}{}:
+			default:
+			}
 			cur = capturedMsg{}
 			say("250 queued")
 		case cmd == "RSET":
@@ -155,14 +162,17 @@ func testEvent() domain.Event {
 
 func waitForCount(t *testing.T, s *fakeSMTP, want int) {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
+	deadline := time.After(2 * time.Second)
+	for {
 		if s.count() >= want {
 			return
 		}
-		time.Sleep(10 * time.Millisecond)
+		select {
+		case <-s.notify:
+		case <-deadline:
+			t.Fatalf("expected %d messages, got %d", want, s.count())
+		}
 	}
-	t.Fatalf("expected %d messages, got %d", want, s.count())
 }
 
 func headerSection(data string) string {
@@ -510,13 +520,15 @@ func TestHandle_ContextCancellation(t *testing.T) {
 		t.Fatalf("listen: %v", err)
 	}
 	defer func() { _ = ln.Close() }()
+	hang := make(chan struct{})
 	go func() {
 		conn, err := ln.Accept()
 		if err == nil {
 			defer func() { _ = conn.Close() }()
-			time.Sleep(5 * time.Second)
+			<-hang
 		}
 	}()
+	defer close(hang)
 
 	addr := ln.Addr().(*net.TCPAddr)
 	n, err := New(Config{
@@ -617,4 +629,61 @@ func xoauth2Token(t *testing.T, authLine string) string {
 		}
 	}
 	return ""
+}
+
+// TestTLSConfig verifies that the email notifier's TLS configuration uses the
+// shared httpx helper, enforces TLS 1.2 minimum, and respects InsecureSkipVerify.
+func TestTLSConfig(t *testing.T) {
+	tests := []struct {
+		name               string
+		host               string
+		insecureSkipVerify bool
+		wantMinVersion     uint16
+		wantSkipVerify     bool
+	}{
+		{
+			name:               "secure defaults",
+			host:               "smtp.example.com",
+			insecureSkipVerify: false,
+			wantMinVersion:     tls.VersionTLS12,
+			wantSkipVerify:     false,
+		},
+		{
+			name:               "insecure skip verify opt-in",
+			host:               "smtp.internal",
+			insecureSkipVerify: true,
+			wantMinVersion:     tls.VersionTLS12,
+			wantSkipVerify:     true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			n, err := New(Config{
+				Name:               "test",
+				Host:               tt.host,
+				Port:               587,
+				Encryption:         EncryptionNone,
+				From:               "a@b.c",
+				To:                 []string{"d@e.f"},
+				Subject:            "test",
+				Template:           "body",
+				InsecureSkipVerify: tt.insecureSkipVerify,
+			}, zap.NewNop())
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+
+			cfg := n.tlsConfig()
+
+			if cfg.MinVersion != tt.wantMinVersion {
+				t.Errorf("MinVersion = %x, want %x (TLS 1.2)", cfg.MinVersion, tt.wantMinVersion)
+			}
+			if cfg.InsecureSkipVerify != tt.wantSkipVerify {
+				t.Errorf("InsecureSkipVerify = %v, want %v", cfg.InsecureSkipVerify, tt.wantSkipVerify)
+			}
+			if cfg.ServerName != tt.host {
+				t.Errorf("ServerName = %q, want %q", cfg.ServerName, tt.host)
+			}
+		})
+	}
 }

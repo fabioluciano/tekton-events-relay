@@ -47,6 +47,9 @@ func (h *DeploymentStatusHandler) Type() notifier.ActionType {
 	return notifier.ActionDeploymentStatus
 }
 
+// Close is a no-op; this handler holds no resources requiring cleanup.
+func (h *DeploymentStatusHandler) Close() error { return nil }
+
 // Handle creates a deployment and deployment status for the event.
 // Two-step process:
 // 1. POST /repos/{owner}/{repo}/deployments (create deployment)

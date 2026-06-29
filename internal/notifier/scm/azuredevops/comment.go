@@ -198,3 +198,6 @@ func (h *CommentHandler) findMarkedComment(ctx context.Context, gitClient prComm
 	}
 	return 0, 0, false
 }
+
+// Close is a no-op; this handler holds no resources requiring cleanup.
+func (h *CommentHandler) Close() error { return nil }

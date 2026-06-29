@@ -90,3 +90,6 @@ func sanitizeYAML(s string) string {
 	s = strings.ReplaceAll(s, "\"", "'")
 	return s
 }
+
+// Close is a no-op; this handler holds no resources requiring cleanup.
+func (r *StatusReporter) Close() error { return nil }

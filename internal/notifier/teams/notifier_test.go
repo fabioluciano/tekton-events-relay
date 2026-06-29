@@ -155,197 +155,223 @@ func TestHandle_HTTPError(t *testing.T) {
 	}
 }
 
-//nolint:gocyclo,nestif // Table-driven test with many cases, acceptable complexity
-func TestPayload(t *testing.T) {
-	tests := []struct {
-		name  string
-		event domain.Event
-	}{
-		{
-			name: "success with commit",
-			event: domain.Event{
-				State:       domain.StateSuccess,
-				RunID:       "run-123",
-				RunName:     "run-123",
-				Namespace:   "prod",
-				Context:     "CI Build",
-				Description: "Build passed",
-				CommitSHA:   "abc123def456789",
-				TargetURL:   "https://example.com/run/123",
-			},
-		},
-		{
-			name: "failure without commit",
-			event: domain.Event{
-				State:       domain.StateFailure,
-				RunID:       "run-456",
-				RunName:     "run-456",
-				Namespace:   "dev",
-				Context:     "Test Suite",
-				Description: "Tests failed",
-				TargetURL:   "https://example.com/run/456",
-			},
-		},
-		{
-			name: "error without target url",
-			event: domain.Event{
-				State:       domain.StateError,
-				RunID:       "run-789",
-				RunName:     "run-789",
-				Namespace:   "staging",
-				Context:     "Deploy",
-				Description: "Deployment error",
-				CommitSHA:   "short",
-			},
-		},
-		{
-			name: "pending state",
-			event: domain.Event{
-				State:       domain.StatePending,
-				RunID:       "run-000",
-				RunName:     "run-000",
-				Namespace:   "test",
-				Context:     "Queue",
-				Description: "Waiting in queue",
-			},
-		},
+func newTestTeamsNotifier(t *testing.T) *Notifier {
+	t.Helper()
+	n, err := New(Config{WebhookURL: testWebhookURL}, nil)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+	return n
+}
+
+//nolint:gocyclo // Test helper verifying complex card structure; acceptable
+func verifyTeamsCard(t *testing.T, card map[string]any, event domain.Event) {
+	t.Helper()
+
+	if card[fieldType] != fieldMessage {
+		t.Errorf("%s = %v, want %s", fieldType, card[fieldType], fieldMessage)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			n, err := New(Config{WebhookURL: testWebhookURL}, nil)
-			if err != nil {
-				t.Fatalf("New() failed: %v", err)
-			}
-			payload, err := n.payload(tt.event)
-			if err != nil {
-				t.Fatalf("payload() error = %v", err)
-			}
-
-			card, ok := payload.(map[string]any)
-			if !ok {
-				t.Fatal("payload is not a map")
-			}
-
-			if card[fieldType] != fieldMessage {
-				t.Errorf("%s = %v, want %s", fieldType, card[fieldType], fieldMessage)
-			}
-
-			attachments, ok := card["attachments"].([]map[string]any)
-			if !ok || len(attachments) == 0 {
-				t.Fatal("attachments missing or invalid")
-			}
-
-			attachment := attachments[0]
-			if attachment["contentType"] != "application/vnd.microsoft.card.adaptive" {
-				t.Errorf("contentType = %v, want application/vnd.microsoft.card.adaptive", attachment["contentType"])
-			}
-
-			content, ok := attachment["content"].(map[string]any)
-			if !ok {
-				t.Fatal("content missing or invalid")
-			}
-
-			if content[fieldType] != "AdaptiveCard" {
-				t.Errorf("content %s = %v, want AdaptiveCard", fieldType, content[fieldType])
-			}
-			if content["version"] != "1.4" {
-				t.Errorf("version = %v, want 1.4", content["version"])
-			}
-
-			body, ok := content["body"].([]map[string]any)
-			if !ok || len(body) != 2 {
-				t.Fatalf("body missing or invalid, got %d elements", len(body))
-			}
-
-			// Check TextBlock
-			textBlock := body[0]
-			if textBlock[fieldType] != "TextBlock" {
-				t.Errorf("textBlock %s = %v, want TextBlock", fieldType, textBlock[fieldType])
-			}
-			expectedText := "**" + tt.event.Context + "** — " + tt.event.Description
-			if textBlock["text"] != expectedText {
-				t.Errorf("text = %v, want %v", textBlock["text"], expectedText)
-			}
-
-			// Check FactSet
-			factSet := body[1]
-			if factSet[fieldType] != "FactSet" {
-				t.Errorf("factSet %s = %v, want FactSet", fieldType, factSet[fieldType])
-			}
-
-			facts, ok := factSet["facts"].([]map[string]string)
-			if !ok {
-				t.Fatal("facts missing or invalid")
-			}
-
-			// Check facts contain State, Run, Namespace
-			hasState, hasRun, hasNamespace := false, false, false
-			hasCommit := false
-			for _, fact := range facts {
-				if fact[fieldTitle] == factTitleState && fact[fieldValue] == string(tt.event.State) {
-					hasState = true
-				}
-				if fact[fieldTitle] == "Run" && fact[fieldValue] == tt.event.RunName {
-					hasRun = true
-				}
-				if fact[fieldTitle] == "Namespace" && fact[fieldValue] == tt.event.Namespace {
-					hasNamespace = true
-				}
-				if fact[fieldTitle] == factTitleCommit {
-					hasCommit = true
-				}
-			}
-
-			if !hasState {
-				t.Error("State fact missing")
-			}
-			if !hasRun {
-				t.Error("Run fact missing")
-			}
-			if !hasNamespace {
-				t.Error("Namespace fact missing")
-			}
-
-			if tt.event.CommitSHA != "" && !hasCommit {
-				t.Error("Commit fact missing when CommitSHA present")
-			}
-
-			// Check actions when TargetURL present
-			if tt.event.TargetURL != "" {
-				actions, ok := content["actions"].([]map[string]any)
-				if !ok || len(actions) == 0 {
-					t.Error("actions missing when TargetURL present")
-				} else {
-					action := actions[0]
-					if action[fieldType] != "Action.OpenUrl" {
-						t.Errorf("action %s = %v, want Action.OpenUrl", fieldType, action[fieldType])
-					}
-					if action["url"] != tt.event.TargetURL {
-						t.Errorf("action url = %v, want %v", action["url"], tt.event.TargetURL)
-					}
-				}
-			} else {
-				if _, hasActions := content["actions"]; hasActions {
-					t.Error("actions should not be present when TargetURL empty")
-				}
-			}
-
-			// Verify commit SHA is truncated to 7 chars if longer
-			if tt.event.CommitSHA != "" && len(tt.event.CommitSHA) > 7 {
-				for _, fact := range facts {
-					if fact[fieldTitle] == factTitleCommit {
-						if len(fact[fieldValue]) != 7 {
-							t.Errorf("commit SHA should be truncated to 7 chars, got %q", fact[fieldValue])
-						}
-						if fact[fieldValue] != tt.event.CommitSHA[:7] {
-							t.Errorf("commit SHA = %q, want %q", fact[fieldValue], tt.event.CommitSHA[:7])
-						}
-					}
-				}
-			}
-		})
+	attachments, ok := card["attachments"].([]map[string]any)
+	if !ok || len(attachments) == 0 {
+		t.Fatal("attachments missing or invalid")
 	}
+
+	attachment := attachments[0]
+	if attachment["contentType"] != "application/vnd.microsoft.card.adaptive" {
+		t.Errorf("contentType = %v, want application/vnd.microsoft.card.adaptive", attachment["contentType"])
+	}
+
+	content, ok := attachment["content"].(map[string]any)
+	if !ok {
+		t.Fatal("content missing or invalid")
+	}
+
+	if content[fieldType] != "AdaptiveCard" {
+		t.Errorf("content %s = %v, want AdaptiveCard", fieldType, content[fieldType])
+	}
+	if content["version"] != "1.4" {
+		t.Errorf("version = %v, want 1.4", content["version"])
+	}
+
+	body, ok := content["body"].([]map[string]any)
+	if !ok || len(body) != 2 {
+		t.Fatalf("body missing or invalid, got %d elements", len(body))
+	}
+
+	// Check TextBlock
+	textBlock := body[0]
+	if textBlock[fieldType] != "TextBlock" {
+		t.Errorf("textBlock %s = %v, want TextBlock", fieldType, textBlock[fieldType])
+	}
+	expectedText := "**" + event.Context + "** — " + event.Description
+	if textBlock["text"] != expectedText {
+		t.Errorf("text = %v, want %v", textBlock["text"], expectedText)
+	}
+
+	// Check FactSet
+	factSet := body[1]
+	if factSet[fieldType] != "FactSet" {
+		t.Errorf("factSet %s = %v, want FactSet", fieldType, factSet[fieldType])
+	}
+
+	facts, ok := factSet["facts"].([]map[string]string)
+	if !ok {
+		t.Fatal("facts missing or invalid")
+	}
+
+	// Check facts contain State, Run, Namespace
+	hasState, hasRun, hasNamespace := false, false, false
+	hasCommit := false
+	for _, fact := range facts {
+		if fact[fieldTitle] == factTitleState && fact[fieldValue] == string(event.State) {
+			hasState = true
+		}
+		if fact[fieldTitle] == "Run" && fact[fieldValue] == event.RunName {
+			hasRun = true
+		}
+		if fact[fieldTitle] == "Namespace" && fact[fieldValue] == event.Namespace {
+			hasNamespace = true
+		}
+		if fact[fieldTitle] == factTitleCommit {
+			hasCommit = true
+		}
+	}
+
+	if !hasState {
+		t.Error("State fact missing")
+	}
+	if !hasRun {
+		t.Error("Run fact missing")
+	}
+	if !hasNamespace {
+		t.Error("Namespace fact missing")
+	}
+	if event.CommitSHA != "" && !hasCommit {
+		t.Error("Commit fact missing when CommitSHA present")
+	}
+
+	// Check actions when TargetURL present
+	if event.TargetURL != "" {
+		actions, ok := content["actions"].([]map[string]any)
+		if !ok || len(actions) == 0 {
+			t.Error("actions missing when TargetURL present")
+		} else {
+			action := actions[0]
+			if action[fieldType] != "Action.OpenUrl" {
+				t.Errorf("action %s = %v, want Action.OpenUrl", fieldType, action[fieldType])
+			}
+			if action["url"] != event.TargetURL {
+				t.Errorf("action url = %v, want %v", action["url"], event.TargetURL)
+			}
+		}
+	} else {
+		if _, hasActions := content["actions"]; hasActions {
+			t.Error("actions should not be present when TargetURL empty")
+		}
+	}
+
+	// Verify commit SHA is truncated to 7 chars if longer
+	if event.CommitSHA != "" && len(event.CommitSHA) > 7 {
+		for _, fact := range facts {
+			if fact[fieldTitle] == factTitleCommit {
+				if len(fact[fieldValue]) != 7 {
+					t.Errorf("commit SHA should be truncated to 7 chars, got %q", fact[fieldValue])
+				}
+				if fact[fieldValue] != event.CommitSHA[:7] {
+					t.Errorf("commit SHA = %q, want %q", fact[fieldValue], event.CommitSHA[:7])
+				}
+			}
+		}
+	}
+}
+
+func TestPayload_SuccessWithCommit(t *testing.T) {
+	n := newTestTeamsNotifier(t)
+	event := domain.Event{
+		State:       domain.StateSuccess,
+		RunID:       "run-123",
+		RunName:     "run-123",
+		Namespace:   "prod",
+		Context:     "CI Build",
+		Description: "Build passed",
+		CommitSHA:   "abc123def456789",
+		TargetURL:   "https://example.com/run/123",
+	}
+	payload, err := n.payload(event)
+	if err != nil {
+		t.Fatalf("payload() error = %v", err)
+	}
+	card, ok := payload.(map[string]any)
+	if !ok {
+		t.Fatal("payload is not a map")
+	}
+	verifyTeamsCard(t, card, event)
+}
+
+func TestPayload_FailureWithoutCommit(t *testing.T) {
+	n := newTestTeamsNotifier(t)
+	event := domain.Event{
+		State:       domain.StateFailure,
+		RunID:       "run-456",
+		RunName:     "run-456",
+		Namespace:   "dev",
+		Context:     "Test Suite",
+		Description: "Tests failed",
+		TargetURL:   "https://example.com/run/456",
+	}
+	payload, err := n.payload(event)
+	if err != nil {
+		t.Fatalf("payload() error = %v", err)
+	}
+	card, ok := payload.(map[string]any)
+	if !ok {
+		t.Fatal("payload is not a map")
+	}
+	verifyTeamsCard(t, card, event)
+}
+
+func TestPayload_ErrorWithoutTargetURL(t *testing.T) {
+	n := newTestTeamsNotifier(t)
+	event := domain.Event{
+		State:       domain.StateError,
+		RunID:       "run-789",
+		RunName:     "run-789",
+		Namespace:   "staging",
+		Context:     "Deploy",
+		Description: "Deployment error",
+		CommitSHA:   "short",
+	}
+	payload, err := n.payload(event)
+	if err != nil {
+		t.Fatalf("payload() error = %v", err)
+	}
+	card, ok := payload.(map[string]any)
+	if !ok {
+		t.Fatal("payload is not a map")
+	}
+	verifyTeamsCard(t, card, event)
+}
+
+func TestPayload_PendingState(t *testing.T) {
+	n := newTestTeamsNotifier(t)
+	event := domain.Event{
+		State:       domain.StatePending,
+		RunID:       "run-000",
+		RunName:     "run-000",
+		Namespace:   "test",
+		Context:     "Queue",
+		Description: "Waiting in queue",
+	}
+	payload, err := n.payload(event)
+	if err != nil {
+		t.Fatalf("payload() error = %v", err)
+	}
+	card, ok := payload.(map[string]any)
+	if !ok {
+		t.Fatal("payload is not a map")
+	}
+	verifyTeamsCard(t, card, event)
 }
 
 func TestColorFor(t *testing.T) {
@@ -517,5 +543,221 @@ func TestTemplateFile_InvalidSyntax(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "invalid template") {
 		t.Errorf("error = %v, want 'invalid template'", err)
+	}
+}
+
+func TestMentionUsers_PayloadContainsEntities(t *testing.T) {
+	cfg := Config{
+		WebhookURL: testWebhookURL,
+		MentionUsers: []MentionEntry{
+			{Name: "John Doe", ID: "11111111-1111-1111-1111-111111111111"},
+			{Name: "Jane Smith", ID: "22222222-2222-2222-2222-222222222222"},
+		},
+	}
+	n, err := New(cfg, nil)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	event := domain.Event{
+		State:       domain.StateSuccess,
+		RunID:       "run-mention-1",
+		RunName:     "run-mention-1",
+		Namespace:   "default",
+		Context:     "Build",
+		Description: "Build passed",
+	}
+
+	payload, err := n.payload(event)
+	if err != nil {
+		t.Fatalf("payload() error = %v", err)
+	}
+
+	card, ok := payload.(map[string]any)
+	if !ok {
+		t.Fatal("payload is not a map")
+	}
+
+	attachments, ok := card["attachments"].([]map[string]any)
+	if !ok || len(attachments) == 0 {
+		t.Fatal("attachments missing")
+	}
+
+	content, ok := attachments[0]["content"].(map[string]any)
+	if !ok {
+		t.Fatal("content missing")
+	}
+
+	msteams, ok := content["msteams"].(map[string]any)
+	if !ok {
+		t.Fatal("msteams block missing in content")
+	}
+
+	entities, ok := msteams["entities"].([]map[string]any)
+	if !ok {
+		t.Fatal("entities missing in msteams block")
+	}
+
+	if len(entities) != 2 {
+		t.Fatalf("entities count = %d, want 2", len(entities))
+	}
+
+	if entities[0]["type"] != "mention" {
+		t.Errorf("entities[0].type = %v, want mention", entities[0]["type"])
+	}
+	if entities[0]["text"] != "<at>John Doe</at>" {
+		t.Errorf("entities[0].text = %v, want <at>John Doe</at>", entities[0]["text"])
+	}
+	mentioned0, ok := entities[0]["mentioned"].(map[string]any)
+	if !ok {
+		t.Fatal("entities[0].mentioned missing")
+	}
+	if mentioned0["id"] != "11111111-1111-1111-1111-111111111111" {
+		t.Errorf("entities[0].mentioned.id = %v, want 11111111-1111-1111-1111-111111111111", mentioned0["id"])
+	}
+	if mentioned0["name"] != "John Doe" {
+		t.Errorf("entities[0].mentioned.name = %v, want John Doe", mentioned0["name"])
+	}
+
+	if entities[1]["type"] != "mention" {
+		t.Errorf("entities[1].type = %v, want mention", entities[1]["type"])
+	}
+	if entities[1]["text"] != "<at>Jane Smith</at>" {
+		t.Errorf("entities[1].text = %v, want <at>Jane Smith</at>", entities[1]["text"])
+	}
+	mentioned1, ok := entities[1]["mentioned"].(map[string]any)
+	if !ok {
+		t.Fatal("entities[1].mentioned missing")
+	}
+	if mentioned1["id"] != "22222222-2222-2222-2222-222222222222" {
+		t.Errorf("entities[1].mentioned.id = %v, want 22222222-2222-2222-2222-222222222222", mentioned1["id"])
+	}
+	if mentioned1["name"] != "Jane Smith" {
+		t.Errorf("entities[1].mentioned.name = %v, want Jane Smith", mentioned1["name"])
+	}
+}
+
+func TestMentionUsers_EmptyNoEntities(t *testing.T) {
+	cfg := Config{
+		WebhookURL:   testWebhookURL,
+		MentionUsers: nil,
+	}
+	n, err := New(cfg, nil)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	event := domain.Event{
+		State:       domain.StateSuccess,
+		RunID:       "run-no-mention",
+		RunName:     "run-no-mention",
+		Namespace:   "default",
+		Context:     "Build",
+		Description: "Build passed",
+	}
+
+	payload, err := n.payload(event)
+	if err != nil {
+		t.Fatalf("payload() error = %v", err)
+	}
+
+	card, ok := payload.(map[string]any)
+	if !ok {
+		t.Fatal("payload is not a map")
+	}
+
+	attachments, ok := card["attachments"].([]map[string]any)
+	if !ok || len(attachments) == 0 {
+		t.Fatal("attachments missing")
+	}
+
+	content, ok := attachments[0]["content"].(map[string]any)
+	if !ok {
+		t.Fatal("content missing")
+	}
+
+	if _, hasMsteams := content["msteams"]; hasMsteams {
+		t.Error("msteams block should not be present when MentionUsers is empty")
+	}
+}
+
+func TestMentionUsers_HandleIntegration(t *testing.T) {
+	var receivedBody map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("failed to read body: %v", err)
+		}
+		if err := json.Unmarshal(body, &receivedBody); err != nil {
+			t.Fatalf("failed to unmarshal payload: %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	cfg := Config{
+		WebhookURL: server.URL,
+		MentionUsers: []MentionEntry{
+			{Name: "Alice", ID: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"},
+		},
+	}
+	n, err := New(cfg, nil)
+	if err != nil {
+		t.Fatalf("New() failed: %v", err)
+	}
+
+	event := domain.Event{
+		State:       domain.StateFailure,
+		RunID:       "run-integration-mention",
+		RunName:     "run-integration-mention",
+		Namespace:   "prod",
+		Context:     "Deploy",
+		Description: "Deployment failed",
+	}
+
+	err = n.Handle(context.Background(), event)
+	if err != nil {
+		t.Fatalf("Handle() error = %v", err)
+	}
+
+	if receivedBody == nil {
+		t.Fatal("no payload received")
+	}
+
+	attachments, ok := receivedBody["attachments"].([]any)
+	if !ok || len(attachments) == 0 {
+		t.Fatal("attachments missing in received payload")
+	}
+
+	attachment := attachments[0].(map[string]any)
+	content := attachment["content"].(map[string]any)
+
+	msteams, ok := content["msteams"].(map[string]any)
+	if !ok {
+		t.Fatal("msteams block missing in received payload")
+	}
+
+	entities, ok := msteams["entities"].([]any)
+	if !ok {
+		t.Fatal("entities missing in received msteams block")
+	}
+
+	if len(entities) != 1 {
+		t.Fatalf("entities count = %d, want 1", len(entities))
+	}
+
+	entity := entities[0].(map[string]any)
+	if entity["type"] != "mention" {
+		t.Errorf("entity.type = %v, want mention", entity["type"])
+	}
+	if entity["text"] != "<at>Alice</at>" {
+		t.Errorf("entity.text = %v, want <at>Alice</at>", entity["text"])
+	}
+	mentioned := entity["mentioned"].(map[string]any)
+	if mentioned["id"] != "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" {
+		t.Errorf("mentioned.id = %v, want aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", mentioned["id"])
+	}
+	if mentioned["name"] != "Alice" {
+		t.Errorf("mentioned.name = %v, want Alice", mentioned["name"])
 	}
 }

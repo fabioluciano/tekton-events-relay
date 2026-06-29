@@ -13,9 +13,11 @@ const (
 	testInstanceName       = "main"
 	testToken              = "token123"
 	testTokenShort         = "token"
+	testSlackWebhookURL    = "https://hooks.slack.com/webhook"
 	testBaseURLGitHub      = "https://github.com"
 	testBaseURLGitLab      = "https://gitlab.com"
 	testBaseURLBitbucket   = "https://bitbucket.org"
+	testBaseURLJira        = "https://jira.example.com"
 	testActionNameStatus   = "status"
 	testVariantCloud       = BitbucketVariantCloud
 	testVariantServer      = BitbucketVariantServer
@@ -25,6 +27,8 @@ const (
 	testPassword           = "pass"
 	testTeamName           = "team"
 	testActionNamePR       = "pr"
+	testEmailFrom          = "ci@example.com"
+	testAuthTypeOAuth2     = "oauth2"
 	errMissingAuth         = "enabled instance missing required field 'auth'"
 )
 
@@ -45,7 +49,7 @@ func TestValidate_ValidConfig(t *testing.T) {
 				{
 					Name:    "team-slack",
 					Enabled: true,
-					Auth:    &SlackAuth{WebhookURLFile: "https://hooks.slack.com/webhook"},
+					Auth:    &SlackAuth{WebhookURLFile: testSlackWebhookURL},
 				},
 			},
 		},
@@ -53,6 +57,94 @@ func TestValidate_ValidConfig(t *testing.T) {
 
 	if err := cfg.Validate(); err != nil {
 		t.Errorf("Expected valid config to pass validation, got: %v", err)
+	}
+}
+
+func TestValidate_RuntimeNotifierCredentialRules(t *testing.T) {
+	tests := []struct {
+		name        string
+		cfg         *Config
+		expectedErr string
+	}{
+		{
+			name: "slack rejects webhook and bot together",
+			cfg: &Config{Notifiers: NotifiersConfig{Slack: []SlackInstance{{
+				Name:    "slack",
+				Enabled: true,
+				Auth: &SlackAuth{
+					WebhookURLFile: "/etc/secrets/slack/main/webhook_url",
+					BotToken:       &BotTokenAuth{TokenFile: "/etc/secrets/slack/main/token", ChannelID: "C123"},
+				},
+			}}}},
+			expectedErr: "mutually exclusive",
+		},
+		{
+			name: "discord rejects webhook and bot together",
+			cfg: &Config{Notifiers: NotifiersConfig{Discord: []DiscordInstance{{
+				Name:    "discord",
+				Enabled: true,
+				Auth: &DiscordAuth{
+					WebhookURLFile: "/etc/secrets/discord/main/webhook_url",
+					BotToken:       &BotTokenAuth{TokenFile: "/etc/secrets/discord/main/token", ChannelID: "123"}, //nolint:gosec // G101: test fixture path, not a credential
+				},
+			}}}},
+			expectedErr: "mutually exclusive",
+		},
+		{
+			name: "grafana is checked by Config Validate",
+			cfg: &Config{Notifiers: NotifiersConfig{Grafana: []GrafanaInstance{{
+				Name:    "grafana",
+				Enabled: true,
+				URL:     "https://grafana.example.com",
+				Auth:    &GrafanaAuth{TokenFile: "/etc/secrets/grafana/main/token"}, //nolint:gosec // G101: test fixture path, not a credential
+			}}}},
+			expectedErr: "notifiers.grafana[0].template",
+		},
+		{
+			name: "sentry is checked by Config Validate",
+			cfg: &Config{Notifiers: NotifiersConfig{Sentry: []SentryInstance{{
+				Name:    "sentry",
+				Enabled: true,
+				Auth:    &SentryAuth{TokenFile: "/etc/secrets/sentry/main/token"}, //nolint:gosec // G101: test fixture path, not a credential
+			}}}},
+			expectedErr: "notifiers.sentry[0].org",
+		},
+		{
+			name: "email username requires password file",
+			cfg: &Config{Notifiers: NotifiersConfig{Email: []EmailInstance{{
+				Name:     "email",
+				Enabled:  true,
+				Host:     "smtp.example.com",
+				From:     testEmailFrom,
+				To:       []string{"team@example.com"},
+				Subject:  "{{.RunName}}",
+				Template: "{{.Description}}",
+				Auth:     &EmailAuth{Username: testEmailFrom},
+			}}}},
+			expectedErr: "notifiers.email[0].auth.password_file",
+		},
+		{
+			name: "jira token file required without oauth2",
+			cfg: &Config{Jira: []JiraInstance{{
+				Name:    "jira",
+				Enabled: true,
+				BaseURL: testBaseURLJira,
+				Auth:    &JiraAuth{},
+			}}},
+			expectedErr: "jira[0].auth.token_file",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.cfg.Validate()
+			if err == nil {
+				t.Fatalf("Validate() error = nil, want %q", tt.expectedErr)
+			}
+			if !strings.Contains(err.Error(), tt.expectedErr) {
+				t.Fatalf("Validate() error = %v, want containing %q", err, tt.expectedErr)
+			}
+		})
 	}
 }
 
@@ -548,7 +640,7 @@ func TestValidate_NotifierCEL(t *testing.T) {
 						{
 							Name:    "alerts",
 							Enabled: true,
-							Auth:    &SlackAuth{WebhookURLFile: "https://hooks.slack.com/webhook"},
+							Auth:    &SlackAuth{WebhookURLFile: testSlackWebhookURL},
 							When:    "event.State ==",
 						},
 					},
@@ -813,8 +905,8 @@ func TestConfig_AuthTypes(t *testing.T) {
 		authType string
 		wantErr  bool
 	}{
-		{"hmac-sha256", "hmac-sha256", false},
-		{"bearer", "bearer", false},
+		{AuthTypeHMACSHA256, AuthTypeHMACSHA256, false},
+		{AuthTypeBearer, AuthTypeBearer, false},
 		{"invalid basic", "basic", true},
 		{"invalid empty", "", true},
 	}
@@ -824,9 +916,10 @@ func TestConfig_AuthTypes(t *testing.T) {
 			cfg := &Config{
 				Server: Server{
 					Auth: AuthConfig{ //nolint:gosec // test data
-						Enabled:    true,
-						Type:       tt.authType,
-						SecretFile: "/etc/secrets/server/auth/secret",
+						Enabled:           true,
+						Type:              tt.authType,
+						SecretFile:        "/etc/secrets/server/auth/secret",
+						ValidateTimestamp: tt.authType == AuthTypeHMACSHA256,
 					},
 				},
 			}
@@ -856,6 +949,46 @@ func TestConfig_AuthMissingSecretFile(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "missing 'secret_file'") {
 		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestConfig_HMACAuthRequiresTimestampValidation(t *testing.T) {
+	tests := []struct {
+		name              string
+		validateTimestamp bool
+	}{
+		{name: "omitted"},
+		{name: "false", validateTimestamp: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Given: HMAC auth is enabled without replay protection.
+			cfg := &Config{
+				Server: Server{
+					Auth: AuthConfig{ //nolint:gosec // test data
+						Enabled:           true,
+						Type:              AuthTypeHMACSHA256,
+						SecretFile:        "/etc/secrets/server/auth/secret",
+						ValidateTimestamp: tt.validateTimestamp,
+					},
+				},
+			}
+
+			// When: the runtime config validator runs.
+			err := cfg.Validate()
+
+			// Then: validation rejects the unsafe HMAC configuration with an actionable path.
+			if err == nil {
+				t.Fatal("expected validation error")
+			}
+			if !strings.Contains(err.Error(), "server.auth.validate_timestamp") {
+				t.Errorf("expected validate_timestamp path, got: %v", err)
+			}
+			if !strings.Contains(err.Error(), "must be true when server.auth.type is 'hmac-sha256'") {
+				t.Errorf("expected actionable HMAC replay protection error, got: %v", err)
+			}
+		})
 	}
 }
 
@@ -894,6 +1027,35 @@ func TestValidate_ValidCELExpressions(t *testing.T) {
 
 			if err := cfg.Validate(); err != nil {
 				t.Errorf("Valid CEL '%s' failed validation: %v", tt.when, err)
+			}
+		})
+	}
+}
+
+func TestValidate_SampleRate(t *testing.T) {
+	tests := []struct {
+		name       string
+		sampleRate float64
+		wantErr    bool
+	}{
+		{name: "valid_0.0", sampleRate: 0.0, wantErr: false},
+		{name: "valid_0.5", sampleRate: 0.5, wantErr: false},
+		{name: "valid_1.0", sampleRate: 1.0, wantErr: false},
+		{name: "reject_negative", sampleRate: -0.1, wantErr: true},
+		{name: "reject_above_one", sampleRate: 1.5, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{
+				Tracing: TracingConfig{
+					SampleRate: tt.sampleRate,
+				},
+			}
+
+			err := cfg.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("sample_rate=%g: wantErr=%v, got err=%v", tt.sampleRate, tt.wantErr, err)
 			}
 		})
 	}

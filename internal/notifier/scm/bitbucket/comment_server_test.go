@@ -57,8 +57,8 @@ func TestServerCommentHandler_PostsComment(t *testing.T) {
 	pr := 9
 	e := domain.Event{
 		Provider: providerServer,
-		Repo:     domain.Repo{Project: "PROJ", Name: "repo"},
-		RunName:  "run-1",
+		Repo:     domain.Repo{Project: "PROJ", Name: testRepoName},
+		RunName:  testRunName,
 		PRNumber: &pr,
 		State:    domain.StateSuccess,
 	}

@@ -17,11 +17,19 @@ type CloudStatusReporter struct {
 	client *CloudClient
 }
 
-// NewCloudStatusReporter creates a new Bitbucket Cloud commit status reporter.
+// NewCloudStatusReporter creates a new Bitbucket Cloud commit status reporter
+// using basic auth credentials.
 func NewCloudStatusReporter(username, appPassword, baseURL string, insecureSkipVerify bool, log *zap.Logger) notifier.ActionHandler {
 	return &CloudStatusReporter{
 		client: NewCloudClient(username, appPassword, baseURL, insecureSkipVerify, false, log),
 	}
+}
+
+// NewCloudStatusReporterWithClient creates a new Bitbucket Cloud commit status
+// reporter using a pre-built CloudClient. Use this for OAuth2 auth where the
+// client resolves tokens per-request via an AuthFunc.
+func NewCloudStatusReporterWithClient(client *CloudClient) notifier.ActionHandler {
+	return &CloudStatusReporter{client: client}
 }
 
 // Name returns the handler name.
@@ -81,3 +89,6 @@ var bitbucketCloudStateMap = scm.StateMap{
 	domain.StateError:    stateFailed,
 	domain.StateCanceled: stateStopped,
 }
+
+// Close is a no-op; this handler holds no resources requiring cleanup.
+func (r *CloudStatusReporter) Close() error { return nil }

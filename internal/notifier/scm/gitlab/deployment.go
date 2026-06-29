@@ -100,3 +100,6 @@ func deploymentStatus(s domain.State) (gl.DeploymentStatusValue, bool) {
 		return "", false
 	}
 }
+
+// Close is a no-op; this handler holds no resources requiring cleanup.
+func (h *DeploymentHandler) Close() error { return nil }

@@ -145,6 +145,9 @@ Available in `when` expressions (`internal/cel/cel.go`):
 - `isFinallyTask()` — true if `IsFinallyTask == true`
 - `isIssueEvent()` / `isPREvent()` / `isCommentEvent()` / `isPushEvent()` — check `SCMEventType`
 - `stateIn("a", "b", ...)` — vararg state membership check
+- `buildTimeExceeds(ms int)` — true if build duration > ms milliseconds, false if zero time
+- `hasResult(name string)` — true if `Results[name]` exists and is non-empty
+- `resultValue(name string)` — returns `Results[name]` value, empty string if absent
 
 Expression must return `bool`. Example: `'isPipelineRun() && stateIn("running", "success", "failure")'`
 
@@ -574,9 +577,9 @@ Each factory file (`internal/factory/github.go`, etc.) implements:
 
 **Webhook**: Requires `url_file` when enabled. Auth types validated: bearer→token_file, basic→username_file+password_file, apikey→token_file+header, hmac→secret_file, **oauth2→an `oauth2` block** (validated via `validateWebhookOAuth2Auth`; the `oauth2` type must not also set `token_file`/`username_file`/`password_file`/`secret_file`/`header`).
 
-**Grafana**: Requires `url` + (`auth.token_file` OR `auth.oauth2`) when enabled. `token_file` and `oauth2` are mutually exclusive; `oauth2` validated via `validateOAuth2`.
+**Grafana**: Requires `url` + `auth.token_file` when enabled. Uses `resolveFileRefresher` (file re-read per request); no OAuth2 — Grafana's API does not accept client_credentials tokens.
 
-**Sentry**: Requires `org` + (`auth.token_file` OR `auth.oauth2`) when enabled. `token_file` and `oauth2` are mutually exclusive; `oauth2` validated via `validateOAuth2`.
+**Sentry**: Requires `org` + `auth.token_file` when enabled. Uses `resolveFileRefresher` (file re-read per request); no OAuth2 — Sentry's API does not accept client_credentials tokens.
 
 **Jira**: Auth is Cloud basic (`auth.email` + `token_file`) OR DC/OAuth2 (`auth.token_file` or `auth.oauth2` as Bearer). `oauth2` is mutually exclusive with both `auth.email` and `auth.token_file`; `oauth2` validated via `validateOAuth2`.
 

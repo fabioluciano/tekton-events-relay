@@ -132,3 +132,6 @@ func (h *MRCommentHandler) upsertNote(ctx context.Context, projectID string, mrI
 		&gl.CreateMergeRequestNoteOptions{Body: &body}, gl.WithContext(ctx))
 	return err
 }
+
+// Close is a no-op; this handler holds no resources requiring cleanup.
+func (h *MRCommentHandler) Close() error { return nil }

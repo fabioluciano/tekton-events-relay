@@ -5,6 +5,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"net/http"
 	"os"
 	"sync"
 	"time"
@@ -25,6 +26,7 @@ type AppClient struct {
 	privateKeyFile     string
 	insecureSkipVerify bool
 	baseURL            string
+	httpClient         *http.Client
 	log                *zap.Logger
 	mu                 sync.RWMutex
 	currentToken       string
@@ -33,7 +35,8 @@ type AppClient struct {
 
 // NewAppClient creates a new GitHub App token manager and performs an initial token refresh.
 // privateKeyFile is the path to the RSA private key PEM file; empty string uses the default path.
-func NewAppClient(appID, installationID int64, baseURL string, insecureSkipVerify bool, log *zap.Logger, privateKeyFile string) (*AppClient, error) {
+// httpClient, when non-nil, is used for GitHub API calls during token refresh; nil uses http.DefaultClient.
+func NewAppClient(appID, installationID int64, baseURL string, insecureSkipVerify bool, log *zap.Logger, privateKeyFile string, httpClient *http.Client) (*AppClient, error) {
 	if baseURL == "" {
 		baseURL = GitHubBaseURL
 	}
@@ -47,6 +50,7 @@ func NewAppClient(appID, installationID int64, baseURL string, insecureSkipVerif
 		privateKeyFile:     privateKeyFile,
 		insecureSkipVerify: insecureSkipVerify,
 		baseURL:            baseURL,
+		httpClient:         httpClient,
 		log:                log,
 	}
 
@@ -77,8 +81,10 @@ func (a *AppClient) refreshToken(ctx context.Context) error {
 		return fmt.Errorf("generate JWT: %w", err)
 	}
 
-	// Create a temporary client authenticated with the JWT to call the Apps API
-	jwtClient := gh.NewClient(nil).WithAuthToken(jwtToken)
+	// Create a temporary client authenticated with the JWT to call the Apps API.
+	// Use the configured HTTP client (or nil for http.DefaultClient) so the
+	// caller's transport/TLS settings are honored.
+	jwtClient := gh.NewClient(a.httpClient).WithAuthToken(jwtToken)
 	if a.baseURL != "" && a.baseURL != GitHubBaseURL {
 		jwtClient, err = jwtClient.WithEnterpriseURLs(a.baseURL, a.baseURL+"/api/graphql")
 		if err != nil {

@@ -29,12 +29,12 @@ func (j JiraInstance) validateSelf() []ValidationError { return validateJiraInst
 
 func TestValidateJiraInstance_OAuth2(t *testing.T) {
 	base := func(a *JiraAuth) JiraInstance {
-		return JiraInstance{Name: "j", Enabled: true, BaseURL: "https://jira.example.com", Auth: a}
+		return JiraInstance{Name: "j", Enabled: true, BaseURL: testBaseURLJira, Auth: a}
 	}
 	if errs := base(&JiraAuth{OAuth2: validOAuth2}).validateSelf(); len(errs) != 0 {
 		t.Fatalf("oauth2-only should be valid, got %v", errs)
 	}
-	if errs := base(&JiraAuth{Email: "ci@example.com", OAuth2: validOAuth2}).validateSelf(); !hasErrContaining(errs, "cannot use both auth.email") {
+	if errs := base(&JiraAuth{Email: testEmailFrom, OAuth2: validOAuth2}).validateSelf(); !hasErrContaining(errs, "cannot use both auth.email") {
 		t.Fatalf("email + oauth2 should conflict, got %v", errs)
 	}
 	if errs := base(&JiraAuth{TokenFile: fixtureTokenFile, OAuth2: validOAuth2}).validateSelf(); !hasErrContaining(errs, "cannot use both auth.token_file") {
@@ -44,7 +44,7 @@ func TestValidateJiraInstance_OAuth2(t *testing.T) {
 
 func TestValidateJiraInstance_APIVersion(t *testing.T) {
 	base := func(v string) JiraInstance {
-		return JiraInstance{Name: "j", Enabled: true, BaseURL: "https://jira.example.com", APIVersion: v, Auth: &JiraAuth{OAuth2: validOAuth2}}
+		return JiraInstance{Name: "j", Enabled: true, BaseURL: testBaseURLJira, APIVersion: v, Auth: &JiraAuth{OAuth2: validOAuth2}}
 	}
 	for _, v := range []string{"", "2", "3"} {
 		if errs := base(v).validateSelf(); hasErrContaining(errs, "api_version") {
@@ -79,13 +79,13 @@ func TestValidateWebhookAuth_OAuth2(t *testing.T) {
 	base := func(a *WebhookAuthConfig) WebhookInstance {
 		return WebhookInstance{Name: "w", Enabled: true, URLFile: "/etc/secrets/w/url", Auth: a}
 	}
-	if errs := validateWebhookAuth("webhook[0]", base(&WebhookAuthConfig{Type: "oauth2", OAuth2: validOAuth2})); len(errs) != 0 {
+	if errs := validateWebhookAuth("webhook[0]", base(&WebhookAuthConfig{Type: testAuthTypeOAuth2, OAuth2: validOAuth2})); len(errs) != 0 {
 		t.Fatalf("oauth2 with block should be valid, got %v", errs)
 	}
-	if errs := validateWebhookAuth("webhook[0]", base(&WebhookAuthConfig{Type: "oauth2"})); !hasErrContaining(errs, "requires an 'oauth2' block") {
+	if errs := validateWebhookAuth("webhook[0]", base(&WebhookAuthConfig{Type: testAuthTypeOAuth2})); !hasErrContaining(errs, "requires an 'oauth2' block") {
 		t.Fatalf("oauth2 without block should error, got %v", errs)
 	}
-	if errs := validateWebhookAuth("webhook[0]", base(&WebhookAuthConfig{Type: "oauth2", TokenFile: "/x", OAuth2: validOAuth2})); !hasErrContaining(errs, "does not accept") {
+	if errs := validateWebhookAuth("webhook[0]", base(&WebhookAuthConfig{Type: testAuthTypeOAuth2, TokenFile: "/x", OAuth2: validOAuth2})); !hasErrContaining(errs, "does not accept") {
 		t.Fatalf("oauth2 with token_file should error, got %v", errs)
 	}
 }

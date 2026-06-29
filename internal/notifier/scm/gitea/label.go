@@ -134,3 +134,6 @@ func (h *LabelHandler) applyLabelSet(e domain.Event, issueNumber int64) error {
 	_, _, err = h.client.sdk.AddIssueLabels(e.Repo.Owner, e.Repo.Name, issueNumber, giteaSDK.IssueLabelsOption{Labels: ids})
 	return err
 }
+
+// Close is a no-op; this handler holds no resources requiring cleanup.
+func (h *LabelHandler) Close() error { return nil }

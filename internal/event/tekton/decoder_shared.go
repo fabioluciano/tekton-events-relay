@@ -30,11 +30,12 @@ func baseEventFromRun(obj *runObject, resource domain.Resource, rawType string) 
 			Project:   obj.Metadata.Annotations[event.AnnoRepoProject],
 			Org:       obj.Metadata.Annotations[event.AnnoRepoOrg],
 		},
-		State:       MapState(rawType),
-		Description: descriptionFor(obj, rawType),
-		RunName:     obj.Metadata.Name,
-		RunID:       obj.Metadata.UID,
-		Namespace:   obj.Metadata.Namespace,
+		State:              MapState(rawType),
+		Description:        descriptionFor(obj, rawType),
+		RunName:            obj.Metadata.Name,
+		RunID:              obj.Metadata.UID,
+		Namespace:          obj.Metadata.Namespace,
+		AccumulatorGroupID: obj.Metadata.Annotations[event.AnnoAccumulatorGroupID],
 	}, nil
 }
 

@@ -16,7 +16,7 @@ func enricherSample(resource domain.Resource) *event.Envelope {
 	return &event.Envelope{
 		CloudEventID: "enricher-test",
 		Report: domain.Event{
-			Provider:  "github",
+			Provider:  testProviderGitHub,
 			Resource:  resource,
 			Namespace: "ns",
 			RunName:   "run-1",

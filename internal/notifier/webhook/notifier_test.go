@@ -11,8 +11,10 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
+	"github.com/fabioluciano/tekton-events-relay/internal/httpx"
 	"github.com/fabioluciano/tekton-events-relay/internal/notifier/scm"
 )
 
@@ -419,6 +421,40 @@ func TestNotify_HeaderConflictResolution(t *testing.T) {
 	// Explicit Headers should override auth-generated header
 	if authHeader != "Custom override-token" {
 		t.Errorf("Authorization = %q, want 'Custom override-token'", authHeader)
+	}
+}
+
+func TestInstanceRetryPolicy(t *testing.T) {
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		attempts++
+		if attempts < 3 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	cfg := Config{
+		URL: server.URL,
+		RetryPolicy: &httpx.RetryPolicy{
+			MaxAttempts:    3,
+			InitialBackoff: time.Millisecond,
+			MaxBackoff:     10 * time.Millisecond,
+		},
+	}
+	n, err := New(cfg, nil)
+	if err != nil {
+		t.Fatalf("New() error: %v", err)
+	}
+
+	evt := domain.Event{RunName: testRunName, State: domain.StateSuccess}
+	if err := n.Handle(context.Background(), evt); err != nil {
+		t.Fatalf("Handle() error: %v", err)
+	}
+	if attempts != 3 {
+		t.Errorf("attempts = %d, want 3 (2 retries + 1 success)", attempts)
 	}
 }
 

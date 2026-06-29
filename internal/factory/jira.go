@@ -52,6 +52,10 @@ func (f *JiraFactory) Build(inst config.JiraInstance, log *zap.Logger) ([]notifi
 			handler, err = jira.NewCommentHandler(client, action.Template, log)
 		case config.JiraActionTransition:
 			handler, err = jira.NewTransitionHandler(client, action.Transition, log)
+		case config.JiraActionCreateIssue:
+			handler, err = jira.NewCreateIssueHandler(client, action.ProjectKey, action.IssueType, log)
+		case config.JiraActionLinkCommit:
+			handler, err = jira.NewLinkCommitHandler(client, action.IssueKey, log)
 		default:
 			return nil, fmt.Errorf("jira %s: unsupported action type %q", inst.Name, action.Type)
 		}

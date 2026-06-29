@@ -12,14 +12,17 @@ import (
 )
 
 const (
-	testEventID1      = "event-1"
-	testEventID2      = "event-2"
-	testEventID3      = "event-3"
-	testUnexpectedErr = "unexpected error: %v"
-	testFilteredMsg   = "expected filtered (count=0), got count=%d"
-	testPassedMsg     = "expected passed (count=1), got count=%d"
-	testTektonURL     = "https://tekton.example.com"
-	testCustomURL     = "https://custom.example.com"
+	testEventID1        = "event-1"
+	testEventID2        = "event-2"
+	testEventID3        = "event-3"
+	testUnexpectedErr   = "unexpected error: %v"
+	testFilteredMsg     = "expected filtered (count=0), got count=%d"
+	testPassedMsg       = "expected passed (count=1), got count=%d"
+	testTektonURL       = "https://tekton.example.com"
+	testCustomURL       = "https://custom.example.com"
+	testHandlerPrimary  = "primary"
+	testHandlerFallback = "fallback"
+	testHandlerFBOnly   = "fb-only"
 )
 
 // terminal counts how many times Handle was called - terminal handler for tests.
@@ -38,7 +41,7 @@ func sample(id string) *event.Envelope {
 		CloudEventID:   id,
 		CloudEventType: "dev.tekton.event.pipelinerun.successful.v1",
 		Report: domain.Event{
-			Provider:  "github",
+			Provider:  testProviderGitHub,
 			Resource:  domain.ResourcePipelineRun,
 			CommitSHA: "abc",
 			RunName:   "run-1",
@@ -113,7 +116,7 @@ func TestValidator_RejectsMissingRunName(t *testing.T) {
 }
 
 func TestEventFilter_DropsTaskRunWhenDisabled(t *testing.T) {
-	f := NewEventFilter(false, true, false, false, false)
+	f := NewEventFilter(false, true, false, false, false, nil, nil)
 	term := &terminal{}
 	Build(f, term)
 
@@ -128,7 +131,7 @@ func TestEventFilter_DropsTaskRunWhenDisabled(t *testing.T) {
 }
 
 func TestEventFilter_DropsPipelineRunWhenDisabled(t *testing.T) {
-	f := NewEventFilter(true, false, false, false, false)
+	f := NewEventFilter(true, false, false, false, false, nil, nil)
 	term := &terminal{}
 	Build(f, term)
 
@@ -143,7 +146,7 @@ func TestEventFilter_DropsPipelineRunWhenDisabled(t *testing.T) {
 }
 
 func TestEventFilter_PassesTaskRunWhenEnabled(t *testing.T) {
-	f := NewEventFilter(true, false, false, false, false)
+	f := NewEventFilter(true, false, false, false, false, nil, nil)
 	term := &terminal{}
 	Build(f, term)
 
@@ -158,7 +161,7 @@ func TestEventFilter_PassesTaskRunWhenEnabled(t *testing.T) {
 }
 
 func TestEventFilter_DropsUnknown(t *testing.T) {
-	f := NewEventFilter(true, true, false, false, true)
+	f := NewEventFilter(true, true, false, false, true, nil, nil)
 	term := &terminal{}
 	Build(f, term)
 
@@ -173,7 +176,7 @@ func TestEventFilter_DropsUnknown(t *testing.T) {
 }
 
 func TestEventFilter_DropsCustomRunWhenDisabled(t *testing.T) {
-	f := NewEventFilter(true, true, false, false, false)
+	f := NewEventFilter(true, true, false, false, false, nil, nil)
 	term := &terminal{}
 	Build(f, term)
 
@@ -188,7 +191,7 @@ func TestEventFilter_DropsCustomRunWhenDisabled(t *testing.T) {
 }
 
 func TestEventFilter_PassesCustomRunWhenEnabled(t *testing.T) {
-	f := NewEventFilter(false, false, true, false, false)
+	f := NewEventFilter(false, false, true, false, false, nil, nil)
 	term := &terminal{}
 	Build(f, term)
 
@@ -203,7 +206,7 @@ func TestEventFilter_PassesCustomRunWhenEnabled(t *testing.T) {
 }
 
 func TestEventFilter_DropsEventListenerWhenDisabled(t *testing.T) {
-	f := NewEventFilter(true, true, false, false, false)
+	f := NewEventFilter(true, true, false, false, false, nil, nil)
 	term := &terminal{}
 	Build(f, term)
 
@@ -218,7 +221,7 @@ func TestEventFilter_DropsEventListenerWhenDisabled(t *testing.T) {
 }
 
 func TestEventFilter_PassesEventListenerWhenEnabled(t *testing.T) {
-	f := NewEventFilter(false, false, false, true, false)
+	f := NewEventFilter(false, false, false, true, false, nil, nil)
 	term := &terminal{}
 	Build(f, term)
 

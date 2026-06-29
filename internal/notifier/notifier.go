@@ -24,9 +24,12 @@ const (
 	ActionCheckRun          ActionType = "check_run"
 	ActionDiscussionComment ActionType = "discussion_comment"
 	ActionDeploymentStatus  ActionType = "deployment_status"
+	ActionIncidentCreate    ActionType = "incident_create"
 	ActionNotify            ActionType = "notify" // for generic notifiers (Slack, Teams, Discord, PagerDuty, Datadog, Webhook)
 	ActionJiraComment       ActionType = "jira_comment"
 	ActionJiraTransition    ActionType = "jira_transition"
+	ActionJiraCreateIssue   ActionType = "jira_create_issue"
+	ActionJiraLinkCommit    ActionType = "jira_link_commit"
 )
 
 // ActionHandler is the interface for action-specific handlers.
@@ -38,6 +41,17 @@ type ActionHandler interface {
 	Type() ActionType
 	// Handle processes the event. Returns nil if skipped (provider mismatch, missing fields).
 	Handle(ctx context.Context, e domain.Event) error
+	// Close releases resources held by the handler. Must be idempotent.
+	Close() error
+}
+
+// Closer is an optional interface for handlers that hold resources requiring
+// explicit cleanup. Code that tears down a handler set (e.g. config reload,
+// graceful shutdown) can type-assert on Closer and call Close() without
+// depending on the full ActionHandler contract. Every ActionHandler satisfies
+// Closer, but not every Closer need be an ActionHandler.
+type Closer interface {
+	Close() error
 }
 
 // Registry maintains all registered ActionHandlers. Thread-safe.

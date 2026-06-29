@@ -120,6 +120,9 @@ func (h *CommentHandler) Name() string { return notifierName }
 // Type returns the action type.
 func (h *CommentHandler) Type() notifier.ActionType { return notifier.ActionJiraComment }
 
+// Close is a no-op; this handler holds no resources requiring cleanup.
+func (h *CommentHandler) Close() error { return nil }
+
 // Handle posts the rendered comment; events without an issue key are skipped.
 func (h *CommentHandler) Handle(ctx context.Context, e domain.Event) error {
 	if e.JiraIssueKey == "" {
@@ -192,6 +195,9 @@ func (h *TransitionHandler) Name() string { return notifierName }
 
 // Type returns the action type.
 func (h *TransitionHandler) Type() notifier.ActionType { return notifier.ActionJiraTransition }
+
+// Close is a no-op; this handler holds no resources requiring cleanup.
+func (h *TransitionHandler) Close() error { return nil }
 
 type transitionList struct {
 	Transitions []struct {

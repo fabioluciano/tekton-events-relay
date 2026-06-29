@@ -36,6 +36,11 @@ const (
 	// AnnoJiraIssueKey links the run to a Jira issue (e.g. PROJ-123). The
 	// TriggerBinding extracts it from the branch name or PR/MR title.
 	AnnoJiraIssueKey = "tekton.dev/tekton-events-relay.jira.issue-key"
+
+	// AnnoAccumulatorGroupID groups multiple PipelineRuns under a single
+	// aggregate PR comment. All runs sharing the same group ID are buffered
+	// together and flushed when every member reaches a terminal state.
+	AnnoAccumulatorGroupID = "tekton.dev/tekton-events-relay.accumulator.group-id"
 )
 
 // RawEvent is the decoder input, decoupled from the CloudEvents SDK.

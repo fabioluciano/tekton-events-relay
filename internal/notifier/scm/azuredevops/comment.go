@@ -81,6 +81,9 @@ func NewCommentHandler(cfg CommentConfig) (notifier.ActionHandler, error) {
 // Name returns the handler name.
 func (h *CommentHandler) Name() string { return providerAzure }
 
+// Provider returns the provider type identifier.
+func (h *CommentHandler) Provider() string { return providerAzure }
+
 // Type returns the action type.
 func (h *CommentHandler) Type() notifier.ActionType { return notifier.ActionPRComment }
 

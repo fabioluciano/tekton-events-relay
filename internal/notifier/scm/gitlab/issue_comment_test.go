@@ -31,7 +31,7 @@ func newIssueHandler(t *testing.T, baseURL, mode string) notifier.ActionHandler 
 func issueEvent(state domain.State) domain.Event {
 	issue := 9
 	return domain.Event{
-		Provider: "gitlab-main",
+		Provider: "gitlab",
 		Repo:     domain.Repo{ID: "42"},
 		RunName:  "run-1", RunID: "uid-123",
 		IssueNumber: &issue, State: state,

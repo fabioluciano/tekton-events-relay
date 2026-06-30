@@ -24,6 +24,7 @@ type rateLimitedHandler struct {
 }
 
 func (h *rateLimitedHandler) Name() string              { return h.inner.Name() }
+func (h *rateLimitedHandler) Provider() string          { return h.inner.Provider() }
 func (h *rateLimitedHandler) Type() notifier.ActionType { return h.inner.Type() }
 
 func (h *rateLimitedHandler) Handle(ctx context.Context, e domain.Event) error {

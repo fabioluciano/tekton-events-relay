@@ -72,6 +72,9 @@ func New(cfg Config, log *zap.Logger) *Notifier {
 // Name returns the notifier name.
 func (n *Notifier) Name() string { return "opsgenie" }
 
+// Provider returns the provider type identifier.
+func (n *Notifier) Provider() string { return "opsgenie" }
+
 // Type returns the action type for generic notifiers.
 func (n *Notifier) Type() notifier.ActionType { return notifier.ActionNotify }
 

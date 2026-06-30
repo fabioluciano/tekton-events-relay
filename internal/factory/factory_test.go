@@ -293,18 +293,25 @@ notifiers:
 		}
 
 		// Verify each SCM provider produced a commit_testStatus handler
-		// Name() returns the provider identifier, not the config instance name
-		expectedSCM := []string{"github", "test-gitlab", "bitbucket-cloud", "azure-devops", "test-gitea", "sourcehut"}
-		for _, name := range expectedSCM {
+		// Name() returns the instance name from config; Provider() returns the provider type
+		expectedSCM := []struct{ name, provider string }{
+			{"test-github", "github"},
+			{"test-gitlab", "gitlab"},
+			{"test-bitbucket", "bitbucket-cloud"},
+			{"test-azure", "azure-devops"},
+			{"test-gitea", "gitea"},
+			{"test-sourcehut", "sourcehut"},
+		}
+		for _, exp := range expectedSCM {
 			found := false
 			for _, h := range handlers {
-				if h.Name() == name && h.Type() == notifier.ActionCommitStatus {
+				if h.Name() == exp.name && h.Provider() == exp.provider && h.Type() == notifier.ActionCommitStatus {
 					found = true
 					break
 				}
 			}
 			if !found {
-				t.Errorf("SCM handler %s/commit_testStatus not found in registry", name)
+				t.Errorf("SCM handler %s/%s[commit_status] not found in registry", exp.provider, exp.name)
 			}
 		}
 

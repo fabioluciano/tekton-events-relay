@@ -46,6 +46,9 @@ func NewLabelHandler(cfg LabelConfig) notifier.ActionHandler {
 // Name returns the handler name.
 func (h *LabelHandler) Name() string { return providerAzure }
 
+// Provider returns the provider type identifier.
+func (h *LabelHandler) Provider() string { return providerAzure }
+
 // Type returns the action type.
 func (h *LabelHandler) Type() notifier.ActionType { return notifier.ActionLabel }
 

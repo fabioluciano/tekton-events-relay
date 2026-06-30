@@ -16,6 +16,7 @@ import (
 // CommitCommentHandler comments directly on a commit, covering pushes that
 // have no associated pull request (where pr_comment silently skips).
 type CommitCommentHandler struct {
+	name     string
 	client   HTTPDoer
 	template *template.Template
 	log      *zap.Logger
@@ -23,6 +24,7 @@ type CommitCommentHandler struct {
 
 // CommitCommentConfig configures the commit comment handler.
 type CommitCommentConfig struct {
+	Name     string
 	Client   HTTPDoer
 	Template string
 }
@@ -41,6 +43,7 @@ func NewCommitCommentHandler(cfg CommitCommentConfig, log *zap.Logger) (notifier
 		log = zap.NewNop()
 	}
 	return &CommitCommentHandler{
+		name:     cfg.Name,
 		client:   cfg.Client,
 		template: tmpl,
 		log:      log,
@@ -48,7 +51,10 @@ func NewCommitCommentHandler(cfg CommitCommentConfig, log *zap.Logger) (notifier
 }
 
 // Name returns the handler name.
-func (h *CommitCommentHandler) Name() string { return providerGitHub }
+func (h *CommitCommentHandler) Name() string { return h.name }
+
+// Provider returns the provider type identifier.
+func (h *CommitCommentHandler) Provider() string { return providerGitHub }
 
 // Type returns the action type.
 func (h *CommitCommentHandler) Type() notifier.ActionType { return notifier.ActionCommitComment }

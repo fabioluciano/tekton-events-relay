@@ -44,12 +44,15 @@ func NewDeploymentHandler(cfg DeploymentConfig) (notifier.ActionHandler, error) 
 // Name returns the handler name.
 func (h *DeploymentHandler) Name() string { return h.name }
 
+// Provider returns the provider type identifier.
+func (h *DeploymentHandler) Provider() string { return providerGitLab }
+
 // Type returns the action type.
 func (h *DeploymentHandler) Type() notifier.ActionType { return notifier.ActionDeploymentStatus }
 
 // Handle records the run as a deployment to the environment.
 func (h *DeploymentHandler) Handle(ctx context.Context, e domain.Event) error {
-	if e.Provider != h.name {
+	if e.Provider != providerGitLab {
 		return nil
 	}
 	if e.CommitSHA == "" {

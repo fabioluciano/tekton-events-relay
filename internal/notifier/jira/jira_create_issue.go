@@ -43,6 +43,9 @@ func NewCreateIssueHandler(client *Client, projectKey, issueType string, log *za
 // Name returns the provider identifier.
 func (h *CreateIssueHandler) Name() string { return notifierName }
 
+// Provider returns the provider type identifier.
+func (h *CreateIssueHandler) Provider() string { return notifierName }
+
 // Type returns the action type.
 func (h *CreateIssueHandler) Type() notifier.ActionType { return notifier.ActionJiraCreateIssue }
 

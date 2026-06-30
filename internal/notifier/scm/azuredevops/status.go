@@ -13,18 +13,23 @@ import (
 
 // StatusReporter implements commit status updates for Azure DevOps.
 type StatusReporter struct {
+	name   string
 	client *Client
 }
 
 // NewStatusReporter creates a new Azure DevOps commit status reporter.
-func NewStatusReporter(token, baseURL, genre string, insecureSkipVerify bool, log *zap.Logger) notifier.ActionHandler {
+func NewStatusReporter(name, token, baseURL, genre string, insecureSkipVerify bool, log *zap.Logger) notifier.ActionHandler {
 	return &StatusReporter{
+		name:   name,
 		client: NewClient(token, baseURL, genre, insecureSkipVerify, false, log),
 	}
 }
 
 // Name returns the handler name.
-func (r *StatusReporter) Name() string { return providerAzure }
+func (r *StatusReporter) Name() string { return r.name }
+
+// Provider returns the provider type identifier.
+func (r *StatusReporter) Provider() string { return providerAzure }
 
 // Type returns the action type.
 func (r *StatusReporter) Type() notifier.ActionType { return notifier.ActionCommitStatus }

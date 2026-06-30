@@ -64,12 +64,15 @@ func NewCommitCommentHandler(cfg CommitCommentConfig) (notifier.ActionHandler, e
 // Name returns the handler name.
 func (h *CommitCommentHandler) Name() string { return h.name }
 
+// Provider returns the provider type identifier.
+func (h *CommitCommentHandler) Provider() string { return providerGitLab }
+
 // Type returns the action type.
 func (h *CommitCommentHandler) Type() notifier.ActionType { return notifier.ActionCommitComment }
 
 // Handle posts a comment on the commit itself.
 func (h *CommitCommentHandler) Handle(ctx context.Context, e domain.Event) error {
-	if e.Provider != h.name {
+	if e.Provider != providerGitLab {
 		return nil
 	}
 	if e.CommitSHA == "" {

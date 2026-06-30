@@ -17,6 +17,7 @@ const defaultEnvironment = "production"
 
 // DeploymentStatusConfig holds GitHub Deployment Status handler configuration.
 type DeploymentStatusConfig struct {
+	Name   string
 	Client HTTPDoer
 }
 
@@ -24,6 +25,7 @@ type DeploymentStatusConfig struct {
 // Requires a GitHub token with deployments:write permission.
 // Uses annotations: tekton.dev/environment, tekton.dev/deployment-ref
 type DeploymentStatusHandler struct {
+	name   string
 	client HTTPDoer
 	log    *zap.Logger
 }
@@ -34,13 +36,17 @@ func NewDeploymentStatusHandler(cfg DeploymentStatusConfig, log *zap.Logger) not
 		log = zap.NewNop()
 	}
 	return &DeploymentStatusHandler{
+		name:   cfg.Name,
 		client: cfg.Client,
 		log:    log,
 	}
 }
 
 // Name returns the provider identifier.
-func (h *DeploymentStatusHandler) Name() string { return providerGitHub }
+func (h *DeploymentStatusHandler) Name() string { return h.name }
+
+// Provider returns the provider type identifier.
+func (h *DeploymentStatusHandler) Provider() string { return providerGitHub }
 
 // Type returns the action type.
 func (h *DeploymentStatusHandler) Type() notifier.ActionType {

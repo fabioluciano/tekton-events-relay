@@ -117,6 +117,9 @@ func NewCommentHandler(client *Client, tmplSrc string, log *zap.Logger) (*Commen
 // Name returns the provider identifier.
 func (h *CommentHandler) Name() string { return notifierName }
 
+// Provider returns the provider type identifier.
+func (h *CommentHandler) Provider() string { return notifierName }
+
 // Type returns the action type.
 func (h *CommentHandler) Type() notifier.ActionType { return notifier.ActionJiraComment }
 
@@ -192,6 +195,9 @@ func NewTransitionHandler(client *Client, transition string, log *zap.Logger) (*
 
 // Name returns the provider identifier.
 func (h *TransitionHandler) Name() string { return notifierName }
+
+// Provider returns the provider type identifier.
+func (h *TransitionHandler) Provider() string { return notifierName }
 
 // Type returns the action type.
 func (h *TransitionHandler) Type() notifier.ActionType { return notifier.ActionJiraTransition }

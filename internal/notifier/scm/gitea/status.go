@@ -33,12 +33,15 @@ func NewStatusReporter(client *Client, name string, log *zap.Logger) (notifier.A
 // Name returns the handler name.
 func (r *StatusReporter) Name() string { return r.name }
 
+// Provider returns the provider type identifier.
+func (r *StatusReporter) Provider() string { return providerGitea }
+
 // Type returns the action type.
 func (r *StatusReporter) Type() notifier.ActionType { return notifier.ActionCommitStatus }
 
 // Handle posts commit status to Gitea.
 func (r *StatusReporter) Handle(_ context.Context, e domain.Event) error {
-	if e.Provider != r.name {
+	if e.Provider != providerGitea {
 		return nil
 	}
 

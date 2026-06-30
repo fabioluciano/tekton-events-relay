@@ -63,12 +63,15 @@ func NewPRCommentHandler(cfg PRCommentConfig) (notifier.ActionHandler, error) {
 // Name returns the handler name.
 func (h *PRCommentHandler) Name() string { return h.name }
 
+// Provider returns the provider type identifier.
+func (h *PRCommentHandler) Provider() string { return providerGitea }
+
 // Type returns the action type.
 func (h *PRCommentHandler) Type() notifier.ActionType { return notifier.ActionPRComment }
 
 // Handle posts a comment to a Gitea PR.
 func (h *PRCommentHandler) Handle(_ context.Context, e domain.Event) error {
-	if e.Provider != h.name {
+	if e.Provider != providerGitea {
 		return nil
 	}
 

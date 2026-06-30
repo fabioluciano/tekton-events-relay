@@ -27,6 +27,7 @@ type mockActionHandler struct {
 }
 
 func (m *mockActionHandler) Name() string              { return m.name }
+func (m *mockActionHandler) Provider() string          { return m.name }
 func (m *mockActionHandler) Type() notifier.ActionType { return m.typ }
 func (m *mockActionHandler) Handle(_ context.Context, _ domain.Event) error {
 	m.called = true

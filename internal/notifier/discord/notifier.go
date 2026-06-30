@@ -217,6 +217,9 @@ func parseWebhookURL(raw string) (id, token string, err error) {
 // Name returns the notifier name.
 func (n *Notifier) Name() string { return "discord" }
 
+// Provider returns the provider type identifier.
+func (n *Notifier) Provider() string { return "discord" }
+
 // Type returns the action type.
 func (n *Notifier) Type() notifier.ActionType { return notifier.ActionNotify }
 

@@ -30,6 +30,9 @@ func NewLinkCommitHandler(client *Client, issueKey string, log *zap.Logger) (*Li
 // Name returns the provider identifier.
 func (h *LinkCommitHandler) Name() string { return notifierName }
 
+// Provider returns the provider type identifier.
+func (h *LinkCommitHandler) Provider() string { return notifierName }
+
 // Type returns the action type.
 func (h *LinkCommitHandler) Type() notifier.ActionType { return notifier.ActionJiraLinkCommit }
 

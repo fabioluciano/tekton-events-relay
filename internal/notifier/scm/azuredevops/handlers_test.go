@@ -23,7 +23,7 @@ func azureEvent() domain.Event {
 }
 
 func TestStatusReporter_NameAndType(t *testing.T) {
-	r := NewStatusReporter("token", "https://dev.azure.example.com", "tekton", false, zap.NewNop())
+	r := NewStatusReporter("azure-devops", "token", "https://dev.azure.example.com", "tekton", false, zap.NewNop())
 	if r.Name() != "azure-devops" {
 		t.Errorf("Name = %q, want azure-devops", r.Name())
 	}
@@ -33,7 +33,7 @@ func TestStatusReporter_NameAndType(t *testing.T) {
 }
 
 func TestStatusReporter_SkipsWrongProvider(t *testing.T) {
-	r := NewStatusReporter("token", "https://dev.azure.example.com", "tekton", false, zap.NewNop())
+	r := NewStatusReporter("azure-devops", "token", "https://dev.azure.example.com", "tekton", false, zap.NewNop())
 	e := azureEvent()
 	e.Provider = "github"
 	// Must skip before any network access — error would mean an API call.
@@ -43,7 +43,7 @@ func TestStatusReporter_SkipsWrongProvider(t *testing.T) {
 }
 
 func TestStatusReporter_SkipsMissingFields(t *testing.T) {
-	r := NewStatusReporter("token", "https://dev.azure.example.com", "tekton", false, zap.NewNop())
+	r := NewStatusReporter("azure-devops", "token", "https://dev.azure.example.com", "tekton", false, zap.NewNop())
 	for _, mutate := range []func(*domain.Event){
 		func(e *domain.Event) { e.Repo.Org = "" },
 		func(e *domain.Event) { e.Repo.Project = "" },

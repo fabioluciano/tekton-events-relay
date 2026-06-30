@@ -76,6 +76,12 @@ func (d *Dispatcher) WithFallbacks(fallbacks map[string]string, fallbackOnly map
 	return d
 }
 
+// handlerKey returns a unique label for a handler combining provider and instance name.
+// Format: "provider/name" (e.g., "gitlab/default", "github/prod").
+func handlerKey(h notifier.ActionHandler) string {
+	return h.Provider() + "/" + h.Name()
+}
+
 // Handle dispatches the event to all registered action handlers.
 // Returns an error if any handler fails, but continues trying all handlers.
 // Handlers return nil (skip) when provider doesn't match or required fields missing.
@@ -94,7 +100,7 @@ func (d *Dispatcher) Handle(ctx context.Context, env *event.Envelope) error {
 		if d.isFallbackOnly(h.Name()) {
 			continue
 		}
-		if env.Report.Provider != "" && env.Report.Provider != h.Name() && h.Type() != notifier.ActionNotify {
+		if env.Report.Provider != "" && env.Report.Provider != h.Provider() && h.Type() != notifier.ActionNotify {
 			continue
 		}
 		matched = append(matched, h)
@@ -126,7 +132,7 @@ func (d *Dispatcher) Handle(ctx context.Context, env *event.Envelope) error {
 			tracer := otel.Tracer("tekton-events-relay")
 			hCtx, hSpan := tracer.Start(ctx, "handler.execute",
 				trace.WithAttributes(
-					attribute.String("handler.name", h.Name()),
+					attribute.String("handler.name", handlerKey(h)),
 					attribute.String("handler.type", string(h.Type())),
 				),
 			)
@@ -144,11 +150,11 @@ func (d *Dispatcher) Handle(ctx context.Context, env *event.Envelope) error {
 			duration := time.Since(start)
 
 			if err != nil && errors.Is(err, context.DeadlineExceeded) && d.collectors != nil {
-				d.collectors.HandlerTimeouts.WithLabelValues(h.Name()).Inc()
+				d.collectors.HandlerTimeouts.WithLabelValues(handlerKey(h)).Inc()
 			}
-			d.status.Observe(h.Name(), err)
+			d.status.Observe(handlerKey(h), err)
 			if d.collectors != nil {
-				d.collectors.NotifierLatency.WithLabelValues(h.Name(), string(h.Type())).Observe(duration.Seconds())
+				d.collectors.NotifierLatency.WithLabelValues(handlerKey(h), string(h.Type())).Observe(duration.Seconds())
 			}
 
 			if err != nil {
@@ -160,11 +166,11 @@ func (d *Dispatcher) Handle(ctx context.Context, env *event.Envelope) error {
 			if err != nil {
 				status = "error"
 				mu.Lock()
-				errs = append(errs, fmt.Errorf("%s/%s: %w", h.Name(), h.Type(), err))
+				errs = append(errs, fmt.Errorf("%s/%s: %w", handlerKey(h), h.Type(), err))
 				results = append(results, handlerResult{handler: h, err: err})
 				mu.Unlock()
 				d.log.Error("handler failed",
-					zap.String("handler", h.Name()),
+					zap.String("handler", handlerKey(h)),
 					zap.String("action", string(h.Type())),
 					zap.String("runID", env.Report.RunName),
 					zap.String("state", string(env.Report.State)),
@@ -175,7 +181,7 @@ func (d *Dispatcher) Handle(ctx context.Context, env *event.Envelope) error {
 				results = append(results, handlerResult{handler: h, err: nil})
 				mu.Unlock()
 				fields := []zap.Field{
-					zap.String("handler", h.Name()),
+					zap.String("handler", handlerKey(h)),
 					zap.String("action", string(h.Type())),
 					zap.String("runID", env.Report.RunName),
 					zap.String("state", string(env.Report.State)),
@@ -199,8 +205,8 @@ func (d *Dispatcher) Handle(ctx context.Context, env *event.Envelope) error {
 				d.log.Info("action_success", fields...)
 			}
 			if d.collectors != nil {
-				d.collectors.HandlerDuration.WithLabelValues(h.Name()).Observe(duration.Seconds())
-				d.collectors.EventsProcessed.WithLabelValues(h.Name(), status).Inc()
+				d.collectors.HandlerDuration.WithLabelValues(handlerKey(h)).Observe(duration.Seconds())
+				d.collectors.EventsProcessed.WithLabelValues(handlerKey(h), status).Inc()
 			}
 			return nil
 		})

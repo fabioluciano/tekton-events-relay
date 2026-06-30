@@ -14,18 +14,23 @@ import (
 
 // StatusReporter implements commit status updates for SourceHut via builds API.
 type StatusReporter struct {
+	name   string
 	client *Client
 }
 
 // NewStatusReporter creates a new SourceHut commit status reporter.
-func NewStatusReporter(token, baseURL string, insecureSkipVerify bool, log *zap.Logger) notifier.ActionHandler {
+func NewStatusReporter(name, token, baseURL string, insecureSkipVerify bool, log *zap.Logger) notifier.ActionHandler {
 	return &StatusReporter{
+		name:   name,
 		client: NewClient(token, baseURL, insecureSkipVerify, false, log),
 	}
 }
 
 // Name returns the handler name.
-func (r *StatusReporter) Name() string { return providerName }
+func (r *StatusReporter) Name() string { return r.name }
+
+// Provider returns the provider type identifier.
+func (r *StatusReporter) Provider() string { return providerName }
 
 // Type returns the action type.
 func (r *StatusReporter) Type() notifier.ActionType { return notifier.ActionCommitStatus }

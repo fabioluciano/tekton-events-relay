@@ -14,19 +14,24 @@ import (
 // StatusReporter implements commit status updates for GitHub.
 type StatusReporter struct {
 	client HTTPDoer
+	name   string
 	log    *zap.Logger
 }
 
 // NewStatusReporter creates a new GitHub commit status reporter.
-func NewStatusReporter(client HTTPDoer, log *zap.Logger) notifier.ActionHandler {
+func NewStatusReporter(client HTTPDoer, name string, log *zap.Logger) notifier.ActionHandler {
 	return &StatusReporter{
 		client: client,
+		name:   name,
 		log:    log,
 	}
 }
 
-// Name returns the handler name.
-func (r *StatusReporter) Name() string { return providerGitHub }
+// Name returns the instance name.
+func (r *StatusReporter) Name() string { return r.name }
+
+// Provider returns the provider type identifier.
+func (r *StatusReporter) Provider() string { return providerGitHub }
 
 // Type returns the action type.
 func (r *StatusReporter) Type() notifier.ActionType { return notifier.ActionCommitStatus }

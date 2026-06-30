@@ -17,7 +17,8 @@ import (
 )
 
 const (
-	ccProvider = "gitlab-main"
+	ccProvider = "gitlab"
+	ccInstance = "gitlab-main"
 	ccForeign  = "github"
 	ccBodyKey  = "body"
 )
@@ -84,7 +85,7 @@ func newCommitCommentHandler(t *testing.T, baseURL, mode string) notifier.Action
 		t.Fatalf("NewClient: %v", err)
 	}
 	h, err := NewCommitCommentHandler(CommitCommentConfig{
-		Client: client, Name: ccProvider,
+		Client: client, Name: ccInstance,
 		Template: "Run {{.RunName}}: {{.State}}", Mode: mode, Log: zap.NewNop(),
 	})
 	if err != nil {

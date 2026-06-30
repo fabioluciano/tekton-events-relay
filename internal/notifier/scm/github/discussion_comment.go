@@ -15,12 +15,14 @@ import (
 
 // DiscussionCommentHandler posts comments to GitHub Discussions.
 type DiscussionCommentHandler struct {
+	name     string
 	client   HTTPDoer
 	template *template.Template
 }
 
 // DiscussionCommentConfig configures the discussion comment handler.
 type DiscussionCommentConfig struct {
+	Name     string
 	Client   HTTPDoer
 	Template string
 }
@@ -37,13 +39,17 @@ func NewDiscussionCommentHandler(cfg DiscussionCommentConfig, _ *zap.Logger) (no
 	}
 
 	return &DiscussionCommentHandler{
+		name:     cfg.Name,
 		client:   cfg.Client,
 		template: tmpl,
 	}, nil
 }
 
 // Name returns the handler name.
-func (h *DiscussionCommentHandler) Name() string { return providerGitHub }
+func (h *DiscussionCommentHandler) Name() string { return h.name }
+
+// Provider returns the provider type identifier.
+func (h *DiscussionCommentHandler) Provider() string { return providerGitHub }
 
 // Type returns the action type.
 func (h *DiscussionCommentHandler) Type() notifier.ActionType {

@@ -45,7 +45,7 @@ func cloudStatusEvent() domain.Event {
 }
 
 func TestCloudStatusReporter_NameAndType(t *testing.T) {
-	r := NewCloudStatusReporter("u", "p", "http://localhost", false, zap.NewNop())
+	r := NewCloudStatusReporter("bitbucket-cloud", "u", "p", "http://localhost", false, zap.NewNop())
 	if r.Name() != "bitbucket-cloud" {
 		t.Errorf("Name = %q, want bitbucket-cloud", r.Name())
 	}
@@ -60,7 +60,7 @@ func TestCloudStatusReporter_SkipsWrongProviderAndMissingFields(t *testing.T) {
 	srv := statusCaptureServer(&calls, &path, &body)
 	defer srv.Close()
 
-	r := NewCloudStatusReporter("u", "p", srv.URL, false, zap.NewNop())
+	r := NewCloudStatusReporter("bitbucket-cloud", "u", "p", srv.URL, false, zap.NewNop())
 
 	e := cloudStatusEvent()
 	e.Provider = "github"
@@ -85,7 +85,7 @@ func TestCloudStatusReporter_PostsMappedState(t *testing.T) {
 	srv := statusCaptureServer(&calls, &path, &body)
 	defer srv.Close()
 
-	r := NewCloudStatusReporter("u", "p", srv.URL, false, zap.NewNop())
+	r := NewCloudStatusReporter("bitbucket-cloud", "u", "p", srv.URL, false, zap.NewNop())
 	if err := r.Handle(context.Background(), cloudStatusEvent()); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
@@ -110,7 +110,7 @@ func TestServerStatusReporter_PostsMappedState(t *testing.T) {
 	srv := statusCaptureServer(&calls, &path, &body)
 	defer srv.Close()
 
-	r := NewServerStatusReporter("token", srv.URL, false, zap.NewNop())
+	r := NewServerStatusReporter("bitbucket-server", "token", srv.URL, false, zap.NewNop())
 	e := cloudStatusEvent()
 	e.Provider = providerServer
 	e.State = domain.StateSuccess
@@ -135,7 +135,7 @@ func TestServerStatusReporter_SkipsMissingSHA(t *testing.T) {
 	srv := statusCaptureServer(&calls, &path, &body)
 	defer srv.Close()
 
-	r := NewServerStatusReporter("token", srv.URL, false, zap.NewNop())
+	r := NewServerStatusReporter("bitbucket-server", "token", srv.URL, false, zap.NewNop())
 	e := cloudStatusEvent()
 	e.Provider = providerServer
 	e.CommitSHA = ""

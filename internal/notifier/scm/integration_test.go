@@ -58,7 +58,7 @@ func TestIntegration_ValidationErrorPropagation(t *testing.T) {
 
 	// Create GitHub status reporter
 	client := github.NewClient(testToken, server.URL, false, zap.NewNop(), false)
-	handler := github.NewStatusReporter(client, zap.NewNop())
+	handler := github.NewStatusReporter(client, "github", zap.NewNop())
 
 	// Override API base URL to point to mock server
 	event.APIBaseURL = server.URL
@@ -123,7 +123,7 @@ func TestIntegration_BitbucketParentIncluded(t *testing.T) {
 	}
 
 	// Create Bitbucket Server status reporter
-	handler := bitbucket.NewServerStatusReporter(testToken, server.URL, false, nil)
+	handler := bitbucket.NewServerStatusReporter("bitbucket-server", testToken, server.URL, false, nil)
 	event.Provider = testBitbucketServer
 
 	// Execute the handler
@@ -195,7 +195,7 @@ func TestIntegration_BitbucketParentOmitted(t *testing.T) {
 	}
 
 	// Create Bitbucket Server status reporter
-	handler := bitbucket.NewServerStatusReporter(testToken, server.URL, false, nil)
+	handler := bitbucket.NewServerStatusReporter("bitbucket-server", testToken, server.URL, false, nil)
 	event.Provider = testBitbucketServer
 
 	// Execute the handler
@@ -257,7 +257,7 @@ func TestIntegration_GitHubValidationSuccess(t *testing.T) {
 	}
 
 	client := github.NewClient(testToken, server.URL, false, zap.NewNop(), false)
-	handler := github.NewStatusReporter(client, zap.NewNop())
+	handler := github.NewStatusReporter(client, "github", zap.NewNop())
 
 	err := handler.Handle(context.Background(), event)
 	if err != nil {
@@ -293,7 +293,7 @@ func TestIntegration_StateFiltering(t *testing.T) {
 	}
 
 	client := github.NewClient("test-token", server.URL, false, zap.NewNop(), false)
-	baseHandler := github.NewStatusReporter(client, zap.NewNop())
+	baseHandler := github.NewStatusReporter(client, "github", zap.NewNop())
 
 	// Configure handler to only notify on failure and error
 	handler := NewStatusHandler(baseHandler, []string{"failure", "error"})
@@ -323,10 +323,8 @@ type statusHandlerAdapter struct {
 	notifyOn []string
 }
 
-func (a *statusHandlerAdapter) Name() string {
-	return a.handler.Name()
-}
-
+func (a *statusHandlerAdapter) Name() string     { return a.handler.Name() }
+func (a *statusHandlerAdapter) Provider() string { return a.handler.Provider() }
 func (a *statusHandlerAdapter) Type() notifier.ActionType {
 	return a.handler.Type()
 }

@@ -28,13 +28,16 @@ func NewDedupeHandler(inner ActionHandler, store NotifierDedupeStore, log *zap.L
 	}
 }
 
-// Name returns the inner handler's name.
+// Name returns the instance name.
 func (d *DedupeHandler) Name() string { return d.inner.Name() }
 
-// Type returns the inner handler's action type.
+// Provider returns the provider type identifier.
+func (d *DedupeHandler) Provider() string { return d.inner.Provider() }
+
+// Type returns the action type.
 func (d *DedupeHandler) Type() ActionType { return d.inner.Type() }
 
-// Close delegates to the inner handler's Close method.
+// Close releases resources held by the handler.
 func (d *DedupeHandler) Close() error { return d.inner.Close() }
 
 // Handle checks the dedupe store before delegating. If the same

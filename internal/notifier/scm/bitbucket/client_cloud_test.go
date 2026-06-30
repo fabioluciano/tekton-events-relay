@@ -37,7 +37,7 @@ func TestCloudClientWithAuth_PerRequestTokenRefresh(t *testing.T) {
 	}
 
 	client := NewCloudClientWithAuth(authFn, apiSrv.URL, false, false, zap.NewNop())
-	reporter := NewCloudStatusReporterWithClient(client)
+	reporter := NewCloudStatusReporterWithClient("bitbucket-cloud", client)
 
 	event := domain.Event{
 		Provider:  providerCloud,
@@ -80,7 +80,7 @@ func TestCloudClientWithAuth_DifferentTokensPerRequest(t *testing.T) {
 	}
 
 	client := NewCloudClientWithAuth(authFn, apiSrv.URL, false, false, zap.NewNop())
-	reporter := NewCloudStatusReporterWithClient(client)
+	reporter := NewCloudStatusReporterWithClient("bitbucket-cloud", client)
 
 	event := domain.Event{
 		Provider:  providerCloud,
@@ -168,7 +168,7 @@ func TestNewCloudClient_BasicAuthStillWorks(t *testing.T) {
 	defer apiSrv.Close()
 
 	client := NewCloudClient("myuser", "mypass", apiSrv.URL, false, false, zap.NewNop())
-	reporter := NewCloudStatusReporterWithClient(client)
+	reporter := NewCloudStatusReporterWithClient("bitbucket-cloud", client)
 
 	event := domain.Event{
 		Provider:  providerCloud,

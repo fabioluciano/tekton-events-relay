@@ -45,12 +45,15 @@ func NewLabelHandler(cfg LabelConfig) (notifier.ActionHandler, error) {
 // Name returns the handler name.
 func (h *LabelHandler) Name() string { return h.name }
 
+// Provider returns the provider type identifier.
+func (h *LabelHandler) Provider() string { return providerGitea }
+
 // Type returns the action type.
 func (h *LabelHandler) Type() notifier.ActionType { return notifier.ActionLabel }
 
 // Handle applies a label to a Gitea issue or PR based on state.
 func (h *LabelHandler) Handle(_ context.Context, e domain.Event) error {
-	if e.Provider != h.name {
+	if e.Provider != providerGitea {
 		return nil
 	}
 

@@ -201,7 +201,7 @@ func (a *app) run(ctx context.Context) error {
 		a.log.Info("server listening",
 			zap.String("addr", a.cfg.Server.Addr),
 			zap.Bool("tls", a.cfg.Server.TLS.Enabled()),
-			zap.Strings("handlers", a.regHolder.Names()),
+			zap.Strings("handlers", a.regHolder.HandlerNames()),
 			zap.Strings("decoders", a.decoders.Names()))
 		var err error
 		if a.cfg.Server.TLS.Enabled() {

@@ -14,13 +14,15 @@ import (
 
 // CloudStatusReporter implements commit status updates for Bitbucket Cloud.
 type CloudStatusReporter struct {
+	name   string
 	client *CloudClient
 }
 
 // NewCloudStatusReporter creates a new Bitbucket Cloud commit status reporter
 // using basic auth credentials.
-func NewCloudStatusReporter(username, appPassword, baseURL string, insecureSkipVerify bool, log *zap.Logger) notifier.ActionHandler {
+func NewCloudStatusReporter(name, username, appPassword, baseURL string, insecureSkipVerify bool, log *zap.Logger) notifier.ActionHandler {
 	return &CloudStatusReporter{
+		name:   name,
 		client: NewCloudClient(username, appPassword, baseURL, insecureSkipVerify, false, log),
 	}
 }
@@ -28,12 +30,15 @@ func NewCloudStatusReporter(username, appPassword, baseURL string, insecureSkipV
 // NewCloudStatusReporterWithClient creates a new Bitbucket Cloud commit status
 // reporter using a pre-built CloudClient. Use this for OAuth2 auth where the
 // client resolves tokens per-request via an AuthFunc.
-func NewCloudStatusReporterWithClient(client *CloudClient) notifier.ActionHandler {
-	return &CloudStatusReporter{client: client}
+func NewCloudStatusReporterWithClient(name string, client *CloudClient) notifier.ActionHandler {
+	return &CloudStatusReporter{name: name, client: client}
 }
 
 // Name returns the handler name.
-func (r *CloudStatusReporter) Name() string { return providerCloud }
+func (r *CloudStatusReporter) Name() string { return r.name }
+
+// Provider returns the provider type identifier.
+func (r *CloudStatusReporter) Provider() string { return providerCloud }
 
 // Type returns the action type.
 func (r *CloudStatusReporter) Type() notifier.ActionType { return notifier.ActionCommitStatus }

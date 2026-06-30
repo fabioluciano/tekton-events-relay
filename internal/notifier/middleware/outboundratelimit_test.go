@@ -126,6 +126,7 @@ type countingHandler struct {
 }
 
 func (h *countingHandler) Name() string              { return h.name }
+func (h *countingHandler) Provider() string          { return h.name }
 func (h *countingHandler) Type() notifier.ActionType { return h.typ }
 func (h *countingHandler) Handle(_ context.Context, _ domain.Event) error {
 	h.calls.Add(1)

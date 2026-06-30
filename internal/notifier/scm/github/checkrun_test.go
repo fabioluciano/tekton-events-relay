@@ -20,8 +20,9 @@ const (
 
 func TestCheckRunHandler_Name(t *testing.T) {
 	h, err := NewCheckRunHandler(CheckRunConfig{
-		Client: ghTestClient(testToken, testAPIURL),
-		Name:   "my-check",
+		InstName: providerGitHub,
+		Client:   ghTestClient(testToken, testAPIURL),
+		Name:     "my-check",
 	}, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewCheckRunHandler: %v", err)
@@ -34,7 +35,8 @@ func TestCheckRunHandler_Name(t *testing.T) {
 
 func TestCheckRunHandler_Type(t *testing.T) {
 	h, err := NewCheckRunHandler(CheckRunConfig{
-		Client: ghTestClient(testToken, testAPIURL),
+		InstName: providerGitHub,
+		Client:   ghTestClient(testToken, testAPIURL),
 	}, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewCheckRunHandler: %v", err)
@@ -47,7 +49,8 @@ func TestCheckRunHandler_Type(t *testing.T) {
 
 func TestCheckRunHandler_MapState(t *testing.T) {
 	h, err := NewCheckRunHandler(CheckRunConfig{
-		Client: ghTestClient(testToken, testAPIURL),
+		InstName: providerGitHub,
+		Client:   ghTestClient(testToken, testAPIURL),
 	}, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewCheckRunHandler: %v", err)
@@ -104,8 +107,9 @@ func TestCheckRunHandler_Handle_Success(t *testing.T) {
 	defer server.Close()
 
 	h, err := NewCheckRunHandler(CheckRunConfig{
-		Client: ghTestClient("app-token-123", server.URL),
-		Name:   "tekton/build",
+		InstName: providerGitHub,
+		Client:   ghTestClient("app-token-123", server.URL),
+		Name:     "tekton/build",
 	}, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewCheckRunHandler: %v", err)
@@ -175,6 +179,7 @@ func TestCheckRunHandler_Template(t *testing.T) {
 	defer server.Close()
 
 	h, err := NewCheckRunHandler(CheckRunConfig{
+		InstName: providerGitHub,
 		Client:   ghTestClient("token", server.URL),
 		Template: "/tmp/tekton-test-templates-github/checkrun.tmpl",
 	}, zap.NewNop())
@@ -197,7 +202,8 @@ func TestCheckRunHandler_Template(t *testing.T) {
 
 func TestCheckRunHandler_MissingFields(t *testing.T) {
 	h, err := NewCheckRunHandler(CheckRunConfig{
-		Client: ghTestClient("token", "https://api.github.com"), //nolint:goconst
+		InstName: providerGitHub,
+		Client:   ghTestClient("token", "https://api.github.com"), //nolint:goconst
 	}, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewCheckRunHandler: %v", err)

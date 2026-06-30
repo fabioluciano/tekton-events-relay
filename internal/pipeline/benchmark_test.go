@@ -26,6 +26,7 @@ type benchSpyHandler struct {
 }
 
 func (h *benchSpyHandler) Name() string              { return h.name }
+func (h *benchSpyHandler) Provider() string          { return h.name }
 func (h *benchSpyHandler) Type() notifier.ActionType { return h.actionType }
 func (h *benchSpyHandler) Handle(_ context.Context, _ domain.Event) error {
 	h.callCount++

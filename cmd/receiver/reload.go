@@ -36,6 +36,8 @@ func newRegistryHolder(reg *notifier.Registry) *registryHolder {
 // Names implements httpx.HandlerSource.
 func (h *registryHolder) Names() []string { return h.p.Load().Names() }
 
+func (h *registryHolder) HandlerNames() []string { return h.p.Load().HandlerNames() }
+
 // All implements pipeline.HandlerSource.
 func (h *registryHolder) All() []notifier.ActionHandler { return h.p.Load().All() }
 

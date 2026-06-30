@@ -13,6 +13,7 @@ const testContext = "tekton/ci"
 type captureHandler struct{ last domain.Event }
 
 func (c *captureHandler) Name() string              { return "capture" }
+func (c *captureHandler) Provider() string          { return "capture" }
 func (c *captureHandler) Type() notifier.ActionType { return notifier.ActionCommitStatus }
 func (c *captureHandler) Handle(_ context.Context, e domain.Event) error {
 	c.last = e

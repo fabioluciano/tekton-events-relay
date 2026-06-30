@@ -20,6 +20,7 @@ type sleepyHandler struct {
 }
 
 func (h *sleepyHandler) Name() string              { return "sleepy" }
+func (h *sleepyHandler) Provider() string          { return "sleepy" }
 func (h *sleepyHandler) Type() notifier.ActionType { return notifier.ActionNotify }
 func (h *sleepyHandler) Close() error              { return nil }
 
@@ -53,7 +54,7 @@ func TestDispatcher_HandlerTimeoutAborts(t *testing.T) {
 	if elapsed > 2*time.Second {
 		t.Fatalf("dispatch took %v, want well under the handler sleep", elapsed)
 	}
-	if got := testutil.ToFloat64(collectors.HandlerTimeouts.WithLabelValues("sleepy")); got != 1 {
+	if got := testutil.ToFloat64(collectors.HandlerTimeouts.WithLabelValues("sleepy/sleepy")); got != 1 {
 		t.Errorf("handler_timeouts_total = %v, want 1", got)
 	}
 }
@@ -66,7 +67,7 @@ func TestDispatcher_NoTimeoutByDefault(t *testing.T) {
 	if err := d.Handle(context.Background(), sample("fast-evt")); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got := testutil.ToFloat64(collectors.HandlerTimeouts.WithLabelValues("sleepy")); got != 0 {
+	if got := testutil.ToFloat64(collectors.HandlerTimeouts.WithLabelValues("sleepy/sleepy")); got != 0 {
 		t.Errorf("handler_timeouts_total = %v, want 0", got)
 	}
 }

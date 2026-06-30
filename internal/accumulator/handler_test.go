@@ -26,6 +26,7 @@ type mockActionHandler struct {
 }
 
 func (m *mockActionHandler) Name() string              { return m.name }
+func (m *mockActionHandler) Provider() string          { return m.name }
 func (m *mockActionHandler) Type() notifier.ActionType { return m.typ }
 func (m *mockActionHandler) Handle(_ context.Context, e domain.Event) error {
 	m.events = append(m.events, e)
@@ -54,8 +55,8 @@ func TestHandler_NameAndType(t *testing.T) {
 	if h.Name() != "test-accumulator" {
 		t.Errorf("expected name test-accumulator, got %s", h.Name())
 	}
-	if h.Type() != notifier.ActionPRComment {
-		t.Errorf("expected type %s, got %s", notifier.ActionPRComment, h.Type())
+	if h.Type() != notifier.ActionNotify {
+		t.Errorf("expected type %s, got %s", notifier.ActionNotify, h.Type())
 	}
 }
 

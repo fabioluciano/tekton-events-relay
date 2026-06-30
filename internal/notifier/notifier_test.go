@@ -17,6 +17,7 @@ type stub struct {
 }
 
 func (s *stub) Name() string     { return s.name }
+func (s *stub) Provider() string { return s.name }
 func (s *stub) Type() ActionType { return s.actionType }
 func (s *stub) Handle(_ context.Context, _ domain.Event) error {
 	s.called++
@@ -87,6 +88,28 @@ func TestRegistry_Names(t *testing.T) {
 	}
 	if names[0] != testProviderGithub || names[1] != "slack" {
 		t.Errorf("Names not sorted: %v", names)
+	}
+}
+
+func TestRegistry_HandlerNames(t *testing.T) {
+	reg := NewRegistry()
+	reg.Register(&stub{name: "slack", actionType: ActionNotify})
+	reg.Register(&stub{name: testProviderGithub, actionType: ActionCommitStatus})
+	reg.Register(&stub{name: testProviderGithub, actionType: ActionPRComment})
+
+	names := reg.HandlerNames()
+	if len(names) != 2 {
+		t.Fatalf("HandlerNames() got %d, want 2", len(names))
+	}
+
+	expected := []string{
+		"github/github[commit_status,pr_comment]",
+		"slack/slack[notify]",
+	}
+	for i, want := range expected {
+		if names[i] != want {
+			t.Errorf("HandlerNames[%d] = %q, want %q", i, names[i], want)
+		}
 	}
 }
 

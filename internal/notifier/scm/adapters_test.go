@@ -51,7 +51,7 @@ func capture(t *testing.T, status int) (*httptest.Server, *captured) {
 func TestGitHub_Notify(t *testing.T) {
 	srv, c := capture(t, 201)
 	client := github.NewClient(testTokenValue, srv.URL, false, zap.NewNop(), false)
-	r := github.NewStatusReporter(client, zap.NewNop())
+	r := github.NewStatusReporter(client, "github", zap.NewNop())
 	err := r.Handle(context.Background(), domain.Event{
 		Provider:  "github",
 		Repo:      domain.Repo{Owner: testOwnerFabio, Name: testRepoPipeline},

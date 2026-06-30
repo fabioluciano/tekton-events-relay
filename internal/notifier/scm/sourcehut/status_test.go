@@ -28,7 +28,7 @@ func sourcehutEvent() domain.Event {
 }
 
 func TestStatusReporter_NameAndType(t *testing.T) {
-	r := NewStatusReporter("token", "https://builds.sr.ht", false, zap.NewNop())
+	r := NewStatusReporter("sourcehut", "token", "https://builds.sr.ht", false, zap.NewNop())
 	if r.Name() != "sourcehut" {
 		t.Errorf("Name = %q, want sourcehut", r.Name())
 	}
@@ -45,7 +45,7 @@ func TestStatusReporter_SkipsWrongProviderAndMissingFields(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	r := NewStatusReporter("token", srv.URL, false, zap.NewNop())
+	r := NewStatusReporter("sourcehut", "token", srv.URL, false, zap.NewNop())
 
 	e := sourcehutEvent()
 	e.Provider = "github"
@@ -79,7 +79,7 @@ func TestStatusReporter_SubmitsJobManifest(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	r := NewStatusReporter("token", srv.URL, false, zap.NewNop())
+	r := NewStatusReporter("sourcehut", "token", srv.URL, false, zap.NewNop())
 	if err := r.Handle(context.Background(), sourcehutEvent()); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
@@ -110,7 +110,7 @@ func TestStatusReporter_FailureProducesNonZeroExit(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	r := NewStatusReporter("token", srv.URL, false, zap.NewNop())
+	r := NewStatusReporter("sourcehut", "token", srv.URL, false, zap.NewNop())
 	e := sourcehutEvent()
 	e.State = domain.StateFailure
 	if err := r.Handle(context.Background(), e); err != nil {

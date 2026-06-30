@@ -42,15 +42,14 @@ func (a *Handler) SetTemplate(tmpl *template.Template) {
 	a.tmpl = tmpl
 }
 
-// Name returns handler name.
-func (a *Handler) Name() string {
-	return a.name
-}
+// Name returns the instance name.
+func (a *Handler) Name() string { return a.name }
 
-// Type returns action type.
-func (a *Handler) Type() notifier.ActionType {
-	return notifier.ActionPRComment
-}
+// Provider returns the provider type identifier.
+func (a *Handler) Provider() string { return "accumulator" }
+
+// Type returns the action type.
+func (a *Handler) Type() notifier.ActionType { return notifier.ActionNotify }
 
 // Handle processes events:
 //   - TaskRun: accumulate in buffer (using group key if present)
@@ -104,6 +103,7 @@ func (a *Handler) handleGrouped(ctx context.Context, event domain.Event, groupID
 }
 
 // Close releases resources held by the buffer.
+// Close releases resources held by the handler.
 func (a *Handler) Close() error {
 	return a.buffer.Close()
 }

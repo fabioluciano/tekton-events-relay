@@ -19,6 +19,7 @@ import (
 // CheckRunConfig holds GitHub Check Run handler configuration.
 type CheckRunConfig struct {
 	Client   HTTPDoer
+	InstName string // instance name from config (e.g., "default", "prod")
 	Name     string // check run name displayed in GitHub UI
 	Template string // optional Go template for markdown summary
 }
@@ -26,10 +27,11 @@ type CheckRunConfig struct {
 // CheckRunHandler reports pipeline status as GitHub Check Runs.
 // Requires a GitHub App token with checks:write permission.
 type CheckRunHandler struct {
-	client HTTPDoer
-	name   string
-	tmpl   *template.Template
-	log    *zap.Logger
+	instName string
+	client   HTTPDoer
+	name     string
+	tmpl     *template.Template
+	log      *zap.Logger
 }
 
 // NewCheckRunHandler creates a Check Run handler.
@@ -53,15 +55,19 @@ func NewCheckRunHandler(cfg CheckRunConfig, log *zap.Logger) (notifier.ActionHan
 	}
 
 	return &CheckRunHandler{
-		client: cfg.Client,
-		name:   checkName,
-		tmpl:   tmpl,
-		log:    log,
+		instName: cfg.InstName,
+		client:   cfg.Client,
+		name:     checkName,
+		tmpl:     tmpl,
+		log:      log,
 	}, nil
 }
 
 // Name returns the provider identifier.
-func (h *CheckRunHandler) Name() string { return providerGitHub }
+func (h *CheckRunHandler) Name() string { return h.instName }
+
+// Provider returns the provider type identifier.
+func (h *CheckRunHandler) Provider() string { return providerGitHub }
 
 // Type returns the action type.
 func (h *CheckRunHandler) Type() notifier.ActionType { return notifier.ActionCheckRun }

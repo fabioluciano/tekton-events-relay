@@ -63,12 +63,15 @@ func NewIssueCommentHandler(cfg IssueCommentConfig) (notifier.ActionHandler, err
 // Name returns the handler name.
 func (h *IssueCommentHandler) Name() string { return h.name }
 
+// Provider returns the provider type identifier.
+func (h *IssueCommentHandler) Provider() string { return providerGitea }
+
 // Type returns the action type.
 func (h *IssueCommentHandler) Type() notifier.ActionType { return notifier.ActionIssueComment }
 
 // Handle posts a comment to a Gitea issue.
 func (h *IssueCommentHandler) Handle(_ context.Context, e domain.Event) error {
-	if e.Provider != h.name {
+	if e.Provider != providerGitea {
 		return nil
 	}
 

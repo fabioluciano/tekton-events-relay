@@ -78,13 +78,9 @@ type logOnlyProvider struct {
 	log *zap.Logger
 }
 
-func (l *logOnlyProvider) Name() string {
-	return "log-only-provider"
-}
-
-func (l *logOnlyProvider) Type() notifier.ActionType {
-	return notifier.ActionPRComment
-}
+func (l *logOnlyProvider) Name() string              { return "log-only-provider" }
+func (l *logOnlyProvider) Provider() string          { return "log-only-provider" }
+func (l *logOnlyProvider) Type() notifier.ActionType { return notifier.ActionPRComment }
 
 func (l *logOnlyProvider) Handle(_ context.Context, event domain.Event) error {
 	l.log.Info("accumulator flush (log-only mode)",

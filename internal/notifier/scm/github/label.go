@@ -22,6 +22,7 @@ type labelCache struct {
 
 // LabelHandler applies labels to GitHub issues and pull requests.
 type LabelHandler struct {
+	name   string
 	client HTTPDoer
 	labels scm.LabelSet
 	log    *zap.Logger
@@ -30,6 +31,7 @@ type LabelHandler struct {
 
 // LabelConfig configures the label handler.
 type LabelConfig struct {
+	Name   string
 	Client HTTPDoer
 	Labels scm.LabelSet
 }
@@ -42,6 +44,7 @@ func NewLabelHandler(cfg LabelConfig, log *zap.Logger) notifier.ActionHandler {
 	labels := cfg.Labels
 	labels.Validate(log)
 	return &LabelHandler{
+		name:   cfg.Name,
 		client: cfg.Client,
 		labels: labels,
 		log:    log,
@@ -52,7 +55,10 @@ func NewLabelHandler(cfg LabelConfig, log *zap.Logger) notifier.ActionHandler {
 }
 
 // Name returns the handler name.
-func (h *LabelHandler) Name() string { return providerGitHub }
+func (h *LabelHandler) Name() string { return h.name }
+
+// Provider returns the provider type identifier.
+func (h *LabelHandler) Provider() string { return providerGitHub }
 
 // Type returns the action type.
 func (h *LabelHandler) Type() notifier.ActionType { return notifier.ActionLabel }

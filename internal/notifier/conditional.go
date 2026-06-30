@@ -29,17 +29,17 @@ func NewConditionalHandler(inner ActionHandler, program *cel.Program, log *zap.L
 	}
 }
 
-// Name returns inner handler name.
-func (c *ConditionalHandler) Name() string {
-	return c.inner.Name()
-}
+// Name returns the instance name.
+func (c *ConditionalHandler) Name() string { return c.inner.Name() }
 
-// Type returns inner handler type.
-func (c *ConditionalHandler) Type() ActionType {
-	return c.inner.Type()
-}
+// Provider returns the provider type identifier.
+func (c *ConditionalHandler) Provider() string { return c.inner.Provider() }
+
+// Type returns the action type.
+func (c *ConditionalHandler) Type() ActionType { return c.inner.Type() }
 
 // Close delegates to the inner handler's Close method.
+// Close releases resources held by the handler.
 func (c *ConditionalHandler) Close() error {
 	return c.inner.Close()
 }

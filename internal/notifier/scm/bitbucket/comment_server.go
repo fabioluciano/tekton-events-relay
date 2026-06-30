@@ -48,6 +48,9 @@ func NewServerCommentHandler(cfg ServerCommentConfig) (notifier.ActionHandler, e
 // Name returns the handler name.
 func (h *ServerCommentHandler) Name() string { return providerServer }
 
+// Provider returns the provider type identifier.
+func (h *ServerCommentHandler) Provider() string { return providerServer }
+
 // Type returns the action type.
 func (h *ServerCommentHandler) Type() notifier.ActionType { return notifier.ActionPRComment }
 

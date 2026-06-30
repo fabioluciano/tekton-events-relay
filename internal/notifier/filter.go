@@ -74,20 +74,17 @@ func buildMap(items []string) map[string]struct{} {
 	return m
 }
 
-// Name returns the inner handler name.
-func (f *FilteredHandler) Name() string {
-	return f.inner.Name()
-}
+// Name returns the instance name.
+func (f *FilteredHandler) Name() string { return f.inner.Name() }
 
-// Type returns the inner handler type.
-func (f *FilteredHandler) Type() ActionType {
-	return f.inner.Type()
-}
+// Provider returns the provider type identifier.
+func (f *FilteredHandler) Provider() string { return f.inner.Provider() }
 
-// Close delegates to the inner handler's Close method.
-func (f *FilteredHandler) Close() error {
-	return f.inner.Close()
-}
+// Type returns the action type.
+func (f *FilteredHandler) Type() ActionType { return f.inner.Type() }
+
+// Close releases resources held by the handler.
+func (f *FilteredHandler) Close() error { return f.inner.Close() }
 
 // Handle applies filtering logic before delegating to the inner handler.
 // Returns nil (drops event) if the filter rejects it.

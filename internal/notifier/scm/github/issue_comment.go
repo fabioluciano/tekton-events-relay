@@ -15,6 +15,7 @@ import (
 
 // IssueCommentHandler posts comments to GitHub issues.
 type IssueCommentHandler struct {
+	name     string
 	client   HTTPDoer
 	template *template.Template
 	mode     string
@@ -23,6 +24,7 @@ type IssueCommentHandler struct {
 
 // IssueCommentConfig configures the issue comment handler.
 type IssueCommentConfig struct {
+	Name     string
 	Client   HTTPDoer
 	Template string
 	Mode     string // scm.ModeCreate (default) or scm.ModeUpsert
@@ -48,6 +50,7 @@ func NewIssueCommentHandler(cfg IssueCommentConfig, log *zap.Logger) (notifier.A
 	}
 
 	return &IssueCommentHandler{
+		name:     cfg.Name,
 		client:   cfg.Client,
 		template: tmpl,
 		mode:     mode,
@@ -56,7 +59,10 @@ func NewIssueCommentHandler(cfg IssueCommentConfig, log *zap.Logger) (notifier.A
 }
 
 // Name returns the handler name.
-func (h *IssueCommentHandler) Name() string { return providerGitHub }
+func (h *IssueCommentHandler) Name() string { return h.name }
+
+// Provider returns the provider type identifier.
+func (h *IssueCommentHandler) Provider() string { return providerGitHub }
 
 // Type returns the action type.
 func (h *IssueCommentHandler) Type() notifier.ActionType { return notifier.ActionIssueComment }

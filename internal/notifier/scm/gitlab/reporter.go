@@ -7,6 +7,8 @@ import (
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
 )
 
+const providerGitLab = "gitlab"
+
 // projectIdentifier returns the numeric ID or the url-encoded path.
 func projectIdentifier(s domain.Event) (string, error) {
 	if s.Repo.ID != "" {

@@ -6,6 +6,7 @@ package notifier
 import (
 	"context"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/fabioluciano/tekton-events-relay/internal/domain"
@@ -35,8 +36,10 @@ const (
 // ActionHandler is the interface for action-specific handlers.
 // Supports multiple actions per provider.
 type ActionHandler interface {
-	// Name returns the provider identifier (github, gitlab, etc.)
+	// Name returns the instance name from config (e.g., "default", "prod", "staging")
 	Name() string
+	// Provider returns the provider type (github, gitlab, bitbucket, slack, etc.)
+	Provider() string
 	// Type returns the action type (commit_status, issue_comment, etc.)
 	Type() ActionType
 	// Handle processes the event. Returns nil if skipped (provider mismatch, missing fields).
@@ -145,4 +148,34 @@ func (r *Registry) Names() []string {
 	out := make([]string, len(r.names))
 	copy(out, r.names)
 	return out
+}
+
+// HandlerNames returns handler identifiers grouped by provider+instance in the format
+// "provider/instance[action1,action2,...]", preserving registration order for actions.
+// Groups are sorted alphabetically.
+func (r *Registry) HandlerNames() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	type key struct{ provider, name string }
+	seen := make(map[key]bool)
+	order := make([]key, 0)
+	actions := make(map[key][]string)
+
+	for _, h := range r.handlers {
+		k := key{h.Provider(), h.Name()}
+		if !seen[k] {
+			seen[k] = true
+			order = append(order, k)
+		}
+		actions[k] = append(actions[k], string(h.Type()))
+	}
+
+	result := make([]string, 0, len(order))
+	for _, k := range order {
+		types := strings.Join(actions[k], ",")
+		result = append(result, k.provider+"/"+k.name+"["+types+"]")
+	}
+	sort.Strings(result)
+	return result
 }

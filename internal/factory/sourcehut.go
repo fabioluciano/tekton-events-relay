@@ -53,7 +53,7 @@ func resolveSourceHutToken(inst config.SourceHutInstance, log *zap.Logger) (stri
 func (f *SourceHutFactory) buildHandler(inst config.SourceHutInstance, action config.Action, token string, log *zap.Logger) (notifier.ActionHandler, error) {
 	switch action.Type {
 	case notifier.ActionCommitStatus:
-		return sourcehut.NewStatusReporter(token, inst.BaseURL, inst.InsecureSkipVerify, log), nil
+		return sourcehut.NewStatusReporter(inst.Name, token, inst.BaseURL, inst.InsecureSkipVerify, log), nil
 	default:
 		return nil, ErrUnsupportedActionType
 	}

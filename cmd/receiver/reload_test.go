@@ -122,6 +122,7 @@ type closeSpy struct {
 }
 
 func (s *closeSpy) Name() string                                   { return s.name }
+func (s *closeSpy) Provider() string                               { return s.name }
 func (s *closeSpy) Type() notifier.ActionType                      { return notifier.ActionCommitStatus }
 func (s *closeSpy) Handle(_ context.Context, _ domain.Event) error { return nil }
 func (s *closeSpy) Close() error                                   { s.closeCount++; return nil }

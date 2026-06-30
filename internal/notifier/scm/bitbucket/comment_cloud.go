@@ -71,6 +71,9 @@ func NewCloudCommentHandler(cfg CloudCommentConfig) (notifier.ActionHandler, err
 // Name returns the handler name.
 func (h *CloudCommentHandler) Name() string { return providerCloud }
 
+// Provider returns the provider type identifier.
+func (h *CloudCommentHandler) Provider() string { return providerCloud }
+
 // Type returns the action type.
 func (h *CloudCommentHandler) Type() notifier.ActionType { return notifier.ActionPRComment }
 

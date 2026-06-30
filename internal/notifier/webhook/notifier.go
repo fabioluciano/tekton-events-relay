@@ -99,6 +99,9 @@ func New(cfg Config, log *zap.Logger) (*Notifier, error) {
 // Name returns the notifier name.
 func (n *Notifier) Name() string { return "webhook" }
 
+// Provider returns the provider type identifier.
+func (n *Notifier) Provider() string { return "webhook" }
+
 // Type returns the action type.
 func (n *Notifier) Type() notifier.ActionType { return notifier.ActionNotify }
 

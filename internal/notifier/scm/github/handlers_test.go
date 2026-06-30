@@ -45,21 +45,21 @@ func (m *mockHTTPDoer) GH() *gh.Client { return nil }
 // --- StatusReporter ---
 
 func TestStatusReporter_Name(t *testing.T) {
-	r := NewStatusReporter(&mockHTTPDoer{}, zap.NewNop())
+	r := NewStatusReporter(&mockHTTPDoer{}, "github", zap.NewNop())
 	if r.Name() != providerGitHub {
 		t.Errorf("Name() = %q, want %q", r.Name(), providerGitHub)
 	}
 }
 
 func TestStatusReporter_Type(t *testing.T) {
-	r := NewStatusReporter(&mockHTTPDoer{}, zap.NewNop())
+	r := NewStatusReporter(&mockHTTPDoer{}, "github", zap.NewNop())
 	if r.Type() != notifier.ActionCommitStatus {
 		t.Errorf("Type() = %v, want %v", r.Type(), notifier.ActionCommitStatus)
 	}
 }
 
 func TestStatusReporter_Handle_WrongProvider(t *testing.T) {
-	r := NewStatusReporter(&mockHTTPDoer{}, zap.NewNop())
+	r := NewStatusReporter(&mockHTTPDoer{}, "github", zap.NewNop())
 	err := r.Handle(context.Background(), domain.Event{Provider: "gitlab"}) //nolint:goconst // test string
 	if err != nil {
 		t.Errorf("expected nil for wrong provider, got: %v", err)
@@ -67,7 +67,7 @@ func TestStatusReporter_Handle_WrongProvider(t *testing.T) {
 }
 
 func TestStatusReporter_Handle_EmptyCommitSHA(t *testing.T) {
-	r := NewStatusReporter(&mockHTTPDoer{}, zap.NewNop())
+	r := NewStatusReporter(&mockHTTPDoer{}, "github", zap.NewNop())
 	err := r.Handle(context.Background(), domain.Event{
 		Provider:  providerGitHub,
 		CommitSHA: "",
@@ -78,7 +78,7 @@ func TestStatusReporter_Handle_EmptyCommitSHA(t *testing.T) {
 }
 
 func TestStatusReporter_Handle_MissingRepo(t *testing.T) {
-	r := NewStatusReporter(&mockHTTPDoer{}, zap.NewNop())
+	r := NewStatusReporter(&mockHTTPDoer{}, "github", zap.NewNop())
 	err := r.Handle(context.Background(), domain.Event{
 		Provider:  providerGitHub,
 		CommitSHA: testHandlerSHA,
@@ -104,7 +104,7 @@ func TestStatusReporter_Handle_Success(t *testing.T) {
 	}))
 	defer server.Close()
 
-	r := NewStatusReporter(ghTestClient(testHandlerToken, server.URL), zap.NewNop())
+	r := NewStatusReporter(ghTestClient(testHandlerToken, server.URL), "github", zap.NewNop())
 	err := r.Handle(context.Background(), domain.Event{
 		Provider:    providerGitHub,
 		CommitSHA:   testHandlerSHA,
@@ -120,7 +120,7 @@ func TestStatusReporter_Handle_Success(t *testing.T) {
 
 func TestStatusReporter_Handle_ValidationFailure(t *testing.T) {
 	mock := &mockHTTPDoer{}
-	r := NewStatusReporter(mock, zap.NewNop())
+	r := NewStatusReporter(mock, "github", zap.NewNop())
 	// GitHub status_description limit is 140 chars — exceed it to trigger validation error
 	longDesc := "x" + string(make([]byte, 140))
 	err := r.Handle(context.Background(), domain.Event{
@@ -139,7 +139,7 @@ func TestStatusReporter_Handle_ValidationFailure(t *testing.T) {
 // --- IssueCommentHandler ---
 
 func TestIssueCommentHandler_Name(t *testing.T) {
-	h, err := NewIssueCommentHandler(IssueCommentConfig{Client: ghTestClient(testHandlerToken, "")}, zap.NewNop())
+	h, err := NewIssueCommentHandler(IssueCommentConfig{Name: providerGitHub, Client: ghTestClient(testHandlerToken, "")}, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewIssueCommentHandler() unexpected error: %v", err)
 	}
@@ -149,7 +149,7 @@ func TestIssueCommentHandler_Name(t *testing.T) {
 }
 
 func TestIssueCommentHandler_Type(t *testing.T) {
-	h, err := NewIssueCommentHandler(IssueCommentConfig{Client: ghTestClient(testHandlerToken, "")}, zap.NewNop())
+	h, err := NewIssueCommentHandler(IssueCommentConfig{Name: providerGitHub, Client: ghTestClient(testHandlerToken, "")}, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewIssueCommentHandler() unexpected error: %v", err)
 	}
@@ -159,7 +159,7 @@ func TestIssueCommentHandler_Type(t *testing.T) {
 }
 
 func TestIssueCommentHandler_Handle_WrongProvider(t *testing.T) {
-	h, err := NewIssueCommentHandler(IssueCommentConfig{Client: ghTestClient(testHandlerToken, "")}, zap.NewNop())
+	h, err := NewIssueCommentHandler(IssueCommentConfig{Name: providerGitHub, Client: ghTestClient(testHandlerToken, "")}, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewIssueCommentHandler() unexpected error: %v", err)
 	}
@@ -169,7 +169,7 @@ func TestIssueCommentHandler_Handle_WrongProvider(t *testing.T) {
 }
 
 func TestIssueCommentHandler_Handle_NoIssueNumber(t *testing.T) {
-	h, err := NewIssueCommentHandler(IssueCommentConfig{Client: ghTestClient(testHandlerToken, "")}, zap.NewNop())
+	h, err := NewIssueCommentHandler(IssueCommentConfig{Name: providerGitHub, Client: ghTestClient(testHandlerToken, "")}, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewIssueCommentHandler() unexpected error: %v", err)
 	}
@@ -238,7 +238,7 @@ func TestIssueCommentHandler_Handle_4xx(t *testing.T) {
 // --- PRCommentHandler ---
 
 func TestPRCommentHandler_Name(t *testing.T) {
-	h, err := NewPRCommentHandler(PRCommentConfig{Client: ghTestClient(testHandlerToken, "")}, zap.NewNop())
+	h, err := NewPRCommentHandler(PRCommentConfig{Name: providerGitHub, Client: ghTestClient(testHandlerToken, "")}, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewPRCommentHandler() unexpected error: %v", err)
 	}
@@ -248,7 +248,7 @@ func TestPRCommentHandler_Name(t *testing.T) {
 }
 
 func TestPRCommentHandler_Type(t *testing.T) {
-	h, err := NewPRCommentHandler(PRCommentConfig{Client: ghTestClient(testHandlerToken, "")}, zap.NewNop())
+	h, err := NewPRCommentHandler(PRCommentConfig{Name: providerGitHub, Client: ghTestClient(testHandlerToken, "")}, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewPRCommentHandler() unexpected error: %v", err)
 	}
@@ -258,7 +258,7 @@ func TestPRCommentHandler_Type(t *testing.T) {
 }
 
 func TestPRCommentHandler_Handle_WrongProvider(t *testing.T) {
-	h, err := NewPRCommentHandler(PRCommentConfig{Client: ghTestClient(testHandlerToken, "")}, zap.NewNop())
+	h, err := NewPRCommentHandler(PRCommentConfig{Name: providerGitHub, Client: ghTestClient(testHandlerToken, "")}, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewPRCommentHandler() unexpected error: %v", err)
 	}
@@ -268,7 +268,7 @@ func TestPRCommentHandler_Handle_WrongProvider(t *testing.T) {
 }
 
 func TestPRCommentHandler_Handle_NoPRNumber(t *testing.T) {
-	h, err := NewPRCommentHandler(PRCommentConfig{Client: ghTestClient(testHandlerToken, "")}, zap.NewNop())
+	h, err := NewPRCommentHandler(PRCommentConfig{Name: providerGitHub, Client: ghTestClient(testHandlerToken, "")}, zap.NewNop())
 	if err != nil {
 		t.Fatalf("NewPRCommentHandler() unexpected error: %v", err)
 	}
@@ -337,28 +337,28 @@ func TestPRCommentHandler_Handle_5xx(t *testing.T) {
 // --- LabelHandler ---
 
 func TestLabelHandler_Name(t *testing.T) {
-	h := NewLabelHandler(LabelConfig{Client: ghTestClient(testHandlerToken, "")}, zap.NewNop())
+	h := NewLabelHandler(LabelConfig{Name: providerGitHub, Client: ghTestClient(testHandlerToken, "")}, zap.NewNop())
 	if h.Name() != providerGitHub {
 		t.Errorf("Name() = %q, want %q", h.Name(), providerGitHub)
 	}
 }
 
 func TestLabelHandler_Type(t *testing.T) {
-	h := NewLabelHandler(LabelConfig{Client: ghTestClient(testHandlerToken, "")}, zap.NewNop())
+	h := NewLabelHandler(LabelConfig{Name: providerGitHub, Client: ghTestClient(testHandlerToken, "")}, zap.NewNop())
 	if h.Type() != notifier.ActionLabel {
 		t.Errorf("Type() = %v, want %v", h.Type(), notifier.ActionLabel)
 	}
 }
 
 func TestLabelHandler_Handle_WrongProvider(t *testing.T) {
-	h := NewLabelHandler(LabelConfig{Client: ghTestClient(testHandlerToken, "")}, zap.NewNop())
+	h := NewLabelHandler(LabelConfig{Name: providerGitHub, Client: ghTestClient(testHandlerToken, "")}, zap.NewNop())
 	if err := h.Handle(context.Background(), domain.Event{Provider: "gitlab"}); err != nil { //nolint:goconst // test string
 		t.Errorf("expected nil for wrong provider, got: %v", err)
 	}
 }
 
 func TestLabelHandler_Handle_NoNumber(t *testing.T) {
-	h := NewLabelHandler(LabelConfig{Client: ghTestClient(testHandlerToken, "")}, zap.NewNop())
+	h := NewLabelHandler(LabelConfig{Name: providerGitHub, Client: ghTestClient(testHandlerToken, "")}, zap.NewNop())
 	err := h.Handle(context.Background(), domain.Event{
 		Provider: providerGitHub,
 		Repo:     domain.Repo{Owner: testHandlerOrg, Name: testHandlerRepo},

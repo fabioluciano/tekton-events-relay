@@ -82,6 +82,9 @@ func New(cfg Config) (*Notifier, error) {
 // Name returns the notifier instance name.
 func (n *Notifier) Name() string { return n.cfg.Name }
 
+// Provider returns the provider type identifier.
+func (n *Notifier) Provider() string { return "kafka" }
+
 // Type returns the action type.
 func (n *Notifier) Type() notifier.ActionType { return notifier.ActionNotify }
 

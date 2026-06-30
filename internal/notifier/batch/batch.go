@@ -97,10 +97,13 @@ func New(inner Flusher, name string, cfg Config, log *zap.Logger, dlq DLQEnqueue
 	return h
 }
 
-// Name returns the notifier name.
+// Name returns the instance name.
 func (h *Handler) Name() string { return h.name }
 
-// Type returns ActionNotify.
+// Provider returns the provider type identifier.
+func (h *Handler) Provider() string { return h.name }
+
+// Type returns the action type.
 func (h *Handler) Type() notifier.ActionType { return notifier.ActionNotify }
 
 // Handle buffers the event. The CloudEvent ID is extracted from context
@@ -121,6 +124,7 @@ func (h *Handler) Handle(ctx context.Context, e domain.Event) error {
 
 // Close stops the goroutine and flushes any remaining buffered events.
 // Idempotent. Returns an error if the final flush fails.
+// Close releases resources held by the handler.
 func (h *Handler) Close() error {
 	h.mu.Lock()
 	if h.closed {

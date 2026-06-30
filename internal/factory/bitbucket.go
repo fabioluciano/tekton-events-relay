@@ -111,9 +111,9 @@ func (f *BitbucketFactory) buildCloudHandler(inst config.BitbucketInstance, acti
 	switch action.Type {
 	case notifier.ActionCommitStatus:
 		if client != nil {
-			return bitbucket.NewCloudStatusReporterWithClient(client), nil
+			return bitbucket.NewCloudStatusReporterWithClient(inst.Name, client), nil
 		}
-		return bitbucket.NewCloudStatusReporter(username, appPassword, inst.BaseURL, inst.InsecureSkipVerify, log), nil
+		return bitbucket.NewCloudStatusReporter(inst.Name, username, appPassword, inst.BaseURL, inst.InsecureSkipVerify, log), nil
 	case notifier.ActionPRComment:
 		return bitbucket.NewCloudCommentHandler(bitbucket.CloudCommentConfig{
 			Username:           username,
@@ -134,7 +134,7 @@ func (f *BitbucketFactory) buildCloudHandler(inst config.BitbucketInstance, acti
 func (f *BitbucketFactory) buildServerHandler(inst config.BitbucketInstance, action config.Action, token string, log *zap.Logger) (notifier.ActionHandler, error) {
 	switch action.Type {
 	case notifier.ActionCommitStatus:
-		return bitbucket.NewServerStatusReporter(token, inst.BaseURL, inst.InsecureSkipVerify, log), nil
+		return bitbucket.NewServerStatusReporter(inst.Name, token, inst.BaseURL, inst.InsecureSkipVerify, log), nil
 	case notifier.ActionPRComment:
 		if action.Mode == "upsert" {
 			log.Warn("comment mode 'upsert' is not supported on Bitbucket Server, using 'create'",

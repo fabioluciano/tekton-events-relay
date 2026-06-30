@@ -24,6 +24,7 @@ func WrapWithContextPerTask(h notifier.ActionHandler, enabled bool) notifier.Act
 }
 
 func (c *contextPerTaskHandler) Name() string              { return c.inner.Name() }
+func (c *contextPerTaskHandler) Provider() string          { return c.inner.Provider() }
 func (c *contextPerTaskHandler) Type() notifier.ActionType { return c.inner.Type() }
 
 func (c *contextPerTaskHandler) Handle(ctx context.Context, e domain.Event) error {

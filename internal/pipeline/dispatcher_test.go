@@ -37,6 +37,7 @@ type mockHandler struct {
 }
 
 func (m *mockHandler) Name() string              { return m.name }
+func (m *mockHandler) Provider() string          { return m.name }
 func (m *mockHandler) Type() notifier.ActionType { return m.actionType }
 func (m *mockHandler) Close() error              { return nil }
 func (m *mockHandler) Handle(ctx context.Context, _ domain.Event) error {
@@ -369,6 +370,7 @@ type concurrentTrackerHandler struct {
 }
 
 func (h *concurrentTrackerHandler) Name() string              { return h.name }
+func (h *concurrentTrackerHandler) Provider() string          { return h.name }
 func (h *concurrentTrackerHandler) Type() notifier.ActionType { return h.actionType }
 func (h *concurrentTrackerHandler) Close() error              { return nil }
 func (h *concurrentTrackerHandler) Handle(ctx context.Context, _ domain.Event) error {
@@ -593,20 +595,20 @@ func TestDispatcher_StatusTracker_Consistency(t *testing.T) {
 
 	snap := tracker.Snapshot()
 
-	if s, ok := snap["ok1"]; !ok {
-		t.Error("status tracker missing entry for ok1")
+	if s, ok := snap["ok1/ok1"]; !ok {
+		t.Error("status tracker missing entry for ok1/ok1")
 	} else if s.Succeeded != 1 || s.Failed != 0 {
 		t.Errorf("ok1: succeeded=%d failed=%d, want 1/0", s.Succeeded, s.Failed)
 	}
 
-	if s, ok := snap["ok2"]; !ok {
-		t.Error("status tracker missing entry for ok2")
+	if s, ok := snap["ok2/ok2"]; !ok {
+		t.Error("status tracker missing entry for ok2/ok2")
 	} else if s.Succeeded != 1 || s.Failed != 0 {
 		t.Errorf("ok2: succeeded=%d failed=%d, want 1/0", s.Succeeded, s.Failed)
 	}
 
-	if s, ok := snap["fail1"]; !ok {
-		t.Error("status tracker missing entry for fail1")
+	if s, ok := snap["fail1/fail1"]; !ok {
+		t.Error("status tracker missing entry for fail1/fail1")
 	} else if s.Succeeded != 0 || s.Failed != 1 {
 		t.Errorf("fail1: succeeded=%d failed=%d, want 0/1", s.Succeeded, s.Failed)
 	}

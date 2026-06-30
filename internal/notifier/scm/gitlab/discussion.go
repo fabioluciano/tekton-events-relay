@@ -65,6 +65,9 @@ func NewDiscussionHandler(cfg DiscussionConfig) (notifier.ActionHandler, error) 
 // Name returns the handler name.
 func (h *DiscussionHandler) Name() string { return h.name }
 
+// Provider returns the provider type identifier.
+func (h *DiscussionHandler) Provider() string { return providerGitLab }
+
 // Type returns the action type.
 func (h *DiscussionHandler) Type() notifier.ActionType { return notifier.ActionDiscussionComment }
 
@@ -73,7 +76,7 @@ func (h *DiscussionHandler) Type() notifier.ActionType { return notifier.ActionD
 // thread is resolved; in any other state the thread is created if absent so a
 // failing run leaves an open thread for the reviewer.
 func (h *DiscussionHandler) Handle(ctx context.Context, e domain.Event) error {
-	if e.Provider != h.name {
+	if e.Provider != providerGitLab {
 		return nil
 	}
 

@@ -14,18 +14,23 @@ import (
 
 // ServerStatusReporter implements commit status updates for Bitbucket Server.
 type ServerStatusReporter struct {
+	name   string
 	client *ServerClient
 }
 
 // NewServerStatusReporter creates a new Bitbucket Server commit status reporter.
-func NewServerStatusReporter(token, baseURL string, insecureSkipVerify bool, log *zap.Logger) notifier.ActionHandler {
+func NewServerStatusReporter(name, token, baseURL string, insecureSkipVerify bool, log *zap.Logger) notifier.ActionHandler {
 	return &ServerStatusReporter{
+		name:   name,
 		client: NewServerClient(token, baseURL, insecureSkipVerify, false, log),
 	}
 }
 
 // Name returns the handler name.
-func (r *ServerStatusReporter) Name() string { return providerServer }
+func (r *ServerStatusReporter) Name() string { return r.name }
+
+// Provider returns the provider type identifier.
+func (r *ServerStatusReporter) Provider() string { return providerServer }
 
 // Type returns the action type.
 func (r *ServerStatusReporter) Type() notifier.ActionType { return notifier.ActionCommitStatus }

@@ -67,6 +67,9 @@ func NewIncidentCreateHandler(cfg IncidentCreateConfig) (notifier.ActionHandler,
 // Name returns the handler name.
 func (h *IncidentCreateHandler) Name() string { return h.name }
 
+// Provider returns the provider type identifier.
+func (h *IncidentCreateHandler) Provider() string { return providerGitLab }
+
 // Type returns the action type.
 func (h *IncidentCreateHandler) Type() notifier.ActionType { return notifier.ActionIncidentCreate }
 
@@ -75,7 +78,7 @@ func (h *IncidentCreateHandler) Type() notifier.ActionType { return notifier.Act
 //   - success: search for existing incident with dedup label; close if found
 //   - other states: no-op
 func (h *IncidentCreateHandler) Handle(ctx context.Context, e domain.Event) error {
-	if e.Provider != h.name {
+	if e.Provider != providerGitLab {
 		return nil
 	}
 

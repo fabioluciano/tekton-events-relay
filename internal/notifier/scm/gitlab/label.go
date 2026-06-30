@@ -39,12 +39,15 @@ func NewLabelHandler(cfg LabelConfig) (notifier.ActionHandler, error) {
 // Name returns the handler name.
 func (h *LabelHandler) Name() string { return h.name }
 
+// Provider returns the provider type identifier.
+func (h *LabelHandler) Provider() string { return providerGitLab }
+
 // Type returns the action type.
 func (h *LabelHandler) Type() notifier.ActionType { return notifier.ActionLabel }
 
 // Handle applies a label to a GitLab issue or merge request based on state.
 func (h *LabelHandler) Handle(ctx context.Context, e domain.Event) error {
-	if e.Provider != h.name {
+	if e.Provider != providerGitLab {
 		return nil
 	}
 

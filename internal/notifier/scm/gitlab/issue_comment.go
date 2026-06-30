@@ -64,13 +64,16 @@ func NewIssueCommentHandler(cfg IssueCommentConfig) (notifier.ActionHandler, err
 // Name returns the handler name.
 func (h *IssueCommentHandler) Name() string { return h.name }
 
+// Provider returns the provider type identifier.
+func (h *IssueCommentHandler) Provider() string { return providerGitLab }
+
 // Type returns the action type.
 func (h *IssueCommentHandler) Type() notifier.ActionType { return notifier.ActionIssueComment }
 
 // Handle posts a note to a GitLab issue. The issue number annotation carries
 // the issue IID.
 func (h *IssueCommentHandler) Handle(ctx context.Context, e domain.Event) error {
-	if e.Provider != h.name {
+	if e.Provider != providerGitLab {
 		return nil
 	}
 

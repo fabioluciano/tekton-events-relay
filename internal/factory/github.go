@@ -61,46 +61,53 @@ func (f *GitHubFactory) Build(inst config.GitHubInstance, log *zap.Logger) ([]no
 	}
 	return handlers, nil
 }
-func (f *GitHubFactory) buildHandler(_ config.GitHubInstance, action config.Action, client github.HTTPDoer, log *zap.Logger) (notifier.ActionHandler, error) {
+func (f *GitHubFactory) buildHandler(inst config.GitHubInstance, action config.Action, client github.HTTPDoer, log *zap.Logger) (notifier.ActionHandler, error) {
 	switch action.Type {
 	case notifier.ActionCommitStatus:
-		return github.NewStatusReporter(client, log), nil
+		return github.NewStatusReporter(client, inst.Name, log), nil
 	case notifier.ActionCommitComment:
 		return github.NewCommitCommentHandler(github.CommitCommentConfig{
 			Client:   client,
+			Name:     inst.Name,
 			Template: action.Template,
 		}, log)
 	case notifier.ActionPRComment:
 		return github.NewPRCommentHandler(github.PRCommentConfig{
 			Client:   client,
+			Name:     inst.Name,
 			Template: action.Template,
 			Mode:     action.Mode,
 		}, log)
 	case notifier.ActionIssueComment:
 		return github.NewIssueCommentHandler(github.IssueCommentConfig{
 			Client:   client,
+			Name:     inst.Name,
 			Template: action.Template,
 			Mode:     action.Mode,
 		}, log)
 	case notifier.ActionDiscussionComment:
 		return github.NewDiscussionCommentHandler(github.DiscussionCommentConfig{
 			Client:   client,
+			Name:     inst.Name,
 			Template: action.Template,
 		}, log)
 	case notifier.ActionLabel:
 		return github.NewLabelHandler(github.LabelConfig{
 			Client: client,
+			Name:   inst.Name,
 			Labels: labelSet(action),
 		}, log), nil
 	case notifier.ActionCheckRun:
 		return github.NewCheckRunHandler(github.CheckRunConfig{
 			Client:   client,
+			InstName: inst.Name,
 			Name:     action.Name,
 			Template: action.Template,
 		}, log)
 	case notifier.ActionDeploymentStatus:
 		return github.NewDeploymentStatusHandler(github.DeploymentStatusConfig{
 			Client: client,
+			Name:   inst.Name,
 		}, log), nil
 	default:
 		return nil, ErrUnsupportedActionType

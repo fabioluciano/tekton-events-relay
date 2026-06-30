@@ -20,6 +20,7 @@ const (
 
 func TestDeploymentStatusHandler_Name(t *testing.T) {
 	h := NewDeploymentStatusHandler(DeploymentStatusConfig{
+		Name:   providerGitHub,
 		Client: ghTestClient(testDeployToken, testDeployAPIURL),
 	}, zap.NewNop())
 
@@ -30,6 +31,7 @@ func TestDeploymentStatusHandler_Name(t *testing.T) {
 
 func TestDeploymentStatusHandler_Type(t *testing.T) {
 	h := NewDeploymentStatusHandler(DeploymentStatusConfig{
+		Name:   providerGitHub,
 		Client: ghTestClient(testDeployToken, testDeployAPIURL),
 	}, zap.NewNop())
 
@@ -40,6 +42,7 @@ func TestDeploymentStatusHandler_Type(t *testing.T) {
 
 func TestDeploymentStatusHandler_MapState(t *testing.T) {
 	h := NewDeploymentStatusHandler(DeploymentStatusConfig{
+		Name:   providerGitHub,
 		Client: ghTestClient(testDeployToken, testDeployAPIURL),
 	}, zap.NewNop())
 
@@ -117,6 +120,7 @@ func TestDeploymentStatusHandler_Handle_Success(t *testing.T) {
 	defer server.Close()
 
 	h := NewDeploymentStatusHandler(DeploymentStatusConfig{
+		Name:   providerGitHub,
 		Client: ghTestClient("app-token-123", server.URL),
 	}, zap.NewNop())
 
@@ -175,6 +179,7 @@ func TestDeploymentStatusHandler_Handle_Success(t *testing.T) {
 
 func TestDeploymentStatusHandler_MissingAnnotations(t *testing.T) {
 	h := NewDeploymentStatusHandler(DeploymentStatusConfig{
+		Name:   providerGitHub,
 		Client: ghTestClient("token", "https://api.github.com"), //nolint:goconst
 	}, zap.NewNop())
 

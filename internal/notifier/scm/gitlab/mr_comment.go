@@ -64,13 +64,16 @@ func NewMRCommentHandler(cfg MRCommentConfig) (notifier.ActionHandler, error) {
 // Name returns the handler name.
 func (h *MRCommentHandler) Name() string { return h.name }
 
+// Provider returns the provider type identifier.
+func (h *MRCommentHandler) Provider() string { return providerGitLab }
+
 // Type returns the action type.
 func (h *MRCommentHandler) Type() notifier.ActionType { return notifier.ActionPRComment }
 
 // Handle posts a note to a GitLab merge request. The PR number annotation
 // carries the MR IID.
 func (h *MRCommentHandler) Handle(ctx context.Context, e domain.Event) error {
-	if e.Provider != h.name {
+	if e.Provider != providerGitLab {
 		return nil
 	}
 

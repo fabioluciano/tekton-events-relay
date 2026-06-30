@@ -46,7 +46,7 @@ func (f *AzureFactory) Build(inst config.AzureInstance, log *zap.Logger) ([]noti
 func (f *AzureFactory) buildHandler(inst config.AzureInstance, action config.Action, token string, log *zap.Logger) (notifier.ActionHandler, error) {
 	switch action.Type {
 	case notifier.ActionCommitStatus:
-		return azuredevops.NewStatusReporter(token, inst.BaseURL, inst.Genre, inst.InsecureSkipVerify, log), nil
+		return azuredevops.NewStatusReporter(inst.Name, token, inst.BaseURL, inst.Genre, inst.InsecureSkipVerify, log), nil
 	case notifier.ActionPRComment:
 		return azuredevops.NewCommentHandler(azuredevops.CommentConfig{
 			Token:              token,

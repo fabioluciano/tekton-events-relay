@@ -236,7 +236,7 @@ jobs:
         id: meta
         env:
           DOCKER_METADATA_ANNOTATIONS_LEVELS: index
-        uses: docker/metadata-action@v6.1.0
+        uses: docker/metadata-action@v6.2.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           flavor: |

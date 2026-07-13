@@ -329,7 +329,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install ORAS
-        uses: oras-project/setup-oras@v2.0.0
+        uses: oras-project/setup-oras@v2.0.1
 
       - name: Push ArtifactHub metadata
         run: |

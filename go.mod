@@ -20,7 +20,7 @@ require (
 	github.com/microsoft/azure-devops-go-api/azuredevops/v7 v7.1.0
 	github.com/nats-io/nats.go v1.52.0
 	github.com/olric-data/olric v0.7.4
-	github.com/prometheus/client_golang v1.23.2
+	github.com/prometheus/client_golang v1.24.0
 	github.com/prometheus/client_model v0.6.2
 	github.com/rabbitmq/amqp091-go v1.12.0
 	github.com/redis/go-redis/v9 v9.21.0
@@ -80,7 +80,7 @@ require (
 	github.com/huandu/xstrings v1.5.0 // indirect
 	github.com/itchyny/timefmt-go v0.1.8 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
-	github.com/klauspost/compress v1.18.5 // indirect
+	github.com/klauspost/compress v1.19.0 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/miekg/dns v1.1.72 // indirect
@@ -95,7 +95,7 @@ require (
 	github.com/pierrec/lz4/v4 v4.1.15 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/prometheus/common v1.20.99 // indirect
-	github.com/prometheus/procfs v0.20.1 // indirect
+	github.com/prometheus/procfs v0.21.1 // indirect
 	github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
